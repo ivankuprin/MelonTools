@@ -4,6 +4,7 @@
   <p>A desktop companion for Codex accounts, model providers, and Fleet workflows on macOS and Windows.</p>
   <p>
     <a href="https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.6.dmg"><strong>Download for macOS</strong></a>
+    · <a href="https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.6-win-x64.exe"><strong>Download for Windows</strong></a>
     · <a href="MacOS/README.md">Documentation</a>
     · <a href="MacOS/RELEASE_NOTES.md">Release notes</a>
     · <a href="https://github.com/ivankuprin/MelonTools/issues">Report an issue</a>
@@ -11,11 +12,12 @@
   <p>
     <img alt="Latest release" src="https://img.shields.io/github/v/release/ivankuprin/MelonTools?display_name=tag">
     <img alt="macOS 14 or later" src="https://img.shields.io/badge/macOS-14%2B-1f6b45">
+    <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-2563eb">
     <img alt="MIT license" src="https://img.shields.io/github/license/ivankuprin/MelonTools">
   </p>
 </div>
 
-![Melon Tools, a developer utility for macOS](assets/social-preview.png)
+![Melon Tools, a developer utility for macOS and Windows](assets/social-preview.png)
 
 ## What it does
 
@@ -29,11 +31,15 @@ The macOS app includes the complete Fleet workflow and Codex composer integratio
 
 ## Download and install
 
-1. Download the latest [MelonTools DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.6.dmg).
-2. Open it and drag **Melon Tools.app** to **Applications**.
-3. On first launch, use **right-click → Open** if Gatekeeper blocks the app.
+### macOS
 
-The current release provides the macOS DMG. It is ad-hoc signed and is not notarized. The universal app and gateway support Apple Silicon and Intel Macs running macOS 14 or later. Fleet features require Node.js 20 or later. Codex CLI and the Codex desktop app are optional integrations. Windows source and build instructions are available in [Windows documentation](Windows/README.md).
+Download [MelonTools for macOS](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.6.dmg), open the DMG, and drag **Melon Tools.app** to **Applications**. The universal app supports Apple Silicon and Intel Macs running macOS 14 or later. It is ad-hoc signed and not notarized; use **right-click → Open** if Gatekeeper blocks the first launch.
+
+### Windows
+
+Download [MelonTools for Windows (x64)](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.6-win-x64.exe) and run the `.exe`. WebView2 Runtime is required. The app is not Authenticode-signed, so Windows may show a security warning. Verify the download with the [SHA-256 checksum](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.6-win-x64.exe.sha256). See [Windows documentation](Windows/README.md) for supported features and setup details.
+
+Fleet features require Node.js 20 or later. Codex CLI and the Codex desktop app are optional integrations.
 
 ## Build from source
 
