@@ -1,0 +1,683 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03A1C09B1E98D9A166E66227 /* MTTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768560461E883B63C28E2ACB /* MTTheme.swift */; };
+		03FC5B6822365989AC52940B /* FleetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 193627B15B3B192C3BB8F5CC /* FleetStore.swift */; };
+		0C6967B388B7D4D4B1EA679A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55304F692A547242AA3220F1 /* AppState.swift */; };
+		0F0595D5C7E965925BD74D23 /* FleetCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F99FF2A97781BC7B3F32E409 /* FleetCallView.swift */; };
+		12AAE47E36E72C3F40686B71 /* DonateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E439C9E3BFE452A19209DFB /* DonateView.swift */; };
+		148321B5F77267CFE9A2D46B /* SecureFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E4F7622B54B974672276242 /* SecureFile.swift */; };
+		20168DA912EEE1A1968D496E /* LoopbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00D2E62FCC1AB51BFF6509B /* LoopbackServer.swift */; };
+		23EC11A934DD627D892AD22B /* BaseModelCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = 9FBBAD5E1C94E01916E33918 /* BaseModelCatalog.json */; };
+		2D9F397A2C9D715C88CD4E94 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C7DE7781BC232D89855C509 /* SettingsView.swift */; };
+		2FA012E7000545B4077ADD23 /* ShellService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6122C219EB9D610DECD893A7 /* ShellService.swift */; };
+		32835AA10325DA17578976BA /* composer-chips.js in Resources */ = {isa = PBXBuildFile; fileRef = B5D5481EBF3A71A36794564E /* composer-chips.js */; };
+		354D55EF6C9BD92B2C75635B /* CodexConfigRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18DB835AB1985DF1F56805B6 /* CodexConfigRoute.swift */; };
+		3DEFB14E9053148102B0EFDE /* CodexStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0ED55431DF119F7A8C5174 /* CodexStore.swift */; };
+		4BC7623A3A5BCA4E228E4392 /* CodexInstancesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44B4ECC496C0A6AE2F7D50CE /* CodexInstancesView.swift */; };
+		4DE9BB4AB391848035938DF9 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD5F2D4313079608CA034CD /* MainView.swift */; };
+		52D4C99653D19EE1DBB6B831 /* CodexRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C69B678951C7A01AABD656 /* CodexRouting.swift */; };
+		5721650C91F03EE4219CFD9C /* CodexAccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAD0F5803A4F71DEA4B885E /* CodexAccountsView.swift */; };
+		5BF1757222CDC389386D799B /* CodexComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1EE785A557ED470937D1D38 /* CodexComposerView.swift */; };
+		5F0462D21FD58B3E437252E6 /* CodexModelCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47529E0DB527DA9405074E30 /* CodexModelCatalogTests.swift */; };
+		67FCC88A8AE0E1767FBF9B1B /* MelonToolsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5F2432BAABE944A58797826 /* MelonToolsApp.swift */; };
+		6D0D6F32C375BDA877E61CE8 /* MTComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACD01EC0F82F6F7D0B4D401 /* MTComponents.swift */; };
+		70092A4A70BBD78D1B57CAED /* TerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FB7C6A30E71A442B95A2E9 /* TerminalLauncher.swift */; };
+		74ED531633757BFE48EB4A23 /* CodexControlCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D186C2A1693BC0D3B187FF3 /* CodexControlCard.swift */; };
+		76F270E6012195AB6C948AAF /* CodexRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE57D8A8328B28070AE73B3C /* CodexRoutingTests.swift */; };
+		7A548880BB5FC4CDEC757EA4 /* FleetStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C89C87E4B74EF21D0900A1 /* FleetStatusView.swift */; };
+		7B96A709A715BD46447D5D74 /* FleetRulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9E7BADD984CEB584A1F12B /* FleetRulesView.swift */; };
+		86D7E2BCEC78A2D1D74F1C84 /* FleetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D94B692E0959771EAB8B0DB7 /* FleetModels.swift */; };
+		94D871780AD7A084BDEC52BA /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44B370D20064EDBC82BF5CDA /* L10n.swift */; };
+		9860FC53EC1E247A72725398 /* FleetDoctorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E9D428E6D0E235634C1C06 /* FleetDoctorView.swift */; };
+		AB2680DD5873DFCF56CB5D39 /* CodexModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 747248C3C8AE60381B934643 /* CodexModels.swift */; };
+		AF09CDF0C7A282E60E5F98E7 /* Logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 5D1DA1473EC63E66C91E6DDB /* Logo.png */; };
+		B2FB786CFC1FFB46F4EBB75D /* CodexAPIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9B21B78AE9C1FC5B2A3DFD0 /* CodexAPIView.swift */; };
+		CEFD08B35C956F4C010BFC30 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = E80C892F082A1D4524173B74 /* AppIcon.icns */; };
+		CF5A837BC671DE1E18FDC62E /* CodexService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1789B6E80C211EDD2A5C921 /* CodexService.swift */; };
+		D09A94576D119B3EA1A75AB4 /* FleetConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED93784B9A38A185C75489E9 /* FleetConfigView.swift */; };
+		D2B25057C961DDBAA9218046 /* ProviderUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0743C522162285FF400C341E /* ProviderUsage.swift */; };
+		DA5F068851218CE3C4C25420 /* CodexModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D0B0D1931467CACA3EFCEBE /* CodexModelCatalog.swift */; };
+		DA68BEADDDDCD2CD1D133399 /* ModelSourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A35AB5611799383F91510547 /* ModelSourcesView.swift */; };
+		E149425A4AE22977827CE28E /* ComposerBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9F5A5F4EAADF5CEAB6FB641 /* ComposerBridge.swift */; };
+		E18E858CE59F884695A1AA55 /* CodexGatewayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7113F932E22E2C4B120FD1 /* CodexGatewayService.swift */; };
+		E35786B239D5A9AB14DF6C9C /* FleetCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1856BB31708AE81A955A3E73 /* FleetCLI.swift */; };
+		E74E46303F5B6A7E3CD4FA47 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C81F865BDC52620AD9ED0191 /* DashboardView.swift */; };
+		E7B641E90F70BD1A91F3F232 /* CDPSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65CC3D84764010FEBA404100 /* CDPSession.swift */; };
+		E86D2022AF1C4B1C67F34E1F /* ModelSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E0FE92353CF3930D5522680 /* ModelSources.swift */; };
+		F6CD0BC3951966BC00D58E9E /* FleetResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97F88F7B7E31A85B8444101A /* FleetResultsView.swift */; };
+		FD07753954102A3079EF335B /* MTAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 535140492A01BCB2D4079865 /* MTAssets.swift */; };
+		FD1B231CB13438110C05CB2B /* CodexAuthFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AEA90D89352DD60C34910A8 /* CodexAuthFileTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A607DA4D30C5C41C9A9AEE96 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8B934D67DE22DD5355A159AA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3333EA169743E017B0F7AA16;
+			remoteInfo = MelonTools;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0743C522162285FF400C341E /* ProviderUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsage.swift; sourceTree = "<group>"; };
+		09A2F2F1B47F5293A84E8487 /* MelonToolsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MelonToolsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1856BB31708AE81A955A3E73 /* FleetCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetCLI.swift; sourceTree = "<group>"; };
+		18DB835AB1985DF1F56805B6 /* CodexConfigRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexConfigRoute.swift; sourceTree = "<group>"; };
+		193627B15B3B192C3BB8F5CC /* FleetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetStore.swift; sourceTree = "<group>"; };
+		1E439C9E3BFE452A19209DFB /* DonateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DonateView.swift; sourceTree = "<group>"; };
+		2C7113F932E22E2C4B120FD1 /* CodexGatewayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexGatewayService.swift; sourceTree = "<group>"; };
+		2E0FE92353CF3930D5522680 /* ModelSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSources.swift; sourceTree = "<group>"; };
+		38C89C87E4B74EF21D0900A1 /* FleetStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetStatusView.swift; sourceTree = "<group>"; };
+		3AEA90D89352DD60C34910A8 /* CodexAuthFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAuthFileTests.swift; sourceTree = "<group>"; };
+		3D0B0D1931467CACA3EFCEBE /* CodexModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexModelCatalog.swift; sourceTree = "<group>"; };
+		44B370D20064EDBC82BF5CDA /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		44B4ECC496C0A6AE2F7D50CE /* CodexInstancesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexInstancesView.swift; sourceTree = "<group>"; };
+		47529E0DB527DA9405074E30 /* CodexModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexModelCatalogTests.swift; sourceTree = "<group>"; };
+		4DD5F2D4313079608CA034CD /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		535140492A01BCB2D4079865 /* MTAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MTAssets.swift; sourceTree = "<group>"; };
+		55304F692A547242AA3220F1 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		5C9E7BADD984CEB584A1F12B /* FleetRulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetRulesView.swift; sourceTree = "<group>"; };
+		5D1DA1473EC63E66C91E6DDB /* Logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Logo.png; sourceTree = "<group>"; };
+		6122C219EB9D610DECD893A7 /* ShellService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellService.swift; sourceTree = "<group>"; };
+		65CC3D84764010FEBA404100 /* CDPSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDPSession.swift; sourceTree = "<group>"; };
+		6715DEB6E92A8B2500D0403F /* MelonTools.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MelonTools.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		747248C3C8AE60381B934643 /* CodexModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexModels.swift; sourceTree = "<group>"; };
+		768560461E883B63C28E2ACB /* MTTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MTTheme.swift; sourceTree = "<group>"; };
+		85E9D428E6D0E235634C1C06 /* FleetDoctorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDoctorView.swift; sourceTree = "<group>"; };
+		8C7DE7781BC232D89855C509 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		8D186C2A1693BC0D3B187FF3 /* CodexControlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexControlCard.swift; sourceTree = "<group>"; };
+		97F88F7B7E31A85B8444101A /* FleetResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetResultsView.swift; sourceTree = "<group>"; };
+		9E4F7622B54B974672276242 /* SecureFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureFile.swift; sourceTree = "<group>"; };
+		9FBBAD5E1C94E01916E33918 /* BaseModelCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BaseModelCatalog.json; sourceTree = "<group>"; };
+		A1789B6E80C211EDD2A5C921 /* CodexService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexService.swift; sourceTree = "<group>"; };
+		A35AB5611799383F91510547 /* ModelSourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSourcesView.swift; sourceTree = "<group>"; };
+		AAAD0F5803A4F71DEA4B885E /* CodexAccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAccountsView.swift; sourceTree = "<group>"; };
+		AC0ED55431DF119F7A8C5174 /* CodexStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexStore.swift; sourceTree = "<group>"; };
+		B00D2E62FCC1AB51BFF6509B /* LoopbackServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackServer.swift; sourceTree = "<group>"; };
+		B1C69B678951C7A01AABD656 /* CodexRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRouting.swift; sourceTree = "<group>"; };
+		B5D5481EBF3A71A36794564E /* composer-chips.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "composer-chips.js"; sourceTree = "<group>"; };
+		BE57D8A8328B28070AE73B3C /* CodexRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRoutingTests.swift; sourceTree = "<group>"; };
+		C1EE785A557ED470937D1D38 /* CodexComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexComposerView.swift; sourceTree = "<group>"; };
+		C81F865BDC52620AD9ED0191 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		D5F2432BAABE944A58797826 /* MelonToolsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MelonToolsApp.swift; sourceTree = "<group>"; };
+		D94B692E0959771EAB8B0DB7 /* FleetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetModels.swift; sourceTree = "<group>"; };
+		D9F5A5F4EAADF5CEAB6FB641 /* ComposerBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerBridge.swift; sourceTree = "<group>"; };
+		E80C892F082A1D4524173B74 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		E8FB7C6A30E71A442B95A2E9 /* TerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLauncher.swift; sourceTree = "<group>"; };
+		ED93784B9A38A185C75489E9 /* FleetConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetConfigView.swift; sourceTree = "<group>"; };
+		F99FF2A97781BC7B3F32E409 /* FleetCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetCallView.swift; sourceTree = "<group>"; };
+		F9B21B78AE9C1FC5B2A3DFD0 /* CodexAPIView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAPIView.swift; sourceTree = "<group>"; };
+		FACD01EC0F82F6F7D0B4D401 /* MTComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MTComponents.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0DF764B00D857D33A3D252A8 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				C81F865BDC52620AD9ED0191 /* DashboardView.swift */,
+				1E439C9E3BFE452A19209DFB /* DonateView.swift */,
+				4DD5F2D4313079608CA034CD /* MainView.swift */,
+				8C7DE7781BC232D89855C509 /* SettingsView.swift */,
+				ADA7656AB4CF5727C3F8AA9D /* Codex */,
+				6CF4E7848B101CE04B4CE265 /* Fleet */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		1087D4C80EA2DA5AEFFEE12E /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				E80C892F082A1D4524173B74 /* AppIcon.icns */,
+				9FBBAD5E1C94E01916E33918 /* BaseModelCatalog.json */,
+				B5D5481EBF3A71A36794564E /* composer-chips.js */,
+				5D1DA1473EC63E66C91E6DDB /* Logo.png */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		165A07D45F9512C90F3C9F61 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6715DEB6E92A8B2500D0403F /* MelonTools.app */,
+				09A2F2F1B47F5293A84E8487 /* MelonToolsTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1ADDFB5371F07C68CA445E38 /* Design */ = {
+			isa = PBXGroup;
+			children = (
+				44B370D20064EDBC82BF5CDA /* L10n.swift */,
+				535140492A01BCB2D4079865 /* MTAssets.swift */,
+				FACD01EC0F82F6F7D0B4D401 /* MTComponents.swift */,
+				768560461E883B63C28E2ACB /* MTTheme.swift */,
+			);
+			path = Design;
+			sourceTree = "<group>";
+		};
+		41D4C8A6D10B2C8A78104230 /* Codex */ = {
+			isa = PBXGroup;
+			children = (
+				65CC3D84764010FEBA404100 /* CDPSession.swift */,
+				18DB835AB1985DF1F56805B6 /* CodexConfigRoute.swift */,
+				2C7113F932E22E2C4B120FD1 /* CodexGatewayService.swift */,
+				3D0B0D1931467CACA3EFCEBE /* CodexModelCatalog.swift */,
+				747248C3C8AE60381B934643 /* CodexModels.swift */,
+				B1C69B678951C7A01AABD656 /* CodexRouting.swift */,
+				A1789B6E80C211EDD2A5C921 /* CodexService.swift */,
+				AC0ED55431DF119F7A8C5174 /* CodexStore.swift */,
+				D9F5A5F4EAADF5CEAB6FB641 /* ComposerBridge.swift */,
+				B00D2E62FCC1AB51BFF6509B /* LoopbackServer.swift */,
+				2E0FE92353CF3930D5522680 /* ModelSources.swift */,
+				0743C522162285FF400C341E /* ProviderUsage.swift */,
+			);
+			path = Codex;
+			sourceTree = "<group>";
+		};
+		4F27AFBFEDEA31E69417546D /* MelonTools */ = {
+			isa = PBXGroup;
+			children = (
+				D5F2432BAABE944A58797826 /* MelonToolsApp.swift */,
+				41D4C8A6D10B2C8A78104230 /* Codex */,
+				EAFFB11108B137DB6A303851 /* Core */,
+				1ADDFB5371F07C68CA445E38 /* Design */,
+				59CF1FF9E007BD32FB82D12D /* Fleet */,
+				0DF764B00D857D33A3D252A8 /* Views */,
+			);
+			path = MelonTools;
+			sourceTree = "<group>";
+		};
+		59CF1FF9E007BD32FB82D12D /* Fleet */ = {
+			isa = PBXGroup;
+			children = (
+				1856BB31708AE81A955A3E73 /* FleetCLI.swift */,
+				D94B692E0959771EAB8B0DB7 /* FleetModels.swift */,
+				193627B15B3B192C3BB8F5CC /* FleetStore.swift */,
+			);
+			path = Fleet;
+			sourceTree = "<group>";
+		};
+		6CF4E7848B101CE04B4CE265 /* Fleet */ = {
+			isa = PBXGroup;
+			children = (
+				F99FF2A97781BC7B3F32E409 /* FleetCallView.swift */,
+				ED93784B9A38A185C75489E9 /* FleetConfigView.swift */,
+				85E9D428E6D0E235634C1C06 /* FleetDoctorView.swift */,
+				97F88F7B7E31A85B8444101A /* FleetResultsView.swift */,
+				5C9E7BADD984CEB584A1F12B /* FleetRulesView.swift */,
+				38C89C87E4B74EF21D0900A1 /* FleetStatusView.swift */,
+			);
+			path = Fleet;
+			sourceTree = "<group>";
+		};
+		ADA7656AB4CF5727C3F8AA9D /* Codex */ = {
+			isa = PBXGroup;
+			children = (
+				AAAD0F5803A4F71DEA4B885E /* CodexAccountsView.swift */,
+				F9B21B78AE9C1FC5B2A3DFD0 /* CodexAPIView.swift */,
+				C1EE785A557ED470937D1D38 /* CodexComposerView.swift */,
+				8D186C2A1693BC0D3B187FF3 /* CodexControlCard.swift */,
+				44B4ECC496C0A6AE2F7D50CE /* CodexInstancesView.swift */,
+				A35AB5611799383F91510547 /* ModelSourcesView.swift */,
+			);
+			path = Codex;
+			sourceTree = "<group>";
+		};
+		AE3B397D629299245A5F8C28 /* MelonToolsTests */ = {
+			isa = PBXGroup;
+			children = (
+				3AEA90D89352DD60C34910A8 /* CodexAuthFileTests.swift */,
+				47529E0DB527DA9405074E30 /* CodexModelCatalogTests.swift */,
+				BE57D8A8328B28070AE73B3C /* CodexRoutingTests.swift */,
+			);
+			path = MelonToolsTests;
+			sourceTree = "<group>";
+		};
+		DDA878E96E31441DEFC52125 = {
+			isa = PBXGroup;
+			children = (
+				4F27AFBFEDEA31E69417546D /* MelonTools */,
+				AE3B397D629299245A5F8C28 /* MelonToolsTests */,
+				1087D4C80EA2DA5AEFFEE12E /* Resources */,
+				165A07D45F9512C90F3C9F61 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EAFFB11108B137DB6A303851 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				55304F692A547242AA3220F1 /* AppState.swift */,
+				9E4F7622B54B974672276242 /* SecureFile.swift */,
+				6122C219EB9D610DECD893A7 /* ShellService.swift */,
+				E8FB7C6A30E71A442B95A2E9 /* TerminalLauncher.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		006F9BC5BDDC62BC70904A81 /* MelonToolsTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 55B6A8F4B5C183BD346039A1 /* Build configuration list for PBXNativeTarget "MelonToolsTests" */;
+			buildPhases = (
+				38437DDBAD4E9E41E42F8AA1 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3E21CFB9B8C1D2FDB2CCFA99 /* PBXTargetDependency */,
+			);
+			name = MelonToolsTests;
+			packageProductDependencies = (
+			);
+			productName = MelonToolsTests;
+			productReference = 09A2F2F1B47F5293A84E8487 /* MelonToolsTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		3333EA169743E017B0F7AA16 /* MelonTools */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C7E27F797C9A287058333F55 /* Build configuration list for PBXNativeTarget "MelonTools" */;
+			buildPhases = (
+				D97730800531A3F09DC1B7BB /* Sources */,
+				835803A900E10AEDD41CA96F /* Resources */,
+				CBC61643E9A7B757CB08B28C /* Embed fleet CLI and gateway binary */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MelonTools;
+			packageProductDependencies = (
+			);
+			productName = MelonTools;
+			productReference = 6715DEB6E92A8B2500D0403F /* MelonTools.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8B934D67DE22DD5355A159AA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					006F9BC5BDDC62BC70904A81 = {
+						DevelopmentTeam = "";
+					};
+					3333EA169743E017B0F7AA16 = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 8C355FEF22C75BC0AA5B29F0 /* Build configuration list for PBXProject "MelonTools" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = DDA878E96E31441DEFC52125;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 165A07D45F9512C90F3C9F61 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3333EA169743E017B0F7AA16 /* MelonTools */,
+				006F9BC5BDDC62BC70904A81 /* MelonToolsTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		835803A900E10AEDD41CA96F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CEFD08B35C956F4C010BFC30 /* AppIcon.icns in Resources */,
+				23EC11A934DD627D892AD22B /* BaseModelCatalog.json in Resources */,
+				AF09CDF0C7A282E60E5F98E7 /* Logo.png in Resources */,
+				32835AA10325DA17578976BA /* composer-chips.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		CBC61643E9A7B757CB08B28C /* Embed fleet CLI and gateway binary */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed fleet CLI and gateway binary";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nRES=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nFLEET_SRC=\"$SRCROOT/../_sources/melon-fleet\"\nGATEWAY_BIN=\"$SRCROOT/../build/cliproxyapi\"\nif [ -d \"$FLEET_SRC\" ]; then\n  rm -rf \"$RES/melon-fleet\"\n  mkdir -p \"$RES/melon-fleet\"\n  rsync -a --exclude '._*' --exclude '.git' --exclude 'test' --exclude 'evals' \"$FLEET_SRC/\" \"$RES/melon-fleet/\"\n  echo \"embedded melon-fleet CLI -> $RES/melon-fleet\"\nfi\nif [ -f \"$GATEWAY_BIN\" ]; then\n  mkdir -p \"$RES/bin\"\n  cp \"$GATEWAY_BIN\" \"$RES/bin/cliproxyapi\"\n  chmod +x \"$RES/bin/cliproxyapi\"\n  echo \"embedded gateway binary -> $RES/bin/cliproxyapi\"\nelse\n  echo \"warning: gateway binary missing at $GATEWAY_BIN (build it with build.sh)\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		38437DDBAD4E9E41E42F8AA1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FD1B231CB13438110C05CB2B /* CodexAuthFileTests.swift in Sources */,
+				5F0462D21FD58B3E437252E6 /* CodexModelCatalogTests.swift in Sources */,
+				76F270E6012195AB6C948AAF /* CodexRoutingTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D97730800531A3F09DC1B7BB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0C6967B388B7D4D4B1EA679A /* AppState.swift in Sources */,
+				E7B641E90F70BD1A91F3F232 /* CDPSession.swift in Sources */,
+				B2FB786CFC1FFB46F4EBB75D /* CodexAPIView.swift in Sources */,
+				5721650C91F03EE4219CFD9C /* CodexAccountsView.swift in Sources */,
+				5BF1757222CDC389386D799B /* CodexComposerView.swift in Sources */,
+				354D55EF6C9BD92B2C75635B /* CodexConfigRoute.swift in Sources */,
+				74ED531633757BFE48EB4A23 /* CodexControlCard.swift in Sources */,
+				E18E858CE59F884695A1AA55 /* CodexGatewayService.swift in Sources */,
+				4BC7623A3A5BCA4E228E4392 /* CodexInstancesView.swift in Sources */,
+				DA5F068851218CE3C4C25420 /* CodexModelCatalog.swift in Sources */,
+				AB2680DD5873DFCF56CB5D39 /* CodexModels.swift in Sources */,
+				52D4C99653D19EE1DBB6B831 /* CodexRouting.swift in Sources */,
+				CF5A837BC671DE1E18FDC62E /* CodexService.swift in Sources */,
+				3DEFB14E9053148102B0EFDE /* CodexStore.swift in Sources */,
+				E149425A4AE22977827CE28E /* ComposerBridge.swift in Sources */,
+				E74E46303F5B6A7E3CD4FA47 /* DashboardView.swift in Sources */,
+				12AAE47E36E72C3F40686B71 /* DonateView.swift in Sources */,
+				E35786B239D5A9AB14DF6C9C /* FleetCLI.swift in Sources */,
+				0F0595D5C7E965925BD74D23 /* FleetCallView.swift in Sources */,
+				D09A94576D119B3EA1A75AB4 /* FleetConfigView.swift in Sources */,
+				9860FC53EC1E247A72725398 /* FleetDoctorView.swift in Sources */,
+				86D7E2BCEC78A2D1D74F1C84 /* FleetModels.swift in Sources */,
+				F6CD0BC3951966BC00D58E9E /* FleetResultsView.swift in Sources */,
+				7B96A709A715BD46447D5D74 /* FleetRulesView.swift in Sources */,
+				7A548880BB5FC4CDEC757EA4 /* FleetStatusView.swift in Sources */,
+				03FC5B6822365989AC52940B /* FleetStore.swift in Sources */,
+				94D871780AD7A084BDEC52BA /* L10n.swift in Sources */,
+				20168DA912EEE1A1968D496E /* LoopbackServer.swift in Sources */,
+				FD07753954102A3079EF335B /* MTAssets.swift in Sources */,
+				6D0D6F32C375BDA877E61CE8 /* MTComponents.swift in Sources */,
+				03A1C09B1E98D9A166E66227 /* MTTheme.swift in Sources */,
+				4DE9BB4AB391848035938DF9 /* MainView.swift in Sources */,
+				67FCC88A8AE0E1767FBF9B1B /* MelonToolsApp.swift in Sources */,
+				E86D2022AF1C4B1C67F34E1F /* ModelSources.swift in Sources */,
+				DA68BEADDDDCD2CD1D133399 /* ModelSourcesView.swift in Sources */,
+				D2B25057C961DDBAA9218046 /* ProviderUsage.swift in Sources */,
+				148321B5F77267CFE9A2D46B /* SecureFile.swift in Sources */,
+				2D9F397A2C9D715C88CD4E94 /* SettingsView.swift in Sources */,
+				2FA012E7000545B4077ADD23 /* ShellService.swift in Sources */,
+				70092A4A70BBD78D1B57CAED /* TerminalLauncher.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3E21CFB9B8C1D2FDB2CCFA99 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3333EA169743E017B0F7AA16 /* MelonTools */;
+			targetProxy = A607DA4D30C5C41C9A9AEE96 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		05DF9A05FCFD85DE52A0DAEC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MelonTools.app/Contents/MacOS/MelonTools";
+			};
+			name = Release;
+		};
+		27B9E7EF39E34C3A8C2C10B9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MelonTools.app/Contents/MacOS/MelonTools";
+			};
+			name = Debug;
+		};
+		6BC338A56F48CC90A5057BBA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		8CEA63832491FA172FB9193F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B07208A96546B90E37D5204A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 14;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MelonTools/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.4.6;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.app;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		E60C64A0F29D9D39AD021FCD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 14;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MelonTools/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.4.6;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.app;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		55B6A8F4B5C183BD346039A1 /* Build configuration list for PBXNativeTarget "MelonToolsTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				27B9E7EF39E34C3A8C2C10B9 /* Debug */,
+				05DF9A05FCFD85DE52A0DAEC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8C355FEF22C75BC0AA5B29F0 /* Build configuration list for PBXProject "MelonTools" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8CEA63832491FA172FB9193F /* Debug */,
+				6BC338A56F48CC90A5057BBA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C7E27F797C9A287058333F55 /* Build configuration list for PBXNativeTarget "MelonTools" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B07208A96546B90E37D5204A /* Debug */,
+				E60C64A0F29D9D39AD021FCD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 8B934D67DE22DD5355A159AA /* Project object */;
+}

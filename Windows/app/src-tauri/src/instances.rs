@@ -1,0 +1,153 @@
+//! Codex instances: separate CODEX_HOME directories with their own login,
+//! so several Codex setups can run side by side (port of CodexInstancesView).
+
+use serde_json::{json, Value};
+use std::path::PathBuf;
+
+use crate::paths;
+use crate::vault::{self, Account};
+
+fn file() -> PathBuf {
+    paths::appdata_dir().join("codex").join("instances.json")
+}
+
+fn load() -> Vec<Value> {
+    std::fs::read_to_string(file())
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default()
+}
+
+fn save(items: &[Value]) -> Result<(), String> {
+    let path = file();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let data = serde_json::to_string_pretty(&Value::Array(items.to_vec()))
+        .map_err(|e| e.to_string())?;
+    std::fs::write(path, data).map_err(|e| e.to_string())
+}
+
+fn home_for(id: &str) -> PathBuf {
+    paths::appdata_dir().join("instances").join(id)
+}
+
+pub fn list() -> Vec<Value> {
+    load()
+        .into_iter()
+        .map(|mut item| {
+            if let Some(id) = item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+            {
+                let home = home_for(&id);
+                item["homePath"] = json!(home.to_string_lossy());
+                item["exists"] = json!(home.exists());
+            }
+            item
+        })
+        .collect()
+}
+
+pub fn create(name: &str) -> Result<Value, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("имя не может быть пустым".to_string());
+    }
+    let id = {
+        let bytes: [u8; 8] = rand::random();
+        bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    };
+    let home = home_for(&id);
+    std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
+    let mut items = load();
+    let entry = json!({
+        "id": id,
+        "name": name,
+        "accountId": Value::Null,
+        "createdAt": vault::now_ref(),
+    });
+    items.push(entry.clone());
+    save(&items)?;
+    let mut view = entry;
+    view["homePath"] = json!(home.to_string_lossy());
+    view["exists"] = json!(true);
+    Ok(view)
+}
+
+pub fn delete(id: &str) -> Result<Vec<Value>, String> {
+    let mut items = load();
+    items.retain(|item| item.get("id").and_then(|v| v.as_str()) != Some(id));
+    save(&items)?;
+    // Remove the instance home (best effort — a running CLI may hold files).
+    let home = home_for(id);
+    if home.starts_with(paths::appdata_dir().join("instances")) {
+        let _ = std::fs::remove_dir_all(home);
+    }
+    Ok(list())
+}
+
+pub fn bind(id: &str, account_id: Option<String>) -> Result<Vec<Value>, String> {
+    let mut items = load();
+    for item in items.iter_mut() {
+        if item.get("id").and_then(|v| v.as_str()) == Some(id) {
+            item["accountId"] = match account_id.clone() {
+                Some(value) => json!(value),
+                None => Value::Null,
+            };
+        }
+    }
+    save(&items)?;
+    Ok(list())
+}
+
+/// Writes the instance login (bound account, or the one currently in the
+/// Codex home) and launches `codex` in a visible console with CODEX_HOME
+/// pointed at the instance directory.
+pub fn launch(id: &str) -> Result<String, String> {
+    let items = load();
+    let instance = items
+        .iter()
+        .find(|item| item.get("id").and_then(|v| v.as_str()) == Some(id))
+        .ok_or_else(|| "инстанс не найден".to_string())?;
+    let home = home_for(id);
+    std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
+
+    // Pick the account: bound first, else the vault's current login.
+    let accounts = vault::accounts();
+    let bound = instance
+        .get("accountId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let account: Option<Account> = bound
+        .and_then(|id| accounts.iter().find(|a| a.id == id).cloned())
+        .or_else(|| {
+            vault::read_codex_auth_tokens().and_then(|tokens| {
+                accounts
+                    .iter()
+                    .find(|a| a.tokens.access_token == tokens.access_token)
+                    .cloned()
+            })
+        })
+        .or_else(|| accounts.first().cloned());
+
+    if let Some(account) = account {
+        vault::write_codex_auth_to(&home.join("auth.json"), &account)?;
+    }
+
+    #[cfg(windows)]
+    {
+        let inner = format!("set \"CODEX_HOME={}\" && codex", home.to_string_lossy());
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", "cmd", "/K", &inner])
+            .spawn()
+            .map_err(|e| format!("не удалось запустить codex: {}", e))?;
+        Ok(home.to_string_lossy().to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("запуск инстансов поддерживается на Windows".to_string())
+    }
+}

@@ -1,0 +1,393 @@
+//! The Codex client route: `model_provider` + `[model_providers.<id>]` in
+//! `%USERPROFILE%\.codex\config.toml` (line-based editing, ported from the
+//! macOS app) plus the model catalog the Codex picker reads.
+
+use serde_json::{json, Value};
+use std::collections::HashSet;
+use std::path::PathBuf;
+
+use crate::paths;
+
+pub const PROVIDER_ID: &str = "melon_local_access";
+const PROVIDER_NAME: &str = "Melon Tools API";
+pub const CATALOG_FILE: &str = "melon-model-catalog.json";
+
+fn config_path() -> PathBuf {
+    paths::codex_home().join("config.toml")
+}
+
+// MARK: - Line transforms (pure, mirrored from CodexConfigRoute.swift)
+
+fn first_header(lines: &[String]) -> usize {
+    lines
+        .iter()
+        .position(|l| l.trim_start().starts_with('['))
+        .unwrap_or(lines.len())
+}
+
+fn raw_value(line: &str, key: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with(key) {
+        return None;
+    }
+    let rest = trimmed[key.len()..].trim_start();
+    if !rest.starts_with('=') {
+        return None;
+    }
+    let mut value = rest[1..].trim().to_string();
+    if let Some(hash) = value.find('#') {
+        value = value[..hash].trim().to_string();
+    }
+    Some(value.trim_matches(|c| c == '"' || c == '\'').to_string())
+}
+
+fn provider_value(line: &str) -> Option<String> {
+    raw_value(line, "model_provider").filter(|v| !v.is_empty())
+}
+
+fn table_bounds(lines: &[String], id: &str) -> Option<(usize, usize)> {
+    let header = format!("[model_providers.{}]", id);
+    let mut start: Option<usize> = None;
+    for (index, raw) in lines.iter().enumerate() {
+        let line = raw.trim();
+        if line == header {
+            if start.is_none() {
+                start = Some(index);
+            }
+            continue;
+        }
+        if let Some(s) = start {
+            if index > s && line.starts_with('[') {
+                return Some((s, index));
+            }
+        }
+    }
+    start.map(|s| (s, lines.len()))
+}
+
+fn normalized(mut lines: Vec<String>, ends_with_newline: bool) -> String {
+    if ends_with_newline {
+        if lines.last().map(|l| !l.is_empty()).unwrap_or(true) {
+            lines.push(String::new());
+        }
+    } else if lines.last().map(|l| l.is_empty()).unwrap_or(false) {
+        lines.pop();
+    }
+    lines.join("\n")
+}
+
+fn to_lines(text: &str) -> Vec<String> {
+    text.split('\n').map(String::from).collect()
+}
+
+pub fn upsert_route(in_text: &str, base_url: &str, token: &str) -> String {
+    let ends = in_text.ends_with('\n');
+    let mut lines = to_lines(in_text);
+    let header = first_header(&lines);
+    let provider_line = format!("model_provider = \"{}\"", PROVIDER_ID);
+    let mut replaced = false;
+    for index in 0..header {
+        if provider_value(&lines[index]).is_some() {
+            lines[index] = provider_line.clone();
+            replaced = true;
+            break;
+        }
+    }
+    if !replaced {
+        lines.insert(0, provider_line);
+        if lines.len() > 1 && !lines[1].is_empty() {
+            lines.insert(1, String::new());
+        }
+    }
+    let block = vec![
+        format!("[model_providers.{}]", PROVIDER_ID),
+        format!("name = \"{}\"", PROVIDER_NAME),
+        format!("base_url = \"{}\"", base_url),
+        "wire_api = \"responses\"".to_string(),
+        "requires_openai_auth = true".to_string(),
+        format!("experimental_bearer_token = \"{}\"", token),
+        "supports_websockets = false".to_string(),
+    ];
+    if let Some((start, end)) = table_bounds(&lines, PROVIDER_ID) {
+        lines.splice(start..end, block);
+    } else {
+        if lines.last().map(|l| !l.is_empty()).unwrap_or(false) {
+            lines.push(String::new());
+        }
+        lines.extend(block);
+    }
+    normalized(lines, ends)
+}
+
+pub fn remove_route(in_text: &str) -> String {
+    let ends = in_text.ends_with('\n');
+    let mut lines = to_lines(in_text);
+    if let Some((start, end)) = table_bounds(&lines, PROVIDER_ID) {
+        lines.drain(start..end);
+    }
+    let header = first_header(&lines);
+    for index in 0..header {
+        if provider_value(&lines[index]).as_deref() == Some(PROVIDER_ID) {
+            lines.remove(index);
+            break;
+        }
+    }
+    normalized(lines, ends)
+}
+
+pub fn upsert_top_level_key(in_text: &str, key: &str, value: &str) -> String {
+    let ends = in_text.ends_with('\n');
+    let mut lines = to_lines(in_text);
+    let header = first_header(&lines);
+    let line = format!("{} = \"{}\"", key, value);
+    for index in 0..header {
+        if raw_value(&lines[index], key).is_some() {
+            lines[index] = line;
+            return normalized(lines, ends);
+        }
+    }
+    let mut insert_at = 0;
+    for index in 0..header {
+        if provider_value(&lines[index]).is_some() {
+            insert_at = index + 1;
+            break;
+        }
+    }
+    lines.insert(insert_at, line);
+    normalized(lines, ends)
+}
+
+pub fn remove_top_level_key(in_text: &str, key: &str) -> String {
+    let ends = in_text.ends_with('\n');
+    let mut lines = to_lines(in_text);
+    let header = first_header(&lines);
+    for index in 0..header {
+        if raw_value(&lines[index], key).is_some() {
+            lines.remove(index);
+            break;
+        }
+    }
+    normalized(lines, ends)
+}
+
+// MARK: - High level
+
+/// Writes (or updates) the Melon route in config.toml, pointing Codex at the
+/// local gateway. A one-time backup of the previous file is kept.
+pub fn apply(port: u16, api_key: &str) -> Result<(), String> {
+    let path = config_path();
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if !current.is_empty() {
+        let backup = path.with_extension("toml.melon-backup");
+        if !backup.exists() {
+            let _ = std::fs::copy(&path, &backup);
+        }
+    }
+    let mut updated = upsert_route(
+        &current,
+        &format!("http://127.0.0.1:{}/v1", port),
+        api_key,
+    );
+    updated = upsert_top_level_key(&updated, "model_catalog_json", CATALOG_FILE);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, updated).map_err(|e| e.to_string())
+}
+
+/// Removes the Melon route (and the catalog reference, which would otherwise
+/// stop the Codex app from starting when the file is gone).
+pub fn remove() -> Result<(), String> {
+    let path = config_path();
+    let Ok(current) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let mut updated = remove_route(&current);
+    updated = remove_top_level_key(&updated, "model_catalog_json");
+    std::fs::write(&path, updated).map_err(|e| e.to_string())
+}
+
+/// What the route looks like right now, for the UI.
+pub fn status() -> Value {
+    let path = config_path();
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    let lines = to_lines(&current);
+    let header = first_header(&lines);
+    let mut provider = None;
+    for index in 0..header {
+        if let Some(value) = provider_value(&lines[index]) {
+            provider = Some(value);
+            break;
+        }
+    }
+    let catalog = paths::codex_home().join(CATALOG_FILE);
+    json!({
+        "configPath": path.to_string_lossy(),
+        "provider": provider,
+        "ours": provider.as_deref() == Some(PROVIDER_ID),
+        "catalogExists": catalog.exists(),
+        "catalogPath": catalog.to_string_lossy(),
+    })
+}
+
+// MARK: - Model catalog
+
+fn prettify(alias: &str) -> String {
+    let tail = alias.rsplit('/').next().unwrap_or(alias);
+    tail.split(|c| c == '-' || c == '_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+const PRIVATE_CATALOG_KEYS: &[&str] = &[
+    "base_instructions",
+    "model_messages",
+    "policy",
+    "policy_template",
+    "node_repl_policy",
+    "rejection_instructions",
+    "timeout_instructions",
+    "experimental_supported_tools",
+    "instructions_variables",
+];
+
+fn strip_private_catalog_metadata(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            for key in PRIVATE_CATALOG_KEYS {
+                object.remove(*key);
+            }
+            for child in object.values_mut() {
+                strip_private_catalog_metadata(child);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                strip_private_catalog_metadata(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Regenerates `%~/.codex/melon-model-catalog.json`: the bundled base entries
+/// (account-pool models) plus one cloned entry per gateway model that is not
+/// in the pool list (opencode/*, openrouter/*). Returns the custom count.
+pub async fn sync_catalog(
+    client: &reqwest::Client,
+    port: u16,
+    api_key: &str,
+) -> Result<usize, String> {
+    let base: Value =
+        serde_json::from_str(include_str!("../../resources/BaseModelCatalog.json"))
+            .map_err(|e| e.to_string())?;
+    let mut models: Vec<Value> = base
+        .get("models")
+        .and_then(|m| m.as_array())
+        .cloned()
+        .unwrap_or_default();
+    for model in &mut models {
+        strip_private_catalog_metadata(model);
+    }
+    if models.is_empty() {
+        return Err("базовый каталог пуст".to_string());
+    }
+    let pool_slugs: HashSet<String> = models
+        .iter()
+        .filter_map(|m| m.get("slug").and_then(|s| s.as_str()).map(String::from))
+        .collect();
+    let template = models
+        .iter()
+        .find(|m| m.get("slug").and_then(|v| v.as_str()) == Some("gpt-6.1-sol"))
+        .or_else(|| models.iter().find(|m| m.get("context_window").is_some()))
+        .cloned()
+        .ok_or_else(|| "нет шаблонной записи".to_string())?;
+
+    let list: Value = client
+        .get(format!("http://127.0.0.1:{}/v1/models", port))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let ids: Vec<String> = list
+        .get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut custom = 0usize;
+    let mut opencode_index = 0usize;
+    let mut openrouter_index = 0usize;
+    for id in ids {
+        if pool_slugs.contains(&id) {
+            continue;
+        }
+        let (band, index) = if id.starts_with("opencode/") {
+            let index = opencode_index;
+            opencode_index += 1;
+            (100, index)
+        } else if id.starts_with("openrouter/") {
+            let index = openrouter_index;
+            openrouter_index += 1;
+            (200, index)
+        } else {
+            continue;
+        };
+        let mut entry = template.clone();
+        entry["slug"] = json!(id);
+        entry["display_name"] = json!(prettify(&id));
+        entry["priority"] = json!(band + index);
+        models.push(entry);
+        custom += 1;
+    }
+
+    let payload = json!({ "models": models });
+    let path = paths::codex_home().join(CATALOG_FILE);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let data = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
+    std::fs::write(&path, data).map_err(|e| e.to_string())?;
+    Ok(custom)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_private_catalog_metadata;
+    use serde_json::json;
+
+    #[test]
+    fn private_catalog_metadata_is_removed_recursively() {
+        let mut value = json!({
+            "slug": "sample-model",
+            "base_instructions": "private fixture",
+            "nested": {
+                "policy": "private fixture",
+                "safe": true,
+                "items": [{"timeout_instructions": "private fixture", "enabled": true}]
+            }
+        });
+
+        strip_private_catalog_metadata(&mut value);
+
+        assert_eq!(value["slug"], "sample-model");
+        assert!(value.get("base_instructions").is_none());
+        assert!(value["nested"].get("policy").is_none());
+        assert_eq!(value["nested"]["safe"], true);
+        assert!(value["nested"]["items"][0].get("timeout_instructions").is_none());
+    }
+}

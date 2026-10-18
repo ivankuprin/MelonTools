@@ -1,0 +1,20 @@
+# macOS metadata (exFAT AppleDouble sidecars)
+.DS_Store
+._*
+
+# Build artifacts
+build/
+derived/
+*.dmg
+*.exe
+Windows/dist/
+
+# Xcode user state
+xcuserdata/
+*.xcuserdata/
+
+# Third-party sources (fetch with scripts/fetch-sources.sh)
+_sources/
+
+# Local agent notes may contain machine-specific paths
+MacOS/AGENTS.md

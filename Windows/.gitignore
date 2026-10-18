@@ -1,0 +1,7 @@
+# macOS AppleDouble junk (this repo lives on exFAT, which spawns `._*`)
+._*
+.DS_Store
+app/src-tauri/gen/
+app/src-tauri/target/
+app/src-tauri/binaries/*.exe
+dist/

@@ -1,1 +1,70 @@
-# MelonTools
+<div align="center">
+  <img src="MacOS/Logo.png" alt="Melon Tools logo" width="128">
+  <h1>Melon Tools</h1>
+  <p>A desktop companion for Codex accounts, model providers, and Fleet workflows on macOS and Windows.</p>
+  <p>
+    <a href="https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.6.dmg"><strong>Download for macOS</strong></a>
+    · <a href="MacOS/README.md">Documentation</a>
+    · <a href="MacOS/RELEASE_NOTES.md">Release notes</a>
+    · <a href="https://github.com/ivankuprin/MelonTools/issues">Report an issue</a>
+  </p>
+  <p>
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/ivankuprin/MelonTools?display_name=tag">
+    <img alt="macOS 14 or later" src="https://img.shields.io/badge/macOS-14%2B-1f6b45">
+    <img alt="MIT license" src="https://img.shields.io/github/license/ivankuprin/MelonTools">
+  </p>
+</div>
+
+![Melon Tools, a developer utility for macOS](assets/social-preview.png)
+
+## What it does
+
+- **Manage Codex accounts** in a local vault, refresh usage, and route requests across an account pool.
+- **Run a local OpenAI-compatible gateway** for Codex accounts on `127.0.0.1:18317`.
+- **Connect OpenRouter and OpenCode** models by API key, then select them in the Codex model picker.
+- **Show account and usage chips** in the Codex desktop composer.
+- **Drive Fleet CLI workflows** from a native interface: status, doctor, config, results, calls, and project rules.
+
+The macOS app includes the complete Fleet workflow and Codex composer integration. The Windows port includes account and provider management, a local gateway, composer chips, and core Fleet views; see [Windows documentation](Windows/README.md) for current coverage.
+
+## Download and install
+
+1. Download the latest [MelonTools DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.6.dmg).
+2. Open it and drag **Melon Tools.app** to **Applications**.
+3. On first launch, use **right-click → Open** if Gatekeeper blocks the app.
+
+The current release provides the macOS DMG. It is ad-hoc signed and is not notarized. The universal app and gateway support Apple Silicon and Intel Macs running macOS 14 or later. Fleet features require Node.js 20 or later. Codex CLI and the Codex desktop app are optional integrations. Windows source and build instructions are available in [Windows documentation](Windows/README.md).
+
+## Build from source
+
+Prerequisites: Xcode 27+, XcodeGen, Go 1.22+, and Node.js 20+. `create-dmg` is optional.
+
+```bash
+./MacOS/scripts/fetch-sources.sh
+./MacOS/build.sh
+```
+
+The fetch script checks out the pinned MIT-licensed Fleet CLI and CLIProxyAPI sources into the ignored `MacOS/_sources/` directory. The build creates a universal app and DMG under `MacOS/build/`.
+
+Run the unit tests with:
+
+```bash
+xcodebuild \
+  -project MacOS/app/MelonTools.xcodeproj \
+  -scheme MelonTools \
+  -configuration Debug \
+  -derivedDataPath "$HOME/Library/Developer/MelonTools" \
+  CODE_SIGNING_ALLOWED=NO test
+```
+
+## Privacy and security
+
+Account credentials and provider keys are stored on the user's device. The local gateway binds to loopback; requests go to OpenAI or to the providers the user configures. The project does not include account credentials. See [the app documentation](MacOS/README.md) and [Windows documentation](Windows/README.md) for data locations and implementation details.
+
+Please report security issues through [GitHub private vulnerability reporting](https://github.com/ivankuprin/MelonTools/security/advisories/new) when available, or contact the maintainer privately.
+
+## License
+
+Melon Tools is released under the [MIT License](LICENSE). Third-party component provenance is documented in [MacOS/README.md](MacOS/README.md).
+
+Melon Tools is an independent project and is not affiliated with or endorsed by OpenAI.

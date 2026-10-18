@@ -1,0 +1,27 @@
+[package]
+name = "melontools"
+version = "1.4.6"
+description = "Melon Tools for Windows — Codex account pool and local API gateway"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+tokio = { version = "1", features = ["time", "process"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake"] }
+futures-util = "0.3"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+chrono = "0.4"
+base64 = "0.22"
+rand = "0.8"
+
+[profile.release]
+strip = true
+opt-level = "s"
