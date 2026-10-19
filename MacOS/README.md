@@ -17,6 +17,14 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## What's new in 1.6.2 «Antigravity settings»
+
+- **Consistent provider card.** The Antigravity card always shows «Обновить» and «Настройки»; connecting, cancelling and disconnecting live on the Antigravity settings page.
+
+## What's new in 1.6.1 «Installer fix»
+
+- **In-app installer reliability.** The update sheet closes before termination, a watchdog exits the app if termination is vetoed, and the swap script escalates to TERM/KILL instead of waiting on a hung process.
+
 ## What's new in 1.6.0 «Antigravity»
 
 - **Google Antigravity joins the Providers page.** Connect a Google account via

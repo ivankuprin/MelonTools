@@ -188,9 +188,17 @@ final class UpdaterStore: ObservableObject {
 
             phase = .working(L("Installing the update…"))
             try Self.launchInstaller(dmg: dmgURL)
+            // A presented SwiftUI sheet can veto termination, which leaves the
+            // swap script waiting until its timeout. Close the sheet first.
+            sheetPresented = false
             // The script waits for this process to exit, then swaps the bundle.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 NSApp.terminate(nil)
+                // Hard watchdog: if termination is vetoed anyway, exit so the
+                // detached installer can still replace the bundle.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    exit(0)
+                }
             }
         } catch {
             phase = .failed(error.localizedDescription)
@@ -220,12 +228,14 @@ final class UpdaterStore: ObservableObject {
         DMG="\(dmg.path)"
         PID=\(ProcessInfo.processInfo.processIdentifier)
         MNT="$(mktemp -d /tmp/melontools-dmg.XXXXXX)"
-        for _ in $(seq 1 90); do
+        for _ in $(seq 1 15); do
           kill -0 "$PID" 2>/dev/null || break
           sleep 1
         done
         # A hung terminate must not end with the bundle swapped under a live
-        # process: give up instead.
+        # process: force it down first, and give up only if signals fail.
+        if kill -0 "$PID" 2>/dev/null; then kill -TERM "$PID" 2>/dev/null; sleep 2; fi
+        if kill -0 "$PID" 2>/dev/null; then kill -KILL "$PID" 2>/dev/null; sleep 1; fi
         if kill -0 "$PID" 2>/dev/null; then exit 1; fi
         hdiutil attach -nobrowse -noverify -mountpoint "$MNT" "$DMG" || exit 1
         SRC="$(/bin/ls -d "$MNT"/*.app | head -1)"

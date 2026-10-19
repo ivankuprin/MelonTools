@@ -1,24 +1,22 @@
-# Melon Tools 1.6.0
+# Melon Tools 1.6.2
 
-- **Antigravity provider.** Connect a Google account via OAuth and use the
-  Antigravity models (Gemini 4/3.x, GPT-OSS 120B and Antigravity-hosted Claude
-  variants) through the local gateway and the Codex model picker.
-- **Ownership-aware provider lists.** Models are attributed by the engine's
-  `owned_by` field, so shared ids (for example `claude-sonnet-4-6`) no longer
-  appear under the wrong provider.
-- **Claude/Codex/OpenCode/OpenRouter unchanged.** Antigravity is an additional
-  provider; no quota percentages are shown because the engine has no
-  Antigravity quota API.
+- **Antigravity card matches the Claude card.** The Providers card now always
+  shows «Обновить» + «Настройки»; connecting, cancelling and disconnecting the
+  Google account live on the Antigravity settings page.
 
 ## Downloads
 
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.0.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.0-win-x64.exe) — WebView2 Runtime required.
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.2.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.2-win-x64.exe) — WebView2 Runtime required.
 
 Both files include SHA-256 checksum assets on the release page.
 
 ## Earlier fixes
 
+- **1.6.1:** Fixed the in-app installer hang (sheet dismissal, hard-exit
+  watchdog, script TERM/KILL fallback).
+- **1.6.0:** Antigravity provider (Google account OAuth) with ownership-aware
+  model lists and band-400 catalog entries; no fabricated quota.
 - **1.5.0:** Claude provider (OAuth subscription + API-key fallback), Claude
   bento card with 5-hour/weekly quota, auth-sync fix on both platforms, fixed
   updater redirect allowlist, Windows engine rebuilt from the pinned commit.

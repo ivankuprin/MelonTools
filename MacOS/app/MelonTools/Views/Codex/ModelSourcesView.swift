@@ -377,55 +377,18 @@ struct CodexProvidersView: View {
                     .font(MTTheme.mono(9))
                     .foregroundStyle(MTTheme.textTertiary)
                 HStack(spacing: MTTheme.s3) {
-                    if connected {
-                        MTSecondaryButton(title: L("Refresh"), systemImage: "arrow.clockwise") {
-                            Task {
-                                _ = await antigravityAuth.refreshCredential()
-                                await usage.refreshAntigravityNow()
-                            }
-                        }
-                        MTSecondaryButton(title: L("Disconnect"), systemImage: "xmark.circle") {
-                            confirmAntigravityDisconnect = true
-                        }
-                        MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
-                            route = .antigravity
-                        }
-                    } else {
-                        switch antigravityAuth.login {
-                        case .starting, .waiting:
-                            ProgressView().controlSize(.small)
-                            Text(L("Waiting for the browser…"))
-                                .font(MTTheme.mono(10))
-                                .foregroundStyle(MTTheme.textSecondary)
-                            MTSecondaryButton(title: L("Cancel login"), systemImage: "xmark") {
-                                Task { await antigravityAuth.cancelLogin() }
-                            }
-                        case .failed(let message):
-                            Text(message)
-                                .font(MTTheme.mono(10))
-                                .foregroundStyle(MTTheme.danger)
-                            connectAntigravityButton
-                            MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
-                                route = .antigravity
-                            }
-                        default:
-                            connectAntigravityButton
-                            MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
-                                route = .antigravity
-                            }
+                    Spacer(minLength: MTTheme.s2)
+                    MTSecondaryButton(title: L("Refresh"), systemImage: "arrow.clockwise") {
+                        Task {
+                            _ = await antigravityAuth.refreshCredential()
+                            await usage.refreshAntigravityNow()
                         }
                     }
-                    Spacer(minLength: 0)
+                    MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
+                        route = .antigravity
+                    }
                 }
             }
-        }
-        .confirmationDialog(L("Disconnect this Antigravity account?"), isPresented: $confirmAntigravityDisconnect, titleVisibility: .visible) {
-            Button(L("Disconnect"), role: .destructive) {
-                disconnectAntigravity()
-            }
-            Button(L("Cancel"), role: .cancel) {}
-        } message: {
-            Text(usage.antigravity?.email ?? "")
         }
     }
 
