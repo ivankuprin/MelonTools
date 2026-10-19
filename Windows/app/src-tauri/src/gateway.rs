@@ -91,7 +91,27 @@ pub fn write_config(settings: &Settings) -> Result<(), String> {
     fs::create_dir_all(paths::auths_dir()).map_err(|e| e.to_string())?;
     let auth_dir = paths::yaml_path(&paths::auths_dir());
 
-    let mut yaml = format!(
+    let mut yaml = base_config(
+        settings.port,
+        &settings.api_key,
+        &auth_dir,
+        &settings.management_secret,
+    );
+    yaml.push_str(&api_keys_yaml(settings));
+
+    // Atomic replace: a crash mid-write must not leave a broken config the
+    // engine would refuse to start with.
+    let path = paths::config_path();
+    let tmp = paths::tmp_path(&path);
+    fs::write(&tmp, yaml).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+/// The fixed part of config.yaml. `secret` is the plaintext management secret:
+/// the engine bcrypt-hashes it on load and every management call authenticates
+/// with the plaintext value.
+fn base_config(port: u16, api_key: &str, auth_dir: &str, secret: &str) -> String {
+    format!(
         r#"# Melon Tools — Codex API gateway config (CLIProxyAPI)
 config-version: 8
 server:
@@ -104,7 +124,7 @@ oauth:
   auth-dir: "{auth_dir}"
 remote-management:
   allow-remote: false
-  secret-key: "$2a$10$f34uvllQ6GFMZdJvOuWZHOsFGm5Qe3tA63kd9cDH.yVVjYtCBSuC2"
+  secret-key: "{secret}"
   disable-control-panel: true
   disable-auto-update-panel: true
 routing:
@@ -114,50 +134,97 @@ request-retry: 3
 max-retry-interval: 45
 transient-error-cooldown-seconds: 20
 "#,
-        port = settings.port,
-        api_key = settings.api_key,
+        port = port,
+        api_key = yaml_escape(api_key),
         auth_dir = auth_dir,
-    );
+        secret = yaml_escape(secret),
+    )
+}
 
-    if !settings.opencode_key.is_empty() {
-        yaml.push_str(&format!(
-            r#"api-keys:
-  openai-compatibility:
-    - name: "opencode-go"
-      base-url: "https://opencode.ai/inference/go/openai/v1"
-      headers:
-        user-agent: "MelonTools/1.4"
-        x-opencode-session: "melon-tools"
-      keys:
-        - api-key: "{key}"
-      models:
-"#,
-            key = settings.opencode_key
-        ));
-        for (name, display) in OPENCODE_MODELS {
+/// Claude model catalogue for the API-key fallback: raw Anthropic ids used as
+/// both `name` and `alias`, so the engine lists slash-less `claude-*` ids.
+const CLAUDE_MODELS: &[(&str, &str)] = &[
+    ("claude-opus-5-5", "Claude Opus 5.5"),
+    ("claude-sonnet-5-5", "Claude Sonnet 5.5"),
+    ("claude-opus-4-6", "Claude Opus 4.6"),
+    ("claude-sonnet-4-6", "Claude Sonnet 4.6"),
+    ("claude-haiku-4-5-20251001", "Claude Haiku 4.5"),
+];
+
+/// The single optional top-level `api-keys:` root. OpenCode and OpenRouter
+/// ride `openai-compatibility`; the Anthropic API-key fallback rides `claude`.
+/// Every section is emitted from this one builder — a second root would break
+/// the engine config. Returns an empty string when nothing is configured.
+pub fn api_keys_yaml(settings: &Settings) -> String {
+    let opencode = !settings.opencode_key.trim().is_empty();
+    let openrouter = !settings.openrouter_key.trim().is_empty();
+    let claude = settings.claude_enabled && !settings.claude_api_key.trim().is_empty();
+    if !opencode && !openrouter && !claude {
+        return String::new();
+    }
+
+    let mut yaml = String::from("api-keys:\n");
+
+    if opencode || openrouter {
+        yaml.push_str("  openai-compatibility:\n");
+        if opencode {
+            yaml.push_str("    - name: \"opencode-go\"\n");
+            yaml.push_str("      base-url: \"https://opencode.ai/inference/go/openai/v1\"\n");
+            yaml.push_str("      headers:\n");
+            yaml.push_str("        user-agent: \"MelonTools/1.4\"\n");
+            yaml.push_str("        x-opencode-session: \"melon-tools\"\n");
             yaml.push_str(&format!(
-                "        - name: \"{name}\"\n          alias: \"opencode/{name}\"\n          display-name: \"{display}\"\n"
+                "      keys:\n        - api-key: \"{}\"\n",
+                yaml_escape(&settings.opencode_key)
+            ));
+            yaml.push_str("      models:\n");
+            for (name, display) in OPENCODE_MODELS {
+                yaml.push_str(&format!(
+                    "        - name: \"{name}\"\n          alias: \"opencode/{name}\"\n          display-name: \"{display}\"\n"
+                ));
+            }
+        }
+        if openrouter {
+            yaml.push_str("    - name: \"openrouter\"\n");
+            yaml.push_str("      base-url: \"https://openrouter.ai/api/v1\"\n");
+            yaml.push_str(&format!(
+                "      keys:\n        - api-key: \"{}\"\n",
+                yaml_escape(&settings.openrouter_key)
             ));
         }
     }
 
-    if !settings.openrouter_key.is_empty() {
+    if claude {
+        yaml.push_str("  claude:\n");
+        yaml.push_str("    - name: \"claude\"\n");
+        yaml.push_str("      base-url: \"https://api.anthropic.com\"\n");
         yaml.push_str(&format!(
-            r#"    - name: "openrouter"
-      base-url: "https://openrouter.ai/api/v1"
-      keys:
-        - api-key: "{key}"
-"#,
-            key = settings.openrouter_key
+            "      keys:\n        - api-key: \"{}\"\n",
+            yaml_escape(&settings.claude_api_key)
         ));
+        yaml.push_str("      models:\n");
+        for (name, display) in CLAUDE_MODELS {
+            yaml.push_str(&format!(
+                "        - name: \"{name}\"\n          alias: \"{name}\"\n          display-name: \"{display}\"\n"
+            ));
+        }
     }
 
-    // Atomic replace: a crash mid-write must not leave a broken config the
-    // engine would refuse to start with.
-    let path = paths::config_path();
-    let tmp = paths::tmp_path(&path);
-    fs::write(&tmp, yaml).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    yaml
+}
+
+/// YAML values are double-quoted: escape the quote and the backslash, and drop
+/// control characters (a pasted key must not break the config).
+fn yaml_escape(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| !c.is_control())
+        .flat_map(|c| match c {
+            '"' => vec!['\\', '"'],
+            '\\' => vec!['\\', '\\'],
+            other => vec![other],
+        })
+        .collect()
 }
 
 // MARK: - Auth files
@@ -203,11 +270,13 @@ pub fn sync_accounts(settings: &Settings) -> Result<usize, String> {
 
     let dir = paths::auths_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Only the files this sync owns are replaced: engine-written auth files of
+    // other providers (claude-*.json) must survive an account sync.
     if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                let _ = fs::remove_file(path);
+            let name = entry.file_name().to_string_lossy().to_string();
+            if crate::claude::is_codex_auth_file_name(&name) {
+                let _ = fs::remove_file(entry.path());
             }
         }
     }
@@ -500,5 +569,79 @@ pub async fn check_api(port: u16, api_key: &str) -> Result<String, String> {
             status.as_u16(),
             text.chars().take(300).collect::<String>()
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{api_keys_yaml, base_config, yaml_escape};
+    use crate::settings::Settings;
+
+    fn settings() -> Settings {
+        Settings::default()
+    }
+
+    #[test]
+    fn base_config_carries_the_plaintext_management_secret() {
+        let yaml = base_config(18317, "melon-abc", "/tmp/auths", "melon-mgmt-1234");
+        assert!(yaml.contains("secret-key: \"melon-mgmt-1234\""));
+        // The old hard-coded bcrypt hash must be gone.
+        assert!(!yaml.contains("$2a$"));
+        assert!(yaml.contains("auth-dir: \"/tmp/auths\""));
+    }
+
+    #[test]
+    fn yaml_escape_keeps_the_config_valid() {
+        assert_eq!(yaml_escape("sk-\"quoted\\path"), "sk-\\\"quoted\\\\path");
+        assert_eq!(yaml_escape("sk-line\nbreak"), "sk-linebreak");
+    }
+
+    #[test]
+    fn api_keys_yaml_is_empty_without_any_source() {
+        assert_eq!(api_keys_yaml(&settings()), "");
+    }
+
+    #[test]
+    fn api_keys_yaml_uses_one_root_for_opencode_openrouter_and_claude() {
+        let mut s = settings();
+        s.opencode_key = "oc-key".to_string();
+        s.openrouter_key = "or-key".to_string();
+        s.claude_enabled = true;
+        s.claude_api_key = "sk-ant-key".to_string();
+        let yaml = api_keys_yaml(&s);
+        assert_eq!(yaml.matches("api-keys:").count(), 1);
+        assert!(yaml.contains("  openai-compatibility:\n"));
+        assert!(yaml.contains("    - name: \"opencode-go\"\n"));
+        assert!(yaml.contains("    - name: \"openrouter\"\n"));
+        assert!(yaml.contains("  claude:\n"));
+        assert!(yaml.contains("    - name: \"claude\"\n"));
+        assert!(yaml.contains("      base-url: \"https://api.anthropic.com\"\n"));
+        assert!(yaml.contains("        - api-key: \"sk-ant-key\"\n"));
+        // Claude models keep a slash-less alias so the gateway lists raw ids.
+        assert!(yaml.contains("        - name: \"claude-opus-5-5\"\n          alias: \"claude-opus-5-5\"\n"));
+    }
+
+    #[test]
+    fn api_keys_yaml_openrouter_only_still_emits_the_root() {
+        let mut s = settings();
+        s.openrouter_key = "or-key".to_string();
+        let yaml = api_keys_yaml(&s);
+        assert_eq!(yaml.matches("api-keys:").count(), 1);
+        assert!(yaml.contains("  openai-compatibility:\n"));
+        assert!(yaml.contains("    - name: \"openrouter\"\n"));
+        assert!(!yaml.contains("  claude:\n"));
+    }
+
+    #[test]
+    fn api_keys_yaml_claude_requires_the_key_and_the_switch() {
+        let mut s = settings();
+        s.claude_api_key = "sk-ant-key".to_string();
+        // Enabled is still false: nothing is emitted.
+        assert_eq!(api_keys_yaml(&s), "");
+        s.claude_enabled = true;
+        assert!(api_keys_yaml(&s).contains("  claude:\n"));
+        // A whitespace-only key never reaches the config.
+        s.claude_api_key = "   ".to_string();
+        assert_eq!(api_keys_yaml(&s), "");
     }
 }

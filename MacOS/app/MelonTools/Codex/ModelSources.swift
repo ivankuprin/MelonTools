@@ -11,6 +11,9 @@ struct ModelSource: Identifiable, Codable, Equatable {
     enum Kind: String, Codable {
         case openRouter
         case openCode
+        /// Anthropic Claude: served from the engine OAuth account by default
+        /// (no key); `apiKey` holds the optional API-key fallback.
+        case claude
     }
 
     var id: String
@@ -64,6 +67,8 @@ final class ModelSourcesStore: ObservableObject {
     @Published private(set) var sources: [ModelSource] = []
     @Published var openRouterKey: String = ""
     @Published var openCodeKey: String = ""
+    /// Optional Anthropic API key (fallback when no OAuth account is used).
+    @Published var claudeKey: String = ""
     @Published private(set) var note: String?
     @Published private(set) var isBusy = false
     @Published private(set) var lastApply: String?
@@ -77,6 +82,7 @@ final class ModelSourcesStore: ObservableObject {
     private struct Persisted: Codable {
         var openRouterKey: String?
         var openCodeKey: String?
+        var claudeKey: String?
         var sources: [ModelSource]?
     }
 
@@ -84,6 +90,7 @@ final class ModelSourcesStore: ObservableObject {
     private struct PersistedKeys: Codable {
         var openRouterKey: String?
         var openCodeKey: String?
+        var claudeKey: String?
     }
 
     private init() {
@@ -97,6 +104,7 @@ final class ModelSourcesStore: ObservableObject {
         if let persisted = try? JSONDecoder().decode(Persisted.self, from: data) {
             openRouterKey = persisted.openRouterKey ?? ""
             openCodeKey = persisted.openCodeKey ?? ""
+            claudeKey = persisted.claudeKey ?? persisted.sources?.first { $0.kind == .claude }?.apiKey ?? ""
             sources = persisted.sources ?? []
             migrateOpenRouterAliases()
             return
@@ -104,11 +112,29 @@ final class ModelSourcesStore: ObservableObject {
         if let keys = try? JSONDecoder().decode(PersistedKeys.self, from: data) {
             openRouterKey = keys.openRouterKey ?? ""
             openCodeKey = keys.openCodeKey ?? ""
+            claudeKey = keys.claudeKey ?? ""
         }
     }
 
     func save() {
-        let persisted = Persisted(openRouterKey: openRouterKey, openCodeKey: openCodeKey, sources: sources)
+        // The fallback key lives in two places by design: the editable field
+        // and the claude source (`api-keys.claude` needs it on the source).
+        if let index = sources.firstIndex(where: { $0.kind == .claude }) {
+            sources[index].apiKey = claudeKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if !claudeKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // A pasted fallback key must survive even before the model list
+            // is loaded — create the source so the gateway config can use it.
+            sources.append(ModelSource(
+                id: "claude",
+                kind: .claude,
+                title: "Claude",
+                baseURL: Self.claudeBaseURL,
+                apiKey: claudeKey.trimmingCharacters(in: .whitespacesAndNewlines),
+                enabled: true,
+                models: []
+            ))
+        }
+        let persisted = Persisted(openRouterKey: openRouterKey, openCodeKey: openCodeKey, claudeKey: claudeKey, sources: sources)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(persisted) else { return }
@@ -138,6 +164,8 @@ final class ModelSourcesStore: ObservableObject {
     var openRouterSource: ModelSource? { sources.first { $0.id == "openrouter" } }
 
     var openCodeSource: ModelSource? { sources.first { $0.id == "opencode" } }
+
+    var claudeSource: ModelSource? { sources.first { $0.id == "claude" } }
 
     func source(id: String) -> ModelSource? { sources.first { $0.id == id } }
 
@@ -435,6 +463,69 @@ final class ModelSourcesStore: ObservableObject {
         save()
     }
 
+    // MARK: - Claude (engine account or API-key fallback)
+
+    /// Anthropic endpoint used by the API-key fallback entry.
+    static let claudeBaseURL = "https://api.anthropic.com"
+
+    /// Loads the Claude model list from the running engine
+    /// (`GET /v1/models`), filtered to raw `claude-*` ids — OAuth accounts and
+    /// API-key fallback models come from the same catalogue. The ids are
+    /// slash-less, so they are used as-is for both name and alias.
+    func loadClaudeModels() async {
+        guard !isBusy else { return }
+        let gateway = CodexGatewayService.shared
+        guard gateway.isRunning else {
+            note = L("Start the service to load the Claude model list.")
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let entries = try await fetchModels(
+                url: gateway.baseURL + "/v1/models",
+                key: gateway.apiKey,
+                userAgent: "MelonTools/1.4"
+            )
+            let claudeEntries = entries.filter { $0.id.hasPrefix("claude-") }
+            guard !claudeEntries.isEmpty else {
+                note = L("No Claude models — connect an account first.")
+                return
+            }
+            mergeClaude(entries: claudeEntries)
+            note = String(format: L("Claude: %d models"), claudeEntries.count)
+        } catch {
+            note = L("The service did not answer the model list.")
+        }
+    }
+
+    private func mergeClaude(entries: [ModelList.Entry]) {
+        let existing = claudeSource
+        var enabledById: [String: Bool] = [:]
+        for model in existing?.models ?? [] { enabledById[model.id] = model.enabled }
+        let models = entries
+            .map { entry in
+                SourceModel(
+                    id: entry.id,
+                    display: entry.name ?? Self.prettyName(entry.id),
+                    contextLength: entry.context_length,
+                    enabled: enabledById[entry.id] ?? false,
+                    alias: entry.id
+                )
+            }
+            .sorted { $0.id.lowercased() < $1.id.lowercased() }
+        replace(ModelSource(
+            id: "claude",
+            kind: .claude,
+            title: "Claude",
+            baseURL: Self.claudeBaseURL,
+            apiKey: claudeKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            enabled: existing?.enabled ?? true,
+            models: models
+        ))
+        save()
+    }
+
     /// Turns a raw OpenCode model id into a readable name
     /// (`claude-opus-5-5` → `Claude Opus 5.5`).
     nonisolated static func prettyName(_ id: String) -> String {
@@ -473,12 +564,25 @@ final class ModelSourcesStore: ObservableObject {
     /// themselves with their own user agent instead of a generic one.
     static let openCodeHeaders = ["x-opencode-session": "melon-tools", "user-agent": "MelonTools/1.4"]
 
-    /// Builds the `api-keys.openai-compatibility` block for the gateway config.
-    func gatewayYAML() -> String {
-        var blocks: [String] = []
+    /// Builds the gateway `api-keys` block from the current sources.
+    ///
+    /// OpenRouter/OpenCode ride `openai-compatibility`; the Claude API-key
+    /// fallback rides `claude` — inside the SAME top-level `api-keys:` root
+    /// (a second root would break the config). A Claude OAuth source carries
+    /// no key and emits nothing: the engine serves it from its own account.
+    nonisolated static func gatewayYAML(sources: [ModelSource]) -> String {
+        var compatBlocks: [String] = []
+        var claudeBlocks: [String] = []
         for source in sources where source.enabled {
             let selected = source.selectedModels
             guard !selected.isEmpty else { continue }
+            if source.kind == .claude {
+                // Only the explicit API-key fallback needs a config block.
+                let key = source.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !key.isEmpty else { continue }
+                claudeBlocks.append(claudeBlock(source: source, key: key, models: selected))
+                continue
+            }
             let key = source.apiKey
             guard !key.isEmpty else { continue }
             if source.kind == .openCode {
@@ -487,29 +591,35 @@ final class ModelSourcesStore: ObservableObject {
                 let goModels = selected.filter { $0.goTier == true }
                 let genericModels = selected.filter { $0.goTier != true }
                 if !goModels.isEmpty {
-                    blocks.append(block(name: "opencode-go",
-                                        baseURL: Self.openCodeGoBaseURL,
-                                        key: key,
-                                        models: goModels,
-                                        headers: Self.openCodeHeaders))
+                    compatBlocks.append(block(name: "opencode-go",
+                                              baseURL: Self.openCodeGoBaseURL,
+                                              key: key,
+                                              models: goModels,
+                                              headers: Self.openCodeHeaders))
                 }
                 if !genericModels.isEmpty {
-                    blocks.append(block(name: source.id,
-                                        baseURL: source.baseURL,
-                                        key: key,
-                                        models: genericModels,
-                                        headers: Self.openCodeHeaders))
+                    compatBlocks.append(block(name: source.id,
+                                              baseURL: source.baseURL,
+                                              key: key,
+                                              models: genericModels,
+                                              headers: Self.openCodeHeaders))
                 }
                 continue
             }
-            blocks.append(block(name: source.id,
-                                baseURL: source.baseURL,
-                                key: key,
-                                models: selected,
-                                headers: nil))
+            compatBlocks.append(block(name: source.id,
+                                      baseURL: source.baseURL,
+                                      key: key,
+                                      models: selected,
+                                      headers: nil))
         }
-        guard !blocks.isEmpty else { return "" }
-        var yaml = "\napi-keys:\n  openai-compatibility:\n" + blocks.joined(separator: "\n") + "\n"
+        guard !compatBlocks.isEmpty || !claudeBlocks.isEmpty else { return "" }
+        var yaml = "\napi-keys:\n"
+        if !compatBlocks.isEmpty {
+            yaml += "  openai-compatibility:\n" + compatBlocks.joined(separator: "\n") + "\n"
+        }
+        if !claudeBlocks.isEmpty {
+            yaml += "  claude:\n" + claudeBlocks.joined(separator: "\n") + "\n"
+        }
         let openRouterRouted = sources.contains {
             $0.enabled && $0.kind == .openRouter && !$0.selectedModels.isEmpty && !$0.apiKey.isEmpty
         }
@@ -519,8 +629,34 @@ final class ModelSourcesStore: ObservableObject {
         return yaml
     }
 
+    func gatewayYAML() -> String {
+        Self.gatewayYAML(sources: sources)
+    }
+
+    /// One `api-keys.claude` entry (Anthropic API-key fallback): same model
+    /// mapping shape as `openai-compatibility`, no `prefix` namespace.
+    private nonisolated static func claudeBlock(source: ModelSource, key: String, models: [SourceModel]) -> String {
+        var lines: [String] = []
+        lines.append("    - name: \"\(yamlEscape(source.id))\"")
+        lines.append("      base-url: \"\(yamlEscape(source.baseURL))\"")
+        lines.append("      keys:")
+        lines.append("        - api-key: \"\(yamlEscape(key))\"")
+        lines.append("      models:")
+        for model in models {
+            lines.append("        - name: \"\(yamlEscape(model.id))\"")
+            lines.append("          alias: \"\(yamlEscape(model.alias))\"")
+            if model.display != model.id, !model.display.isEmpty {
+                lines.append("          display-name: \"\(yamlEscape(model.display))\"")
+            }
+            if let context = model.contextLength, context > 0 {
+                lines.append("          max-context-length: \(context)")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// One `openai-compatibility` entry.
-    private func block(name: String, baseURL: String, key: String, models: [SourceModel], headers: [String: String]?) -> String {
+    private nonisolated static func block(name: String, baseURL: String, key: String, models: [SourceModel], headers: [String: String]?) -> String {
         var lines: [String] = []
         lines.append("    - name: \"\(Self.yamlEscape(name))\"")
         lines.append("      base-url: \"\(Self.yamlEscape(baseURL))\"")

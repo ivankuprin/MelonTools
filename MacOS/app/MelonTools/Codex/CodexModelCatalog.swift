@@ -103,12 +103,19 @@ enum CodexModelCatalog {
     }
 
     /// Slugs the catalog currently lists for the third-party sources
-    /// (`openrouter/…`, `opencode/…`). Used to detect a stale file at launch.
+    /// (`openrouter/…`, `opencode/…`, slash-less `claude-*`). Used to detect a
+    /// stale file at launch.
     static func thirdPartySlugs() -> Set<String> {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: targetPath)),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = root["models"] as? [[String: Any]] else { return [] }
-        return Set(models.compactMap { $0["slug"] as? String }.filter { $0.contains("/") })
+        return Set(models.compactMap { $0["slug"] as? String }.filter { isThirdPartySlug($0) })
+    }
+
+    /// Third-party slugs: namespaced ids (`openrouter/…`, `opencode/…`) and
+    /// slash-less Claude ids (`claude-*`). The account pool never uses those.
+    nonisolated static func isThirdPartySlug(_ slug: String) -> Bool {
+        slug.contains("/") || slug.hasPrefix("claude-")
     }
 
     // MARK: - Provider bands
@@ -120,6 +127,7 @@ enum CodexModelCatalog {
         switch kind {
         case .openCode: return 100
         case .openRouter: return 200
+        case .claude: return 300
         }
     }
 
@@ -128,6 +136,7 @@ enum CodexModelCatalog {
         switch kind {
         case .openCode: return "opencode"
         case .openRouter: return "openrouter"
+        case .claude: return "Claude"
         }
     }
 

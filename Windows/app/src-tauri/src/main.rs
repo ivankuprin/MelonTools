@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bridge;
+mod claude;
 mod codex_route;
 mod device_login;
 mod engine;
@@ -69,7 +70,7 @@ fn hidden_command(_command: &mut std::process::Command) {
 fn app_info() -> Value {
     json!({
         "name": "Melon Tools",
-        "version": "1.4.8",
+        "version": env!("CARGO_PKG_VERSION"),
         "platform": std::env::consts::OS,
         "dataDir": paths::appdata_dir().to_string_lossy(),
         "codexHome": paths::codex_home().to_string_lossy(),
@@ -91,6 +92,12 @@ async fn settings_set(
     let mut merged = settings;
     if merged.api_key.trim().is_empty() {
         merged.api_key = state.settings().api_key;
+    }
+    // The management secret is app-managed: a settings payload from an older
+    // UI must not wipe the persisted value (a fresh one would invalidate every
+    // management call until the engine reloads the config).
+    if merged.management_secret.trim().is_empty() {
+        merged.management_secret = state.settings().management_secret;
     }
     settings::save(&merged)?;
     if let Ok(mut guard) = state.settings.lock() {
@@ -649,6 +656,74 @@ async fn openrouter_refresh(state: State<'_, AppState>) -> Result<Value, String>
     providers::openrouter(&settings.openrouter_key).await
 }
 
+// MARK: - Claude provider (engine management API)
+
+fn management(state: &State<'_, AppState>) -> Result<claude::Management, String> {
+    let settings = state.settings();
+    claude::Management::new(&settings)
+}
+
+/// Starts the engine-managed OAuth login: returns the authorization URL (the
+/// UI opens it through `open_url`) and the state token used for polling.
+#[tauri::command]
+async fn claude_login_start(state: State<'_, AppState>) -> Result<Value, String> {
+    management(&state)?.login_start().await
+}
+
+#[tauri::command]
+async fn claude_login_status(
+    state: State<'_, AppState>,
+    state_token: String,
+) -> Result<Value, String> {
+    management(&state)?.login_status(&state_token).await
+}
+
+#[tauri::command]
+async fn claude_login_cancel(
+    state: State<'_, AppState>,
+    state_token: String,
+) -> Result<Value, String> {
+    management(&state)?.login_cancel(&state_token).await
+}
+
+#[tauri::command]
+async fn claude_credentials(state: State<'_, AppState>) -> Result<Value, String> {
+    management(&state)?.credentials().await
+}
+
+/// Claude model ids served by the running gateway (`/v1/models`).
+#[tauri::command]
+async fn claude_models(state: State<'_, AppState>) -> Result<Value, String> {
+    let settings = state.settings();
+    claude::models(settings.port, &settings.api_key).await
+}
+
+/// Account status + quota windows for the Claude card.
+#[tauri::command]
+async fn claude_usage(state: State<'_, AppState>) -> Result<Value, String> {
+    let settings = state.settings();
+    providers::claude(&settings).await
+}
+
+/// Refreshes one credential (`name`) or all of them.
+#[tauri::command]
+async fn claude_refresh(state: State<'_, AppState>, name: Option<String>) -> Result<Value, String> {
+    management(&state)?.refresh(name.as_deref()).await
+}
+
+/// Disconnects the account: removes the engine-written `claude-*.json` auth
+/// files (the engine hot-reloads the auth dir) and reports what is left.
+#[tauri::command]
+async fn claude_disconnect() -> Result<Value, String> {
+    let mut removed = 0usize;
+    for file in claude::auth_files() {
+        if std::fs::remove_file(&file.path).is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(json!({ "removed": removed, "remaining": claude::auth_files().len() }))
+}
+
 /// Opens an http(s) URL in the default browser (device login page).
 #[tauri::command]
 async fn open_url(url: String) -> Result<(), String> {
@@ -868,6 +943,14 @@ fn main() {
             update_check,
             update_apply,
             openrouter_refresh,
+            claude_login_start,
+            claude_login_status,
+            claude_login_cancel,
+            claude_credentials,
+            claude_models,
+            claude_usage,
+            claude_refresh,
+            claude_disconnect,
             open_url,
         ])
         .run(tauri::generate_context!())

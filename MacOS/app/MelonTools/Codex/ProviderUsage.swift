@@ -44,8 +44,28 @@ final class ProviderUsageStore: ObservableObject {
         var error: String?
     }
 
+    /// Claude (subscription) status: account identity plus the two rolling
+    /// quota windows. Every number is nil-tolerant — missing data renders
+    /// as “—” and nothing is fabricated.
+    struct ClaudeStats: Equatable {
+        var connected = false
+        var email: String?
+        /// Plan name only when the usage payload carries one; otherwise nil.
+        var plan: String?
+        /// Share of the 5-hour window still available, 0…100.
+        var fiveHourPercent: Double?
+        var fiveHourReset: Date?
+        /// Share of the weekly window still available, 0…100.
+        var weeklyPercent: Double?
+        var weeklyReset: Date?
+        var modelCount = 0
+        var updatedAt: Date?
+        var error: String?
+    }
+
     @Published private(set) var openRouter: OpenRouterStats?
     @Published private(set) var openCode: OpenCodeStats?
+    @Published private(set) var claude: ClaudeStats?
 
     /// Token accounting of the Codex thread the user is looking at.
     @Published private(set) var sessionUsage: SessionUsageSnapshot?
@@ -54,10 +74,14 @@ final class ProviderUsageStore: ObservableObject {
 
     private let openRouterTTL: TimeInterval = 300
     private let openCodeTTL: TimeInterval = 1800
+    /// Claude quota windows move slowly; the endpoint is polled rarely.
+    private let claudeTTL: TimeInterval = 180
     private var lastOpenRouterFetch = Date.distantPast
     private var lastOpenCodeFetch = Date.distantPast
+    private var lastClaudeFetch = Date.distantPast
     private var openRouterBusy = false
     private var openCodeBusy = false
+    private var claudeBusy = false
 
     private init() {}
 
@@ -71,6 +95,12 @@ final class ProviderUsageStore: ObservableObject {
         await store.hydrateOpenRouterPrices()
         await refreshOpenRouter(key: store.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines), force: force)
         await refreshOpenCode(key: store.openCodeKey.trimmingCharacters(in: .whitespacesAndNewlines), force: force)
+        await refreshClaude(force: force)
+    }
+
+    /// Forces a Claude usage refresh — called right after a successful login.
+    func refreshClaudeNow() async {
+        await refreshClaude(force: true)
     }
 
     // MARK: - Session
@@ -211,6 +241,36 @@ final class ProviderUsageStore: ObservableObject {
             failed.error = error.localizedDescription
             openCode = failed
         }
+    }
+
+    // MARK: - Claude
+
+    /// Claude has no per-key config: the account comes from the engine auth
+    /// file. Without one the card shows “not connected”. The usage endpoint is
+    /// undocumented, so every value stays nil when absent.
+    private func refreshClaude(force: Bool) async {
+        guard !claudeBusy, isStale(lastClaudeFetch, ttl: claudeTTL, force: force) else { return }
+        claudeBusy = true
+        lastClaudeFetch = Date()
+        defer { claudeBusy = false }
+
+        guard let file = ClaudeAuthService.authFiles().first else {
+            claude = nil
+            return
+        }
+        var stats = ClaudeStats()
+        stats.connected = true
+        stats.email = file.email
+        stats.modelCount = ModelSourcesStore.shared.claudeSource?.selectedModels.count ?? 0
+        if let snapshot = await ClaudeAuthService.shared.usageSnapshot() {
+            stats.fiveHourPercent = snapshot.fiveHourPercent
+            stats.fiveHourReset = snapshot.fiveHourReset
+            stats.weeklyPercent = snapshot.weeklyPercent
+            stats.weeklyReset = snapshot.weeklyReset
+            stats.plan = snapshot.plan
+            stats.updatedAt = Date()
+        }
+        claude = stats
     }
 
     // MARK: - Helpers

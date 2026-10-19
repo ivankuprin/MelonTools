@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Melon Tools",
-  "version": "1.4.8",
+  "version": "1.5.0",
   "identifier": "app.melontools.windows",
   "build": {
     "frontendDist": "../ui"

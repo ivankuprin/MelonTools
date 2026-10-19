@@ -33,4 +33,22 @@ final class CodexModelCatalogTests: XCTestCase {
         XCTAssertNil(items.first?["timeout_instructions"])
         XCTAssertEqual(items.first?["enabled"] as? Bool, true)
     }
+
+    /// Claude rides its own band above OpenCode/OpenRouter, with the
+    /// `Claude` provider tag used by the picker grouping.
+    func testClaudeBandAndProviderTag() {
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .claude), 300)
+        XCTAssertEqual(CodexModelCatalog.providerTag(for: .claude), "Claude")
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .openRouter), 200)
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .openCode), 100)
+    }
+
+    /// Claude ids are slash-less (`claude-opus-4-6`), unlike the namespaced
+    /// OpenRouter/OpenCode slugs — stale-catalog detection must see both.
+    func testSlashLessClaudeIdsAreThirdPartySlugs() {
+        XCTAssertTrue(CodexModelCatalog.isThirdPartySlug("claude-opus-4-6"))
+        XCTAssertTrue(CodexModelCatalog.isThirdPartySlug("openrouter/deepseek/deepseek-v3"))
+        XCTAssertTrue(CodexModelCatalog.isThirdPartySlug("opencode/gpt-5.1"))
+        XCTAssertFalse(CodexModelCatalog.isThirdPartySlug("gpt-6.1-sol"))
+    }
 }

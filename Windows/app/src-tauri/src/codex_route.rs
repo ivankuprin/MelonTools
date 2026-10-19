@@ -232,18 +232,59 @@ pub fn status() -> Value {
 
 // MARK: - Model catalog
 
-fn prettify(alias: &str) -> String {
+/// Readable name for a raw model id. Numeric groups keep their dotted form
+/// (`claude-opus-5-5` → `Claude Opus 5.5`), matching the macOS catalogue.
+pub fn prettify(alias: &str) -> String {
     let tail = alias.rsplit('/').next().unwrap_or(alias);
-    tail.split(|c| c == '-' || c == '_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
+    let mut words: Vec<String> = Vec::new();
+    let mut previous_numeric = false;
+    for word in tail.split(|c| c == '-' || c == '_') {
+        if word.is_empty() {
+            continue;
+        }
+        let numeric = word.chars().all(|c| c.is_ascii_digit());
+        if numeric && previous_numeric {
+            if let Some(last) = words.last_mut() {
+                last.push('.');
+                last.push_str(word);
+                continue;
             }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+        }
+        words.push(capitalize(word));
+        previous_numeric = numeric;
+    }
+    words.join(" ")
+}
+
+fn capitalize(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// Priority band and provider tag of a gateway model id. One band per provider
+/// keeps the Codex picker grouped (pool → OpenCode → OpenRouter → Claude);
+/// `None` for ids this app does not publish.
+pub fn third_party_band(id: &str) -> Option<(&'static str, i32)> {
+    if id.starts_with("opencode/") {
+        Some(("opencode", 100))
+    } else if id.starts_with("openrouter/") {
+        Some(("openrouter", 200))
+    } else if crate::claude::is_claude_model_id(id) {
+        Some(("Claude", 300))
+    } else {
+        None
+    }
+}
+
+/// Provider tag shown by the picker and the chips. Consumed by the tests and
+/// kept as the shared contract for the bridge's provider labels (`bridge.rs`
+/// still maps everything unknown to `openai` — wiring it up is a follow-up).
+#[allow(dead_code)]
+pub fn provider_tag(slug: &str) -> &'static str {
+    third_party_band(slug).map(|(tag, _)| tag).unwrap_or("openai")
 }
 
 const PRIVATE_CATALOG_KEYS: &[&str] = &[
@@ -332,25 +373,35 @@ pub async fn sync_catalog(
     let mut custom = 0usize;
     let mut opencode_index = 0usize;
     let mut openrouter_index = 0usize;
+    let mut claude_index = 0usize;
     for id in ids {
         if pool_slugs.contains(&id) {
             continue;
         }
-        let (band, index) = if id.starts_with("opencode/") {
-            let index = opencode_index;
-            opencode_index += 1;
-            (100, index)
-        } else if id.starts_with("openrouter/") {
-            let index = openrouter_index;
-            openrouter_index += 1;
-            (200, index)
-        } else {
+        let Some((tag, band)) = third_party_band(&id) else {
             continue;
+        };
+        let index = match tag {
+            "opencode" => {
+                let index = opencode_index;
+                opencode_index += 1;
+                index
+            }
+            "openrouter" => {
+                let index = openrouter_index;
+                openrouter_index += 1;
+                index
+            }
+            _ => {
+                let index = claude_index;
+                claude_index += 1;
+                index
+            }
         };
         let mut entry = template.clone();
         entry["slug"] = json!(id);
         entry["display_name"] = json!(prettify(&id));
-        entry["priority"] = json!(band + index);
+        entry["priority"] = json!(band + index as i32);
         models.push(entry);
         custom += 1;
     }
@@ -367,8 +418,30 @@ pub async fn sync_catalog(
 
 #[cfg(test)]
 mod tests {
-    use super::strip_private_catalog_metadata;
+    use super::{prettify, provider_tag, strip_private_catalog_metadata, third_party_band};
     use serde_json::json;
+
+    #[test]
+    fn claude_ids_get_band_300_and_the_claude_tag() {
+        assert_eq!(third_party_band("claude-opus-5-5"), Some(("Claude", 300)));
+        assert_eq!(third_party_band("claude-haiku-4-5-20251001"), Some(("Claude", 300)));
+        assert_eq!(provider_tag("claude-opus-5-5"), "Claude");
+        // The existing bands stay untouched.
+        assert_eq!(third_party_band("opencode/glm-5.3"), Some(("opencode", 100)));
+        assert_eq!(third_party_band("openrouter/x-ai/grok-4.7"), Some(("openrouter", 200)));
+        // Account-pool ids are not published by this path.
+        assert_eq!(third_party_band("gpt-6.1-sol"), None);
+        assert_eq!(provider_tag("gpt-6.1-sol"), "openai");
+    }
+
+    #[test]
+    fn claude_display_names_keep_dotted_versions() {
+        assert_eq!(prettify("claude-opus-5-5"), "Claude Opus 5.5");
+        assert_eq!(prettify("claude-sonnet-4-6"), "Claude Sonnet 4.6");
+        assert_eq!(prettify("opencode/claude-haiku-5-5"), "Claude Haiku 5.5");
+        assert_eq!(prettify("deepseek-v4.1-flash"), "Deepseek V4.1 Flash");
+        assert_eq!(prettify("glm-5.3"), "Glm 5.3");
+    }
 
     #[test]
     fn private_catalog_metadata_is_removed_recursively() {

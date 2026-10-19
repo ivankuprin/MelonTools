@@ -16,6 +16,15 @@ pub struct Settings {
     /// opencode / openrouter upstreams in the gateway config.
     pub opencode_enabled: bool,
     pub openrouter_enabled: bool,
+    /// Claude (Anthropic) provider: engine-managed OAuth account and/or the
+    /// API-key fallback.
+    pub claude_enabled: bool,
+    /// Anthropic console API key — the fallback connection method.
+    pub claude_api_key: String,
+    /// Plaintext secret for the engine management API. The engine hashes it
+    /// when it loads the config, so config.yaml carries the plaintext value
+    /// and management calls authenticate with it. Generated once, persisted.
+    pub management_secret: String,
     /// Routing: auto | quotaHighFirst | quotaLowFirst | planHighFirst |
     /// planLowFirst | expirySoonFirst | custom
     pub routing_strategy: String,
@@ -40,6 +49,9 @@ impl Default for Settings {
             opencode_key: String::new(),
             opencode_enabled: true,
             openrouter_enabled: true,
+            claude_enabled: false,
+            claude_api_key: String::new(),
+            management_secret: String::new(),
             routing_strategy: "auto".to_string(),
             priority_order: Vec::new(),
             notify_low_quota: true,
@@ -70,6 +82,10 @@ pub fn load() -> Settings {
         s.api_key = generate_api_key();
         let _ = save(&s);
     }
+    if s.management_secret.is_empty() {
+        s.management_secret = generate_management_secret();
+        let _ = save(&s);
+    }
     s
 }
 
@@ -87,4 +103,12 @@ fn generate_api_key() -> String {
     let bytes: [u8; 12] = rand::random();
     let hex: String = bytes.iter().map(|b| format!("{:02X}", b)).collect();
     format!("melon-{}", hex)
+}
+
+/// The management secret is written into config.yaml verbatim, so it must stay
+/// YAML-safe: hex only, no quotes, no whitespace.
+fn generate_management_secret() -> String {
+    let bytes: [u8; 16] = rand::random();
+    let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    format!("melon-mgmt-{}", hex)
 }

@@ -10,15 +10,18 @@ struct CodexProvidersView: View {
     @ObservedObject private var sources = ModelSourcesStore.shared
     @ObservedObject private var store = CodexStore.shared
     @ObservedObject private var usage = ProviderUsageStore.shared
+    @ObservedObject private var claudeAuth = ClaudeAuthService.shared
     @Binding var selection: MTSection
 
     @State private var route: ProviderRoute?
     @State private var searches: [String: String] = [:]
+    @State private var confirmClaudeDisconnect = false
 
     /// Sub-pages of the provider board.
     enum ProviderRoute: String, Identifiable {
         case openRouter
         case openCode
+        case claude
 
         var id: String { rawValue }
 
@@ -26,6 +29,7 @@ struct CodexProvidersView: View {
             switch self {
             case .openRouter: return "OpenRouter"
             case .openCode: return "OpenCode"
+            case .claude: return "Claude"
             }
         }
 
@@ -33,6 +37,7 @@ struct CodexProvidersView: View {
             switch self {
             case .openRouter: return "point.3.connected.trianglepath.dotted"
             case .openCode: return "chevron.left.forwardslash.chevron.right"
+            case .claude: return "sparkles"
             }
         }
     }
@@ -49,6 +54,7 @@ struct CodexProvidersView: View {
                         openCodeCard
                     }
                     openRouterCard
+                    claudeCard
                     applyCard
                 }
             }
@@ -253,6 +259,92 @@ struct CodexProvidersView: View {
         }
     }
 
+    // MARK: - Board: Claude
+
+    private var claudeCard: some View {
+        let stats = usage.claude
+        let connected = stats?.connected == true
+        return MTCard(title: "Claude", systemImage: ProviderRoute.claude.systemImage) {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                HStack(spacing: MTTheme.s2) {
+                    MTStatusPill(text: connected ? L("Connected") : L("Not connected"), status: connected ? .ok : .idle)
+                    Spacer(minLength: MTTheme.s2)
+                    if let updated = stats?.updatedAt {
+                        Text(L("Updated") + " " + Self.timeFormatter.string(from: updated))
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.textTertiary)
+                    }
+                }
+                keyValueRow(L("Account"), stats?.email ?? "—")
+                keyValueRow(L("Plan"), stats?.plan ?? "—")
+                if let stats {
+                    HStack(alignment: .top, spacing: MTTheme.s3) {
+                        MTMetricTile(
+                            title: L("5 h"),
+                            value: percentText(stats.fiveHourPercent),
+                            caption: resetCaption(prefix: L("left"), date: stats.fiveHourReset),
+                            fraction: stats.fiveHourPercent.map { min(1, max(0, $0 / 100)) },
+                            tint: MTTheme.ok
+                        )
+                        MTMetricTile(
+                            title: L("Week"),
+                            value: percentText(stats.weeklyPercent),
+                            caption: resetCaption(prefix: L("left"), date: stats.weeklyReset),
+                            fraction: stats.weeklyPercent.map { min(1, max(0, $0 / 100)) }
+                        )
+                        MTMetricTile(
+                            title: L("Models"),
+                            value: "\(stats.modelCount)",
+                            caption: L("Selected for Codex")
+                        )
+                    }
+                    if let error = stats.error {
+                        Text(error)
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.danger)
+                    }
+                } else {
+                    Text(L("Connect your Claude account to use subscription models."))
+                        .font(MTTheme.mono(10))
+                        .foregroundStyle(MTTheme.textSecondary)
+                }
+                sessionLine(provider: "Claude")
+                HStack(spacing: MTTheme.s3) {
+                    Text(L("Quota windows come from the connected Anthropic account."))
+                        .font(MTTheme.mono(9))
+                        .foregroundStyle(MTTheme.textTertiary)
+                    Spacer(minLength: MTTheme.s2)
+                    MTSecondaryButton(title: L("Refresh"), systemImage: "arrow.clockwise") {
+                        Task {
+                            await usage.refresh(force: true)
+                            await usage.refreshSession(threadUUID: ComposerBridge.shared.activeThreadID)
+                        }
+                    }
+                    MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
+                        route = .claude
+                    }
+                }
+            }
+        }
+    }
+
+    private func percentText(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        return "\(Int(value.rounded()))%"
+    }
+
+    private func resetCaption(prefix: String, date: Date?) -> String {
+        guard let date else { return prefix }
+        return prefix + " · " + Self.resetFormatter.string(from: date)
+    }
+
+    private static let resetFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     // MARK: - Shared rows
 
     private func keyValueRow(_ title: String, _ value: String) -> some View {
@@ -375,17 +467,25 @@ struct CodexProvidersView: View {
         MTPageHeader(
             kicker: "provider settings",
             title: String(format: L("Settings · %@"), route.title),
-            subtitle: route == .openRouter
-                ? L("Price routing: cheapest providers first.")
-                : L("Paid models use your OpenCode account balance.")
+            subtitle: routeSubtitle(route)
         )
         switch route {
         case .openRouter:
             openRouterSettings
         case .openCode:
             openCodeSettings
+        case .claude:
+            claudeSettings
         }
         applyCard
+    }
+
+    private func routeSubtitle(_ route: ProviderRoute) -> String {
+        switch route {
+        case .openRouter: return L("Price routing: cheapest providers first.")
+        case .openCode: return L("Paid models use your OpenCode account balance.")
+        case .claude: return L("Connect your Claude subscription or paste an Anthropic API key.")
+        }
     }
 
     private var openRouterSettings: some View {
@@ -426,6 +526,90 @@ struct CodexProvidersView: View {
                 .font(MTTheme.mono(10))
                 .foregroundStyle(MTTheme.textTertiary)
             }
+        }
+    }
+
+    private var claudeSettings: some View {
+        let stats = usage.claude
+        let connected = stats?.connected == true
+        return MTCard(title: "Claude", systemImage: ProviderRoute.claude.systemImage) {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                if connected {
+                    keyValueRow(L("Account"), stats?.email ?? "—")
+                    keyValueRow(L("Plan"), stats?.plan ?? "—")
+                    HStack(spacing: MTTheme.s3) {
+                        MTSecondaryButton(title: L("Refresh login"), systemImage: "arrow.clockwise") {
+                            Task {
+                                _ = await claudeAuth.refreshCredential()
+                                await usage.refreshClaudeNow()
+                            }
+                        }
+                        MTSecondaryButton(title: L("Disconnect"), systemImage: "xmark.circle") {
+                            confirmClaudeDisconnect = true
+                        }
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    switch claudeAuth.login {
+                    case .starting, .waiting:
+                        HStack(spacing: MTTheme.s2) {
+                            ProgressView().controlSize(.small)
+                            Text(L("Waiting for the browser…"))
+                                .font(MTTheme.mono(10))
+                                .foregroundStyle(MTTheme.textSecondary)
+                        }
+                        MTSecondaryButton(title: L("Cancel login"), systemImage: "xmark") {
+                            Task { await claudeAuth.cancelLogin() }
+                        }
+                    case .failed(let message):
+                        Text(message)
+                            .font(MTTheme.mono(10))
+                            .foregroundStyle(MTTheme.danger)
+                        connectClaudeButton
+                    default:
+                        connectClaudeButton
+                    }
+                }
+                Text(L("The login opens in your browser; the service stores the account itself."))
+                    .font(MTTheme.mono(10))
+                    .foregroundStyle(MTTheme.textTertiary)
+
+                HStack(spacing: MTTheme.s2) {
+                    SecureField(L("Anthropic API key (fallback)"), text: $sources.claudeKey)
+                        .textFieldStyle(.roundedBorder)
+                        .font(MTTheme.mono(11))
+                        .frame(maxWidth: 360)
+                    MTPrimaryButton(title: L("Load models"), systemImage: "arrow.down.circle", isLoading: sources.isBusy) {
+                        Task { await sources.loadClaudeModels() }
+                    }
+                    Spacer()
+                }
+                Text(L("The fallback key is only used when no OAuth account serves the models."))
+                    .font(MTTheme.mono(10))
+                    .foregroundStyle(MTTheme.textTertiary)
+                if let source = sources.claudeSource {
+                    modelBlock(source: source)
+                } else {
+                    Text(L("Start the service and connect an account, then load the model list."))
+                        .font(MTTheme.mono(10))
+                        .foregroundStyle(MTTheme.textSecondary)
+                }
+            }
+        }
+        .confirmationDialog(L("Disconnect this Claude account?"), isPresented: $confirmClaudeDisconnect, titleVisibility: .visible) {
+            Button(L("Disconnect"), role: .destructive) {
+                claudeAuth.disconnect()
+                Task { await usage.refreshClaudeNow() }
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: {
+            Text(usage.claude?.email ?? "")
+        }
+    }
+
+    private var connectClaudeButton: some View {
+        MTPrimaryButton(title: L("Connect Claude"), systemImage: "link", isLoading: claudeAuth.login.isBusy) {
+            Task { await claudeAuth.startLogin() }
         }
     }
 

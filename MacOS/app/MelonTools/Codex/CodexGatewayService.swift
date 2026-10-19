@@ -224,13 +224,27 @@ final class CodexGatewayService: ObservableObject {
         try SecureFile.write(data, to: URL(fileURLWithPath: configPath))
     }
 
+    /// Auth files account sync owns and may delete when the vault is
+    /// re-synced. Only `codex-*.json` qualifies: Claude OAuth files
+    /// (`claude-*.json`) written by the engine — and any other file in the
+    /// auth dir — must survive the sync.
+    nonisolated static func ownedAuthFileNames(in names: [String]) -> [String] {
+        names.filter { $0.hasPrefix("codex-") && $0.hasSuffix(".json") }
+    }
+
     /// Write each vault account as a CLIProxyAPI codex auth file.
     /// `priorities` maps account ids to a routing priority (higher = used sooner).
     func syncAccounts(_ accounts: [CodexAccount], priorities: [String: Int] = [:]) throws {
+        try Self.syncAccounts(accounts, priorities: priorities, authDir: Self.authDir)
+    }
+
+    /// Static core of the sync — the instance wrapper passes the live auth
+    /// dir; tests pass a temporary directory.
+    nonisolated static func syncAccounts(_ accounts: [CodexAccount], priorities: [String: Int], authDir directory: URL) throws {
         let fm = FileManager.default
-        if let names = try? fm.contentsOfDirectory(atPath: Self.authDir.path) {
-            for name in names where name.hasSuffix(".json") {
-                try? fm.removeItem(atPath: Self.authDir.appendingPathComponent(name).path)
+        if let names = try? fm.contentsOfDirectory(atPath: directory.path) {
+            for name in ownedAuthFileNames(in: names) {
+                try? fm.removeItem(atPath: directory.appendingPathComponent(name).path)
             }
         }
         for account in accounts {
@@ -257,7 +271,7 @@ final class CodexGatewayService: ObservableObject {
                 payload["disabled"] = true
             }
             let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
-            let fileURL = Self.authDir.appendingPathComponent(Self.authFileName(for: account))
+            let fileURL = directory.appendingPathComponent(authFileName(for: account))
             try SecureFile.write(data, to: fileURL)
         }
     }

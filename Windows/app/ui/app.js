@@ -38,10 +38,17 @@ const DICT = {
     bridgeRestart: "Перезапустить Codex с чипами",
     bridgeRestartConfirm: "Codex будет закрыт и запущен заново с debug-портом (нужен для чипов). Продолжить?",
     bridgeRestarted: "Codex запущен заново",
-    providersSub: "Метрики ключей: OpenRouter, OpenCode. Ключи попадают в конфиг шлюза.",
+    providersSub: "Метрики ключей: OpenRouter, OpenCode, Claude. Ключи попадают в конфиг шлюза.",
     openrouter: "OpenRouter", orKey: "Ключ OpenRouter", totalCredits: "Куплено", spend: "Потрачено", remaining: "Остаток",
     keyLimit: "Лимит ключа", keySpend: "Расход ключа", opencode: "OpenCode", ocKey: "Ключ OpenCode (oc_sk_…)",
     ocHint: "После сохранения ключей перезапустите шлюз — модели opencode/* и openrouter/* появятся в списке.",
+    claude: "Claude", claudeSub: "Anthropic Claude: вход по подписке через OAuth, опциональный API-ключ.",
+    claudeConnect: "Подключить", claudeConnecting: "Ждём подтверждение…", claudeCancel: "Отмена",
+    claudeDisconnect: "Отключить", claudeConnected: "подключён", claudeNotConnected: "не подключён",
+    claudeLoginError: "Не удалось войти в Claude", claudeKey: "API-ключ Anthropic (резерв)",
+    claudeHint: "OAuth — подписка Claude (основной способ). API-ключ — резерв pay-as-you-go: блок появится в конфиге шлюза, только когда тумблер включён и ключ непуст.",
+    claudeDisconnected: "Claude отключён",
+    confirmClaudeDisconnect: "Отключить Claude? Аккаунт будет удалён из шлюза.",
     settingsSub: "Язык, порт шлюза, интервал обновления квот.",
     language: "Язык", quotaInterval: "Обновлять квоты, сек", apply: "Применить", about: "О приложении", version: "Версия", platform: "Платформа",
     donateSub: "Поддержать Melon Tools — USDT (TRC20).",
@@ -103,10 +110,17 @@ const DICT = {
     bridgeRestart: "Restart Codex with chips",
     bridgeRestartConfirm: "Codex will close and relaunch with the debug port (required for chips). Continue?",
     bridgeRestarted: "Codex relaunched",
-    providersSub: "Key metrics: OpenRouter, OpenCode. Keys are written into the gateway config.",
+    providersSub: "Key metrics: OpenRouter, OpenCode, Claude. Keys are written into the gateway config.",
     openrouter: "OpenRouter", orKey: "OpenRouter key", totalCredits: "Purchased", spend: "Spent", remaining: "Remaining",
     keyLimit: "Key limit", keySpend: "Key usage", opencode: "OpenCode", ocKey: "OpenCode key (oc_sk_…)",
     ocHint: "After saving keys restart the gateway — opencode/* and openrouter/* models appear in the list.",
+    claude: "Claude", claudeSub: "Anthropic Claude: subscription sign-in via OAuth, optional API key.",
+    claudeConnect: "Connect", claudeConnecting: "Waiting for confirmation…", claudeCancel: "Cancel",
+    claudeDisconnect: "Disconnect", claudeConnected: "connected", claudeNotConnected: "not connected",
+    claudeLoginError: "Claude sign-in failed", claudeKey: "Anthropic API key (fallback)",
+    claudeHint: "OAuth — the Claude subscription (primary). API key — pay-as-you-go fallback: the gateway config gains the block only when the toggle is on and the key is non-empty.",
+    claudeDisconnected: "Claude disconnected",
+    confirmClaudeDisconnect: "Disconnect Claude? The account is removed from the gateway.",
     settingsSub: "Language, gateway port, quota refresh interval.",
     language: "Language", quotaInterval: "Refresh quotas, sec", apply: "Apply", about: "About", version: "Version", platform: "Platform",
     donateSub: "Support Melon Tools — USDT (TRC20).",
@@ -147,6 +161,9 @@ const S = {
   status: null,
   settings: null,
   providers: null,
+  claude: null,
+  claudeLogin: null,
+  lastClaudeUsageAt: 0,
   info: null,
   checkResult: null,
   route: null,
@@ -205,7 +222,7 @@ function mock(cmd, args) {
   ];
   const mocks = {
     app_info: { name: "Melon Tools", version: "1.4.7", platform: "windows", dataDir: "C:\\Users\\you\\AppData\\Roaming\\MelonTools", codexHome: "C:\\Users\\you\\.codex" },
-    settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "" },
+    settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "", claudeEnabled: false, claudeApiKey: "" },
     settings_set: (a) => a.settings,
     vault_list: demoAccounts,
     quota_refresh: { accounts: demoAccounts, errors: [], syncedAccounts: 2 },
@@ -218,6 +235,14 @@ function mock(cmd, args) {
     save_reserves: demoAccounts,
     delete_account: demoAccounts,
     openrouter_refresh: { totalCredits: 30, totalUsage: 29.87, remaining: 0.13, label: "melon", usage: 0.09, limit: 1000, limitRemaining: 999.9, isFreeTier: false, status: "ok" },
+    claude_login_start: { url: "https://example.invalid/oauth/authorize?state=demo-state", state: "demo-state" },
+    claude_login_status: { status: "wait" },
+    claude_login_cancel: { canceled: true },
+    claude_credentials: { credentials: [{ name: "claude-demo.json", type: "claude", email: "demo@claude.invalid" }] },
+    claude_models: { models: [{ id: "claude-opus-5-5", displayName: "Claude Opus 5.5" }, { id: "claude-sonnet-5-5", displayName: "Claude Sonnet 5.5" }, { id: "claude-haiku-4-7", displayName: "Claude Haiku 4.7" }], count: 3 },
+    claude_usage: { connected: true, email: "demo@claude.invalid", plan: "Pro", fiveHourPercent: 72, fiveHourReset: new Date(Date.now() + 2.5 * 3600 * 1000).toISOString(), weeklyPercent: 41, weeklyReset: new Date(Date.now() + 3.2 * 86400 * 1000).toISOString(), modelCount: 3, updatedAt: new Date().toISOString(), error: null, status: "ok" },
+    claude_refresh: { ok: true },
+    claude_disconnect: { removed: 1, remaining: 0 },
     codex_route_status: { configPath: "C:\\Users\\you\\.codex\\config.toml", provider: "melon_local_access", ours: true, catalogExists: true, catalogPath: "C:\\Users\\you\\.codex\\melon-model-catalog.json" },
     codex_route_apply: { route: { provider: "melon_local_access", ours: true, catalogExists: true }, catalogCustom: 32 },
     codex_route_remove: { provider: null, ours: false, catalogExists: true },
@@ -270,6 +295,29 @@ function resetText(unixTs, key) {
   if (hours < 24) return `${t("resetIn")} ${hours} ч ${mins % 60} мин`;
   const days = Math.floor(hours / 24);
   return `${t("resetIn")} ${days} дн ${hours % 24} ч`;
+}
+
+// Claude usage resets arrive as RFC-3339; render them relative like the
+// account quota captions, in the current UI language.
+function claudeResetText(iso) {
+  if (!iso) return "—";
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return esc(iso);
+  const secs = (ts - Date.now()) / 1000;
+  if (secs <= 0) return t("resetNow");
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${t("resetIn")} ${mins} ${S.lang === "en" ? "min" : "мин"}`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${t("resetIn")} ${hours} ${S.lang === "en" ? "h" : "ч"} ${mins % 60} ${S.lang === "en" ? "min" : "мин"}`;
+  const days = Math.floor(hours / 24);
+  return `${t("resetIn")} ${days} ${S.lang === "en" ? "d" : "дн"} ${hours % 24} ${S.lang === "en" ? "h" : "ч"}`;
+}
+
+// RFC-3339 timestamp → "N с / N мин / N ч" since it (reuses ageText).
+function claudeAgeText(iso) {
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return "—";
+  return ageText(ts / 1000);
 }
 
 function ageText(unixTs) {
@@ -361,6 +409,11 @@ function render() {
   if (S.section === "donate") renderDonateQr();
   if (S.section === "fleet" && !S.fleet) A.fleetLoad();
   if (S.section === "providers" && !S.models) A.modelsLoad();
+  if (S.section === "providers" && IS_TAURI && !S.claude && !S.claudeLogin) {
+    A.claudeUsageLoad().then(() => {
+      if (S.section === "providers") render();
+    }).catch(() => {});
+  }
   if (S.section === "instances" && !S.instancesData) A.instancesLoad();
 }
 
@@ -712,6 +765,61 @@ function apiPage() {
   </div>`;
 }
 
+function claudeQuotaTile(title, percent, resetIso) {
+  const width = percent === null || percent === undefined ? 0 : Math.min(100, Math.max(0, percent));
+  return `
+  <div class="quota">
+    <div class="top"><span class="name">${esc(title)}</span><span class="val">${round(percent)}</span></div>
+    <div class="bar"><i class="${quotaTint(percent)}" style="width:${width}%"></i></div>
+    <div class="bottom"><span>${claudeResetText(resetIso)}</span></div>
+  </div>`;
+}
+
+function claudeCard(settings) {
+  const u = S.claude;
+  const login = S.claudeLogin;
+  const connected = !!(u && u.connected);
+  const pillClass = login ? "warn" : connected ? "ok" : u && u.error ? "danger" : "";
+  const pillText = login ? t("claudeConnecting") : connected ? t("claudeConnected") : u && u.error ? t("error") : t("claudeNotConnected");
+  const actions = login
+    ? `<button class="btn small" disabled>${t("claudeConnecting")}</button>
+       <button class="ghost small" onclick="A.claudeCancel()">${t("claudeCancel")}</button>`
+    : `${connected ? "" : `<button class="btn small" onclick="A.claudeConnect()" ${S.busy.claudeConnect ? "disabled" : ""}>${t("claudeConnect")}</button>`}
+       <button class="ghost small" onclick="A.claudeRefreshUsage()" ${S.busy.claudeUsage ? "disabled" : ""}>${t("refresh")}</button>
+       ${connected ? `<button class="ghost small" onclick="A.claudeDisconnect()" ${S.busy.claudeDisconnect ? "disabled" : ""}>${t("claudeDisconnect")}</button>` : ""}`;
+
+  return `
+  <div class="card">
+    <h2>${t("claude")} <span class="pill ${pillClass}">${pillText}</span></h2>
+    <div class="stack">
+      <div class="row">
+        <span class="muted">${esc((u && u.email) || "—")}</span>
+        ${u && u.plan ? `<span class="pill gold">${esc(u.plan)}</span>` : ""}
+        <span class="pill">${t("models")}: ${u && u.modelCount !== null && u.modelCount !== undefined ? u.modelCount : "—"}</span>
+      </div>
+      <div class="grid2">
+        ${claudeQuotaTile(t("fiveHour"), u ? u.fiveHourPercent : null, u ? u.fiveHourReset : null)}
+        ${claudeQuotaTile(t("week"), u ? u.weeklyPercent : null, u ? u.weeklyReset : null)}
+      </div>
+      ${u && u.error ? `<div class="footnote">${esc(u.error)}</div>` : ""}
+      ${u && u.updatedAt ? `<div class="footnote">${t("quotaAge")}: ${esc(claudeAgeText(u.updatedAt))}</div>` : ""}
+      <div class="row">${actions}</div>
+
+      <label class="field">${t("claudeKey")}
+        <input type="password" id="claude-key" value="${esc(settings.claudeApiKey || "")}" placeholder="sk-ant-…">
+      </label>
+      <div class="row">
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" id="claude-enabled" ${settings.claudeEnabled ? "checked" : ""}>
+          <span>${t("sourceEnabled")}</span>
+        </label>
+        <button class="btn small" onclick="A.claudeSaveKeys()">${t("save")}</button>
+      </div>
+      <div class="footnote">${t("claudeHint")}</div>
+    </div>
+  </div>`;
+}
+
 function providersPage() {
   const settings = S.settings || {};
   const p = S.providers;
@@ -770,6 +878,8 @@ function providersPage() {
     </div>
   </div>
 
+  ${claudeCard(settings)}
+
   <div class="card">
     <h2>${t("models")} <span class="hint">${filtered.length} ${t("modelsCount")}</span></h2>
     <div class="row">
@@ -779,7 +889,7 @@ function providersPage() {
     <div style="max-height:420px;overflow:auto;margin-top:10px">
       ${filtered.slice(0, 400).map((m) => {
         const id = String(m.id || "");
-        const provider = id.startsWith("opencode/") ? "OpenCode" : id.startsWith("openrouter/") ? "OpenRouter" : "OpenAI";
+        const provider = id.startsWith("opencode/") ? "OpenCode" : id.startsWith("openrouter/") ? "OpenRouter" : id.startsWith("claude-") ? "Claude" : "OpenAI";
         return `<div class="row" style="padding:3px 0;gap:8px">
           <span class="pill ${provider === "OpenAI" ? "gold" : ""}">${provider}</span>
           <span class="mono" style="font-size:11px">${esc(id)}</span>
@@ -1201,6 +1311,90 @@ const A = {
     });
   },
 
+  claudeUsageLoad() {
+    S.lastClaudeUsageAt = Date.now();
+    return inv("claude_usage").then((usage) => {
+      S.claude = usage;
+    });
+  },
+
+  claudeRefreshUsage() {
+    run("claudeUsage", async () => {
+      await A.claudeUsageLoad();
+    });
+  },
+
+  claudeConnect() {
+    run("claudeConnect", async () => {
+      const session = await inv("claude_login_start");
+      if (!session || !session.url || !session.state) throw new Error(t("claudeLoginError"));
+      S.claudeLogin = { state: session.state, done: false };
+      render();
+      inv("open_url", { url: session.url }).catch(() => {});
+      clearInterval(A._claudeTimer);
+      A._claudeTimer = setInterval(async () => {
+        if (!S.claudeLogin) {
+          clearInterval(A._claudeTimer);
+          return;
+        }
+        try {
+          const result = await inv("claude_login_status", { stateToken: S.claudeLogin.state });
+          if (!S.claudeLogin) return;
+          if (result.status === "ok") {
+            clearInterval(A._claudeTimer);
+            S.claudeLogin = null;
+            toast(t("done"));
+            await A.claudeUsageLoad().catch(() => {});
+            A.modelsLoad();
+          } else if (result.status === "error") {
+            clearInterval(A._claudeTimer);
+            S.claudeLogin = null;
+            toast(t("claudeLoginError"), true);
+          }
+          render();
+        } catch (error) {
+          clearInterval(A._claudeTimer);
+          S.claudeLogin = null;
+          toast(String(error), true);
+          render();
+        }
+      }, 2000);
+    });
+  },
+
+  claudeCancel() {
+    const login = S.claudeLogin;
+    if (!login) return;
+    clearInterval(A._claudeTimer);
+    S.claudeLogin = null;
+    render();
+    inv("claude_login_cancel", { stateToken: login.state }).catch(() => {});
+  },
+
+  claudeDisconnect() {
+    // Destructive: the engine-written auth files are deleted, so the account
+    // must be reconnected. Same confirmation pattern as account deletion.
+    if (!window.confirm(t("confirmClaudeDisconnect"))) return;
+    run("claudeDisconnect", async () => {
+      const result = await inv("claude_disconnect");
+      S.claude = null;
+      S.lastClaudeUsageAt = 0;
+      toast(`${t("claudeDisconnected")} (${(result && result.removed) || 0})`);
+      await A.claudeUsageLoad().catch(() => {});
+      A.modelsLoad();
+    });
+  },
+
+  claudeSaveKeys() {
+    run("claudeKeys", async () => {
+      const claudeEnabled = document.getElementById("claude-enabled").checked;
+      const claudeApiKey = document.getElementById("claude-key").value.trim();
+      S.settings = await inv("settings_set", { settings: { ...S.settings, claudeEnabled, claudeApiKey } });
+      toast(t("done"));
+      A.claudeUsageLoad().catch(() => {});
+    });
+  },
+
   applySettings() {
     run("settings", async () => {
       const lang = document.getElementById("set-lang").value;
@@ -1291,7 +1485,19 @@ const A = {
 
   modelsLoad() {
     run("models", async () => {
-      S.models = await inv("gateway_models");
+      const models = (await inv("gateway_models")) || [];
+      // Claude ids are served by the gateway too, but a direct fetch keeps the
+      // list fresh right after a login, before the next gateway sync.
+      try {
+        const claude = await inv("claude_models");
+        const seen = new Set(models.map((m) => String(m.id)));
+        for (const model of (claude && claude.models) || []) {
+          if (!seen.has(String(model.id))) models.push({ id: model.id, owned_by: "claude" });
+        }
+      } catch (error) {
+        // Gateway down or no Claude account — the base list stays valid.
+      }
+      S.models = models;
     });
   },
 
@@ -1493,6 +1699,13 @@ window.A = A;
     const underLoad = !!(S.status && S.status.requestsLastMinute > 0);
     if (since >= interval || (underLoad && since >= 30000)) {
       A.refreshQuotas();
+    }
+    // Claude usage: same configured cadence, floored at 180 s per the spec.
+    const claudeDue = now - (S.lastClaudeUsageAt || 0) >= Math.max(180000, interval);
+    if (claudeDue && !S.claudeLogin && (S.claude ? S.claude.connected : !!(S.settings && S.settings.claudeEnabled))) {
+      A.claudeUsageLoad().then(() => {
+        if (S.section === "providers" && !S.claudeLogin) render();
+      }).catch(() => {});
     }
   }, 30000);
   if (S.section === "providers" && IS_TAURI) {

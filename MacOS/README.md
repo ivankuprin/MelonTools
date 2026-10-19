@@ -17,6 +17,22 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## What's new in 1.5.0 «Claude provider»
+
+- **Claude joins the Providers page.** Connect a Claude Pro/Max subscription with
+  OAuth (the same client flow the Claude Code app uses) or fall back to an
+  Anthropic console API key. Credentials are written as engine-native
+  `claude-*.json` auth files and hot-load into the gateway.
+- **Claude models in the Codex picker.** Selected `claude-*` models ride the new
+  priority band 300 and appear in a Claude group after Apply + relaunch.
+- **Claude bento card.** The Providers page shows the connection state, account
+  email, plan, 5-hour and weekly quota windows with reset times, and the
+  selected-model count. Numbers come from the account usage endpoint; missing
+  data renders as «—» instead of made-up values.
+- **Account-sync safety (both platforms).** Codex account sync now cleans only
+  `codex-*.json` auth files, so Claude logins survive pool refreshes and quota
+  ticks. Disconnect asks for confirmation.
+
 ## What's new in 1.4.8 «Update from GitHub»
 
 - **In-app updates.** A full-width control sits in the sidebar above the
