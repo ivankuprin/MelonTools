@@ -60,6 +60,7 @@ enum MTSection: String, CaseIterable, Identifiable {
 /// Bento layout: one solid card on the left (navigation), a card board on the right.
 struct MainView: View {
     @EnvironmentObject private var app: AppState
+    @ObservedObject private var updater = UpdaterStore.shared
     @State private var selection: MTSection = .dashboard
 
     private static let sidebarWidth: CGFloat = 228
@@ -74,9 +75,13 @@ struct MainView: View {
         .onAppear {
             app.applyAppearance()
             FleetStore.shared.setActive(fleetSectionsActive)
+            Task { await updater.check(manual: false) }
         }
         .onChange(of: app.appearance) { app.applyAppearance() }
         .onChange(of: selection) { FleetStore.shared.setActive(fleetSectionsActive) }
+        .sheet(isPresented: $updater.sheetPresented) {
+            UpdateSheet()
+        }
         .overlay {
             // Cmd-1…9 jump to the first nine sidebar sections (the display
             // order of MTSection).
@@ -100,6 +105,49 @@ struct MainView: View {
         default:
             return false
         }
+    }
+
+    /// Sidebar update control, almost full width: a quiet «Проверить
+    /// обновление» while up to date, and a gold CTA «Обновить» the moment a
+    /// newer release is known (the daily check flips it automatically).
+    private var updateRow: some View {
+        Button {
+            updater.sheetPresented = true
+            Task { await updater.check(manual: true) }
+        } label: {
+            Text(isUpdateAvailable ? L("Update") : L("Check for updates"))
+                .font(MTTheme.body(12, weight: .semibold))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .foregroundStyle(isUpdateAvailable ? MTTheme.onGold : MTTheme.textPrimary)
+                .background(
+                    RoundedRectangle(cornerRadius: MTTheme.rSmall, style: .continuous)
+                        .fill(isUpdateAvailable ? MTTheme.gold : MTTheme.cardSoft.opacity(0.65))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: MTTheme.rSmall, style: .continuous)
+                        .strokeBorder(
+                            isUpdateAvailable ? Color.clear : MTTheme.borderColor.opacity(0.7),
+                            lineWidth: 0.75
+                        )
+                )
+                .contentShape(RoundedRectangle(cornerRadius: MTTheme.rSmall, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, MTTheme.s3)
+        .padding(.top, MTTheme.s2)
+        .padding(.bottom, MTTheme.s1)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(MTTheme.borderColor.opacity(0.35))
+                .frame(height: 0.75)
+        }
+    }
+
+    private var isUpdateAvailable: Bool {
+        if case .available = updater.phase { return true }
+        return false
     }
 
     // MARK: - Sidebar card
@@ -129,6 +177,7 @@ struct MainView: View {
                 .padding(.vertical, MTTheme.s3)
             }
             Spacer(minLength: 0)
+            updateRow
             GatewayFooter()
         }
         .frame(width: Self.sidebarWidth)

@@ -16,6 +16,7 @@ mod providers;
 mod quota;
 mod routing;
 mod settings;
+mod updater;
 mod vault;
 
 use serde_json::{json, Value};
@@ -68,7 +69,7 @@ fn hidden_command(_command: &mut std::process::Command) {
 fn app_info() -> Value {
     json!({
         "name": "Melon Tools",
-        "version": "1.4.7",
+        "version": "1.4.8",
         "platform": std::env::consts::OS,
         "dataDir": paths::appdata_dir().to_string_lossy(),
         "codexHome": paths::codex_home().to_string_lossy(),
@@ -606,6 +607,40 @@ async fn autostart_set(enabled: bool) -> Result<bool, String> {
     Ok(false)
 }
 
+// MARK: - Updater (GitHub releases)
+
+/// Latest release lookup. `force=false` throttles to once per 24 h.
+#[tauri::command]
+async fn update_check(state: State<'_, AppState>, force: bool) -> Result<Value, String> {
+    let settings = state.settings();
+    let result =
+        updater::check(force, env!("CARGO_PKG_VERSION"), settings.last_update_check).await?;
+    if result.get("skipped").and_then(|v| v.as_bool()) != Some(true) {
+        let now = chrono::Utc::now().timestamp();
+        mutate_settings(&state, |s| s.last_update_check = Some(now))?;
+    }
+    Ok(result)
+}
+
+/// Downloads and verifies the new executable, then hands the swap to a
+/// detached script and exits so the file is not locked.
+#[tauri::command]
+async fn update_apply(
+    app: tauri::AppHandle,
+    url: String,
+    digest: Option<String>,
+) -> Result<Value, String> {
+    let current = std::env::current_exe().map_err(|e| e.to_string())?;
+    let new_exe = updater::fetch_update(&url, digest.as_deref()).await?;
+    updater::spawn_swapper(&new_exe, &current, std::process::id())?;
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        handle.exit(0);
+    });
+    Ok(json!({ "ok": true }))
+}
+
 // MARK: - Providers
 
 #[tauri::command]
@@ -830,6 +865,8 @@ fn main() {
             instance_launch,
             autostart_get,
             autostart_set,
+            update_check,
+            update_apply,
             openrouter_refresh,
             open_url,
         ])

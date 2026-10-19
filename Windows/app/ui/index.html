@@ -16,6 +16,11 @@
       </div>
     </div>
     <nav id="nav"></nav>
+    <div class="sidebar-update">
+      <button class="update-btn" id="update-btn" onclick="A.updateOpen()">
+        <span id="update-label">Проверить обновление</span>
+      </button>
+    </div>
     <div class="side-footer">
       <span class="dot" id="gw-dot"></span>
       <span id="gw-label">…</span>
@@ -24,6 +29,17 @@
     </div>
   </aside>
   <main><div class="board" id="main"></div></main>
+  <div id="update-modal" class="modal" hidden>
+    <div class="modal-card">
+      <h2 id="update-title">Проверка обновлений…</h2>
+      <div id="update-sub" class="footnote"></div>
+      <div id="update-notes" class="notes" style="display:none"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:16px">
+        <button class="ghost" id="update-cancel" onclick="A.updateClose()">Отмена</button>
+        <button class="btn" id="update-apply" style="display:none" onclick="A.updateApply()">Обновить</button>
+      </div>
+    </div>
+  </div>
   <div id="toast"></div>
   <script src="vendor/qrcode.js"></script>
   <script src="app.js"></script>

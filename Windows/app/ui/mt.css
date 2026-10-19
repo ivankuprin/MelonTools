@@ -271,3 +271,67 @@ table.kv td:last-child { font-family: var(--mono); font-size: 11px; word-break: 
 #toast.error { border-color: rgba(255, 69, 58, 0.6); }
 
 .footnote { font-size: 11px; color: var(--text3); margin-top: var(--s2); line-height: 1.5; }
+
+/* ---------- Updater ---------- */
+
+.sidebar-update {
+  padding: var(--s2) var(--s3) var(--s1);
+  border-top: 1px solid rgba(64, 64, 68, 0.55);
+}
+
+.update-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: var(--r-small);
+  border: 1px solid var(--border);
+  background: rgba(47, 47, 51, 0.65);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.35;
+}
+.update-btn:hover { background: rgba(64, 64, 68, 0.65); }
+.update-btn.primary {
+  background: var(--gold);
+  border-color: transparent;
+  color: var(--on-gold);
+}
+.update-btn.primary:hover { filter: brightness(1.06); }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 60;
+}
+.modal[hidden] { display: none; }
+.modal-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: var(--s5);
+  width: min(520px, 90vw);
+  max-height: 80vh;
+  overflow: auto;
+}
+.modal-card h2 { margin: 0 0 var(--s2); font-size: 15px; }
+.notes {
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 300px;
+  overflow: auto;
+  color: var(--text);
+  background: var(--soft);
+  border-radius: var(--r-small);
+  padding: 10px 12px;
+  margin-top: 10px;
+}

@@ -1,7 +1,7 @@
 # Melon Tools
 
 A native macOS cockpit for the **Fleet** CLI and the **Codex account pool**.
-Built with SwiftUI for macOS 14+ on Apple Silicon and Intel (universal arm64 + x86_64).
+Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -17,6 +17,19 @@ Built with SwiftUI for macOS 14+ on Apple Silicon and Intel (universal arm64 + x
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## What's new in 1.4.8 «Update from GitHub»
+
+- **In-app updates.** A full-width control sits in the sidebar above the
+  status footer: «Проверить обновление» while up to date, switching to a gold
+  «Обновить» button automatically when a newer GitHub release is known. It
+  opens a window with the release notes and «Отмена» / «Обновить»;
+  auto-check runs at most once a day.
+- Downloads are verified against the release SHA256 (native GitHub asset
+  digest or the `.sha256` file) before anything is installed; only HTTPS
+  GitHub hosts are accepted.
+- macOS swaps the bundle from the DMG after the app quits and relaunches it;
+  Windows replaces its single executable the same way.
+
 ## What's new in 1.4.7 «Hardening»
 
 - **Quieter when idle.** The gateway log tail runs every 2 s, the quota and
@@ -27,11 +40,18 @@ Built with SwiftUI for macOS 14+ on Apple Silicon and Intel (universal arm64 + x
 - **Cmd-1…9** jump straight to the first nine sidebar sections.
 - The model catalog no longer bundles client-private prompt/policy fields.
 
-## What's new in 1.4.6 «Fleet runtime»
+## What's new in 1.4.6 «Fleet rebrand»
 
-- Fleet's CLI, environment variables, and data directory use Melon Tools naming.
-- **Quota reserve reacts faster.** The refresh interval stays relaxed while idle
-  and adapts to gateway activity so low-reserve accounts pause promptly.
+- **No more «omelette» anywhere.** The fleet CLI, its env vars and its home
+  folder are rebranded: the CLI is `melon-fleet` (bundled with the app), the
+  env prefix is `MELON_FLEET_*`, and the workspace lives in `~/.melon-fleet`.
+- The previous `~/.omelette` folder is no longer used — move it manually if
+  it still holds data you care about.
+- **Quota reserve reacts fast now.** The quota refresh is adaptive: it keeps
+  the configured interval when idle, but checks every ~30 seconds while the
+  gateway is serving requests, so a 5% reserve pauses an account promptly
+  instead of letting it burn to zero between five-minute checks. Same logic
+  in the Windows build.
 
 ## What's new in 1.4.5 «Reliability fixes»
 
@@ -181,8 +201,9 @@ Built with SwiftUI for macOS 14+ on Apple Silicon and Intel (universal arm64 + x
   «Paths» and «Diagnostics» cards; the composer page drops the debug-port line
   and the event log. What stays in «Client setup» is everything needed to
   connect other tools: Base URL and API key, each with a copy button.
-- **Clear Fleet status.** Pages use concise labels, the Call and Rules consoles
-  print human status lines, and exit pills read **Done / Tool error / Failed (n)**.
+- **«Omelette» is gone from the UI.** Fleet pages use `fleet …` kickers, the
+  Call and Rules consoles print human status lines instead of shell commands,
+  and exit pills read **Done / Tool error / Failed (n)**.
 - **Brand refresh.** The new melon-and-wrench logo appears in the sidebar, the
   menu bar extra, and About; the app icon and the DMG volume icon are drawn
   from the new artwork.
@@ -210,7 +231,8 @@ Built with SwiftUI for macOS 14+ on Apple Silicon and Intel (universal arm64 + x
   the top account serves until it is exhausted, then the next takes over.
 - **No technical paths in the UI** — raw file paths in normal screens are
   replaced with plain wording (import, route status, instances, diagnostics).
-- Fleet is named consistently throughout the app UI.
+- **“Omelette” is gone from the app** — the brand is simply **Fleet**
+  everywhere in the UI.
 
 ## What's new in 1.3.1 «Launch the app»
 
@@ -272,20 +294,26 @@ Built with SwiftUI for macOS 14+ on Apple Silicon and Intel (universal arm64 + x
 
 ## What it does
 
-### Fleet
+### Fleet (melon-fleet integration)
+The app drives the `melon-fleet` CLI (Node.js) and reads its live data:
 
-The app bundles the Melon Fleet CLI source under `app/Resources/melon-fleet`.
-Node.js 20 or later is required; a separate CLI install is not needed.
+- **Fleet Status** — live status feed (`~/.melon-fleet/status-*.json`) and the
+  append-only log (`fleet-log.ndjson`) with per-call usage.
+- **Doctor** — parses `melon-fleet doctor` into per-unit sections with
+  status inference; raw output toggle; optional `--probe-models` / `--probe-sandbox`.
+- **Fleet Config** — every key of `fleet.config.json` as editable rows; writes go
+  through `melon-fleet set` (the CLI's own validation).
+- **Results** — the full result spool (`~/.melon-fleet/results/<unit>/`), parsed
+  headers, full answer body, copy to clipboard.
+- **Call Unit** — invoke any unit tool (`codex_research`, `gemini_deep_research`,
+  `grok_code_review`, …) via `melon-fleet call` with JSON args, streamed output,
+  and exit-code semantics (2 = tool answered with an error).
+- **Project Rules** — preview or install the fleet operating rules
+  (`.claude/rules`, agents, skills, guard hook) into a project.
 
-- **Fleet Status** — live status feed and append-only call log with usage.
-- **Doctor** — per-unit health and optional model or sandbox probes.
-- **Fleet Config** — edit validated configuration values in the app.
-- **Results** — browse result history, full answer bodies, and copyable output.
-- **Call Unit** — invoke Codex, Gemini, and Grok tools with streamed output.
-- **Project Rules** — preview or install Fleet operating rules in a project.
-
-Fleet data is stored in `~/.melon-fleet` by default. A custom location can be
-set in the app; the CLI and app use the same folder.
+The `melon-fleet` source tree is embedded in the app bundle, so no separate
+install is needed. Node.js (≥ 20) must be present — the app detects it and shows
+the exact hint if it is missing.
 
 ### Codex
 Re-implemented from scratch on top of the official OAuth/API endpoints:
@@ -314,28 +342,46 @@ Re-implemented from scratch on top of the official OAuth/API endpoints:
 | Component    | Why                                   | How to get              |
 |--------------|---------------------------------------|-------------------------|
 | macOS 14+    | App baseline                          | —                       |
-| Apple Silicon + Intel | Universal app binary                 | —                       |
+| Apple Silicon| arm64 build                           | —                       |
 | Node.js ≥ 20 | Fleet module (runs the fleet CLI)     | `brew install node`     |
 | Codex CLI    | Instances (optional)                  | `npm i -g @openai/codex`|
 | Codex app    | Composer Chips (optional)             | openai.com/codex        |
 
 ## Build from source
 
-Prerequisites: Xcode 27+, XcodeGen, Go 1.22+, and Node.js 20+. `create-dmg` is
-optional; the build falls back to `hdiutil` when it is unavailable.
+Prerequisites: Xcode (27+), XcodeGen (`brew install xcodegen`), Go 1.22+
+(`brew install go`), Node.js ≥ 20. `create-dmg` (`brew install create-dmg`)
+is optional — the script falls back to a plain `hdiutil` image.
 
 ```bash
-./scripts/fetch-sources.sh
-./build.sh
+./build.sh            # full pipeline: gateway → icon → xcode → dmg
+open build/MelonTools-1.4.2.dmg
 ```
 
-The Fleet CLI source is part of this repository under `app/Resources/melon-fleet`.
-The fetch script retrieves the pinned CLIProxyAPI source into the ignored
-`_sources/` directory. The build creates a universal app and a DMG under
-`build/`, and copies the DMG to the `MacOS/` folder.
+The app is ad-hoc signed (personal build, not notarized). On first launch use
+**right-click → Open**, or clear the quarantine flag:
+`xattr -dr com.apple.quarantine "/Applications/Melon Tools.app"`.
 
-The app is ad-hoc signed and not notarized. On first launch use **right-click →
-Open** if Gatekeeper blocks it.
+Individual steps:
+
+```bash
+# 1. Gateway engine (Go, arm64, stripped)
+cd _sources/CLIProxyAPI
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w" \
+  -o ../../build/cliproxyapi ./cmd/server
+
+# 2. Icon
+#    scripts/assets/source-appicon.png → sips + iconutil (see build.sh)
+
+# 3. App (build products stay in ~/Library — they never appear in Launchpad)
+cd app && xcodegen generate
+xcodebuild -project MelonTools.xcodeproj -scheme MelonTools \
+  -configuration Release -derivedDataPath "$HOME/Library/Developer/MelonTools" build
+
+# 4. Ad-hoc sign + DMG
+codesign --force --deep --sign - "$HOME/Library/Developer/MelonTools/Build/Products/Release/MelonTools.app"
+create-dmg --volname "Melon Tools" "build/MelonTools-1.4.2.dmg" "Melon Tools.app"
+```
 
 ## Layout
 
@@ -354,8 +400,9 @@ scripts/
   trim-logo.swift             crops transparent margins from the logo source
   make-icon.swift             legacy icon generator (unused)
   test-gateway.py             smoke-test for the gateway config shape
-app/Resources/melon-fleet/   bundled Fleet CLI source (MIT)
-_sources/CLIProxyAPI/         gateway build source (MIT)
+_sources/
+  melon-fleet/             embedded at build time (MIT)
+  CLIProxyAPI/                gateway engine (MIT)
 build/                        artifacts (gateway binary, icon, dmg)
 ```
 
@@ -367,11 +414,11 @@ build/                        artifacts (gateway binary, icon, dmg)
 | Gateway config        | `~/Library/Application Support/MelonTools/gateway/config.yaml` |
 | Gateway account files | `…/gateway/auths/codex-*.json`                    |
 | Instances             | `…/MelonTools/instances/<name>/codex-home/`       |
-| Fleet data            | `~/.melon-fleet` (status, log, results, config)      |
+| Fleet data            | `~/.melon-fleet` (status, log, results, config)   |
 
 ## Licensing notes
 
-- The Melon Fleet CLI source is bundled under `app/Resources/melon-fleet` (MIT).
+- `melon-fleet` is embedded as source (MIT).
 - The gateway engine is **CLIProxyAPI** (MIT), built from source.
 - The Codex flows are a clean-room re-implementation of visible behavior
   against public endpoints; no cockpit-tools code was copied.
@@ -381,5 +428,5 @@ build/                        artifacts (gateway binary, icon, dmg)
 
 | Component      | Version | Commit                                    |
 |----------------|---------|-------------------------------------------|
-| Melon Fleet CLI | 1.7.1 | `1c2b630` |
+| melon-fleet | 1.7.1   | `318529e7dff40a3996edcb4d39893b53fb273950` |
 | CLIProxyAPI    | v8 tree | `e7003d2a3e2cee2d45f9950c067bf8e02a2ac0f8` |

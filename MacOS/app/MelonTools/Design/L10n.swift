@@ -28,6 +28,28 @@ final class L10n: ObservableObject {
     }
 
     static let ru: [String: String] = [
+        // MARK: Updater
+        "Update": "Обновить",
+        "Check for updates": "Проверить обновление",
+        "Update %@ is available": "Доступно обновление %@",
+        "You are up to date (%@)": "У вас последняя версия (%@)",
+        "Could not check for updates": "Не удалось проверить обновления",
+        "Checking for updates…": "Проверяем обновления…",
+        "Current version %@ → %@": "Текущая версия %@ → %@",
+        "Melon Tools %@ is the latest version.": "Melon Tools %@ — последняя версия.",
+        "Try again": "Повторить",
+        "Downloading the update…": "Скачиваем обновление…",
+        "Installing the update…": "Устанавливаем обновление…",
+        "The update server answered with an unexpected status.": "Сервер обновлений ответил неожиданным кодом.",
+        "Malformed update response.": "Некорректный ответ сервера обновлений.",
+        "This release has no installer for macOS.": "В этом релизе нет установщика для macOS.",
+        "Updating works only from the Applications folder.": "Обновление работает только из папки «Программы».",
+        "SHA256 check failed — the download was refused.": "SHA256 не совпал — загрузка отклонена.",
+        "The update download failed.": "Не удалось скачать обновление.",
+        "The update server answered from a disallowed host.": "Сервер обновлений ответил с недопустимого адреса.",
+        "The download was redirected to a disallowed host.": "Загрузка была перенаправлена на недопустимый адрес.",
+        "No release notes.": "Описание изменений отсутствует.",
+
         // MARK: Navigation / groups
         "Dashboard": "Обзор",
         "Fleet": "Флот",

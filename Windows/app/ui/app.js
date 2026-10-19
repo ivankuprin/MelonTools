@@ -68,6 +68,10 @@ const DICT = {
     models: "Модели", modelsSearch: "Поиск модели…", modelsCount: "моделей", sources: "Источники", sourceEnabled: "включён",
     autostart: "Автозапуск с Windows", notifications: "Уведомления о низкой квоте", session: "Сессия",
     donateScan: "Отсканируйте QR — сеть TRON (TRC20)",
+    update: "Обновить", updateCheck: "Проверить обновление", updateChecking: "Проверяем обновления…", updateAvailable: "Доступно обновление {v}",
+    updateUpToDate: "У вас последняя версия ({v})", updateFailed: "Не удалось проверить обновления",
+    updateDownloading: "Скачиваем обновление…", updateInstalling: "Устанавливаем… приложение перезапустится",
+    updateCancel: "Отмена", updateApply: "Обновить",
   },
   en: {
     dashboard: "Dashboard", accounts: "Accounts", api: "API Service", providers: "Providers", donate: "Donate", settings: "Settings",
@@ -129,6 +133,10 @@ const DICT = {
     models: "Models", modelsSearch: "Search models…", modelsCount: "models", sources: "Sources", sourceEnabled: "enabled",
     autostart: "Start with Windows", notifications: "Low-quota notifications", session: "Session",
     donateScan: "Scan the QR — TRON network (TRC20)",
+    update: "Update", updateCheck: "Check for updates", updateChecking: "Checking for updates…", updateAvailable: "Update {v} is available",
+    updateUpToDate: "You are up to date ({v})", updateFailed: "Could not check for updates",
+    updateDownloading: "Downloading the update…", updateInstalling: "Installing… the app will restart",
+    updateCancel: "Cancel", updateApply: "Update",
   },
 };
 
@@ -236,6 +244,8 @@ function mock(cmd, args) {
     instance_launch: "C:\\Users\\you\\AppData\\Roaming\\MelonTools\\instances\\demo",
     autostart_get: false,
     autostart_set: true,
+    update_check: { skipped: false, version: "1.4.8", tag: "v1.4.8", newer: false, notes: "", assetName: "", assetURL: "", digest: null },
+    update_apply: { ok: true },
     open_url: null,
   };
   const entry = mocks[cmd];
@@ -376,6 +386,12 @@ function renderFooter() {
   dot.className = "dot " + (running ? "ok" : "err");
   label.textContent = running ? `${t("running")} · :${status.port}` : t("stopped");
   document.getElementById("ver").textContent = S.info ? `v${S.info.version}` : "";
+  const updateLabel = document.getElementById("update-label");
+  if (updateLabel) A.updateButton();
+  const cancel = document.getElementById("update-cancel");
+  if (cancel) cancel.textContent = t("updateCancel");
+  const apply = document.getElementById("update-apply");
+  if (apply) apply.textContent = t("updateApply");
 }
 
 function pageHead(kicker, title, subtitle) {
@@ -1382,6 +1398,70 @@ const A = {
       });
     });
   },
+
+  // MARK: Updater
+
+  /// Two states of the sidebar control: quiet «Проверить обновление», and the
+  /// gold CTA «Обновить» as soon as a newer release is known.
+  updateButton() {
+    const button = document.getElementById("update-btn");
+    const label = document.getElementById("update-label");
+    if (!button || !label) return;
+    const newer = !!(S.update && S.update.newer);
+    button.classList.toggle("primary", newer);
+    label.textContent = newer ? t("update") : t("updateCheck");
+  },
+
+  async updateOpen() {
+    const modal = document.getElementById("update-modal");
+    const title = document.getElementById("update-title");
+    const sub = document.getElementById("update-sub");
+    const notes = document.getElementById("update-notes");
+    const apply = document.getElementById("update-apply");
+    modal.hidden = false;
+    title.textContent = t("updateChecking");
+    sub.textContent = "";
+    notes.textContent = "";
+    notes.style.display = "none";
+    apply.style.display = "none";
+    try {
+      const result = await inv("update_check", { force: true });
+      S.update = result;
+      if (result.newer) {
+        title.textContent = fmt(t("updateAvailable"), { v: result.version });
+        sub.textContent = `${(S.info && S.info.version) || ""} → ${result.version}`;
+        notes.textContent = result.notes || "";
+        notes.style.display = "block";
+        apply.style.display = "";
+      } else {
+        title.textContent = fmt(t("updateUpToDate"), { v: result.version });
+      }
+      A.updateButton();
+    } catch (error) {
+      title.textContent = t("updateFailed");
+      sub.textContent = String(error && error.message ? error.message : error);
+    }
+  },
+
+  updateClose() {
+    const modal = document.getElementById("update-modal");
+    if (modal) modal.hidden = true;
+  },
+
+  async updateApply() {
+    if (!S.update || !S.update.newer) return;
+    const sub = document.getElementById("update-sub");
+    const apply = document.getElementById("update-apply");
+    apply.style.display = "none";
+    sub.textContent = t("updateDownloading");
+    try {
+      await inv("update_apply", { url: S.update.assetURL, digest: S.update.digest });
+      sub.textContent = t("updateInstalling");
+    } catch (error) {
+      sub.textContent = String(error && error.message ? error.message : error);
+      apply.style.display = "";
+    }
+  },
 };
 
 window.A = A;
@@ -1390,6 +1470,17 @@ window.A = A;
 
 (async function boot() {
   await A.loadAll();
+  // Daily update check: lights the badge only; the window opens on click.
+  if (IS_TAURI) {
+    inv("update_check", { force: false })
+      .then((result) => {
+        if (result && !result.skipped) {
+          S.update = result;
+          A.updateButton();
+        }
+      })
+      .catch(() => {});
+  }
   setInterval(() => A.refreshStatus(), 5000);
   // Adaptive quota refresh: the configured interval when idle, ~30 s while
   // the gateway is actually serving — a fixed cadence lets accounts burn

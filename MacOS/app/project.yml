@@ -27,15 +27,13 @@ targets:
         excludes:
           - "Info.plist"
       - path: Resources
-        excludes:
-          - "melon-fleet"
     info:
       path: MelonTools/Info.plist
       properties:
         CFBundleDisplayName: Melon Tools
         CFBundleName: Melon Tools
-        CFBundleShortVersionString: "1.4.7"
-        CFBundleVersion: "16"
+        CFBundleShortVersionString: "1.4.8"
+        CFBundleVersion: "19"
         CFBundleIconFile: AppIcon
         LSApplicationCategoryType: public.app-category.developer-tools
         NSHumanReadableCopyright: "© 2026 Melon Tools"
@@ -48,7 +46,7 @@ targets:
         script: |
           set -euo pipefail
           RES="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
-          FLEET_SRC="$SRCROOT/Resources/melon-fleet"
+          FLEET_SRC="$SRCROOT/../_sources/melon-fleet"
           GATEWAY_BIN="$SRCROOT/../build/cliproxyapi"
           if [ -d "$FLEET_SRC" ]; then
             # Drop stale fleet bundles from earlier builds (any name we used
@@ -73,8 +71,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.melontools.app
-        MARKETING_VERSION: "1.4.7"
-        CURRENT_PROJECT_VERSION: "16"
+        MARKETING_VERSION: "1.4.8"
+        CURRENT_PROJECT_VERSION: "19"
         GENERATE_INFOPLIST_FILE: "NO"
 
   MelonToolsTests:

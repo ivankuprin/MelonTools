@@ -1,6 +1,6 @@
 [package]
 name = "melontools"
-version = "1.4.7"
+version = "1.4.8"
 description = "Melon Tools for Windows — Codex account pool and local API gateway"
 edition = "2021"
 rust-version = "1.77"
@@ -19,6 +19,7 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = ["c
 futures-util = "0.3"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 fs2 = "0.4"
+sha2 = "0.10"
 chrono = "0.4"
 base64 = "0.22"
 rand = "0.8"
