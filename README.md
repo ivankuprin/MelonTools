@@ -29,6 +29,16 @@
 
 The macOS app includes the complete Fleet workflow and Codex composer integration. The Windows port includes account and provider management, a local gateway, composer chips, and core Fleet views; see [Windows documentation](Windows/README.md) for current coverage.
 
+## Screenshots
+
+**Melon Tools — model provider management**
+
+![Melon Tools model provider management](assets/screenshots/melontools-models.jpg)
+
+**Melon Tools inside Codex — model picker, account pool, and usage chips**
+
+![Melon Tools integration in the Codex model picker](assets/screenshots/codex-model-picker.jpg)
+
 ## Download and install
 
 ### macOS
