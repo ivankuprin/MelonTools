@@ -8,7 +8,8 @@ import Foundation
 ///
 /// Public HTTPS endpoints only (no tokens, no SSH):
 /// `api.github.com` for the release JSON and `github.com` /
-/// `objects.githubusercontent.com` for the download.
+/// `objects.githubusercontent.com` / `release-assets.githubusercontent.com`
+/// for the download.
 @MainActor
 final class UpdaterStore: ObservableObject {
     static let shared = UpdaterStore()
@@ -18,6 +19,7 @@ final class UpdaterStore: ObservableObject {
         "api.github.com",
         "github.com",
         "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
     ]
 
     enum Phase: Equatable {

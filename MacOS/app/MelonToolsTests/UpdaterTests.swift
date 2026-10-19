@@ -28,6 +28,16 @@ final class UpdaterTests: XCTestCase {
         XCTAssertFalse(UpdaterStore.isAllowed(URL(string: "https://github.com.evil.example.com/x")!))
     }
 
+    func testReleaseAssetCDNHostIsAllowed() {
+        XCTAssertTrue(UpdaterStore.isAllowed(URL(string: "https://release-assets.githubusercontent.com/github-production-release-asset/123/asset.dmg")!))
+    }
+
+    func testReleaseAssetCDNLookalikesAndHTTPAreRejected() {
+        XCTAssertFalse(UpdaterStore.isAllowed(URL(string: "https://release-assets.githubusercontent.com.evil.example/x")!))
+        XCTAssertFalse(UpdaterStore.isAllowed(URL(string: "https://evil-release-assets.githubusercontent.com/x")!))
+        XCTAssertFalse(UpdaterStore.isAllowed(URL(string: "http://release-assets.githubusercontent.com/x")!))
+    }
+
     func testSha256SidecarParsing() {
         let hash = String(repeating: "a", count: 64)
         XCTAssertEqual(UpdaterStore.parseSha256File("\(hash)  MelonTools-1.4.8.dmg\n"), hash)

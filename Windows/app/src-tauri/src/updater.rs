@@ -3,7 +3,8 @@
 //! from a detached script after the app quits.
 //!
 //! Public HTTPS endpoints only — `api.github.com` for the release JSON and
-//! `github.com` / `objects.githubusercontent.com` for the download.
+//! `github.com` / `objects.githubusercontent.com` /
+//! `release-assets.githubusercontent.com` for the download.
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -12,10 +13,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const RELEASE_API: &str = "https://api.github.com/repos/ivankuprin/MelonTools/releases/latest";
-const ALLOWED_HOSTS: [&str; 3] = [
+const ALLOWED_HOSTS: [&str; 4] = [
     "api.github.com",
     "github.com",
     "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
 ];
 
 /// Only https GitHub endpoints are ever fetched.
@@ -293,6 +295,22 @@ mod tests {
         assert!(!allowed("http://github.com/a/b"));
         assert!(!allowed("https://github.com.evil.example.com/x"));
         assert!(!allowed("https://evil.example.com/x"));
+    }
+
+    #[test]
+    fn cdn_asset_host_allowlist() {
+        assert!(allowed(
+            "https://release-assets.githubusercontent.com/github-production-release-asset/123/asset.exe"
+        ));
+        assert!(!allowed(
+            "https://release-assets.githubusercontent.com.evil.example/asset.exe"
+        ));
+        assert!(!allowed(
+            "https://evil-release-assets.githubusercontent.com/asset.exe"
+        ));
+        assert!(!allowed(
+            "http://release-assets.githubusercontent.com/asset.exe"
+        ));
     }
 
     #[test]
