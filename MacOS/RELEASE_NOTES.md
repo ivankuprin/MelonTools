@@ -19,6 +19,16 @@
 
 Both files include SHA-256 checksum assets on the release page.
 
+## Screenshots
+
+**Providers - model management**
+
+![Melon Tools providers](https://raw.githubusercontent.com/ivankuprin/MelonTools/main/assets/screenshots/melontools-models.jpg)
+
+**Inside Codex - model picker**
+
+![Melon Tools in Codex](https://raw.githubusercontent.com/ivankuprin/MelonTools/main/assets/screenshots/codex-model-picker.jpg)
+
 ## Earlier fixes
 
 - **1.4.8:** In-app updates on both platforms (verified SHA-256, HTTPS-only, daily
