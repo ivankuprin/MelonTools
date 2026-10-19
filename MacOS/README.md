@@ -42,11 +42,10 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 
 ## What's new in 1.4.6 «Fleet rebrand»
 
-- **No more «omelette» anywhere.** The fleet CLI, its env vars and its home
-  folder are rebranded: the CLI is `melon-fleet` (bundled with the app), the
-  env prefix is `MELON_FLEET_*`, and the workspace lives in `~/.melon-fleet`.
-- The previous `~/.omelette` folder is no longer used — move it manually if
-  it still holds data you care about.
+- **Full rebrand.** The fleet CLI, its env vars, and its home folder now use
+  Melon Tools naming: the CLI is `melon-fleet` (bundled with the app), the
+  env prefix is `MELON_FLEET_*`, and the workspace lives in
+  `~/.melon-fleet`.
 - **Quota reserve reacts fast now.** The quota refresh is adaptive: it keeps
   the configured interval when idle, but checks every ~30 seconds while the
   gateway is serving requests, so a 5% reserve pauses an account promptly
@@ -201,9 +200,9 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
   «Paths» and «Diagnostics» cards; the composer page drops the debug-port line
   and the event log. What stays in «Client setup» is everything needed to
   connect other tools: Base URL and API key, each with a copy button.
-- **«Omelette» is gone from the UI.** Fleet pages use `fleet …` kickers, the
-  Call and Rules consoles print human status lines instead of shell commands,
-  and exit pills read **Done / Tool error / Failed (n)**.
+- **Cleaner Fleet pages.** Fleet pages use `fleet …` kickers, the Call and
+  Rules consoles print human status lines instead of shell commands, and
+  exit pills read **Done / Tool error / Failed (n)**.
 - **Brand refresh.** The new melon-and-wrench logo appears in the sidebar, the
   menu bar extra, and About; the app icon and the DMG volume icon are drawn
   from the new artwork.
@@ -231,8 +230,7 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
   the top account serves until it is exhausted, then the next takes over.
 - **No technical paths in the UI** — raw file paths in normal screens are
   replaced with plain wording (import, route status, instances, diagnostics).
-- **“Omelette” is gone from the app** — the brand is simply **Fleet**
-  everywhere in the UI.
+- **Consistent naming.** The brand is simply **Fleet** everywhere in the UI.
 
 ## What's new in 1.3.1 «Launch the app»
 

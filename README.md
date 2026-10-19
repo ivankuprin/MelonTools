@@ -3,8 +3,8 @@
   <h1>Melon Tools</h1>
   <p>A desktop companion for Codex accounts, model providers, and Fleet workflows on macOS and Windows.</p>
   <p>
-    <a href="https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.7.dmg"><strong>Download for macOS</strong></a>
-    · <a href="https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.7-win-x64.exe"><strong>Download for Windows</strong></a>
+    <a href="https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.8.dmg"><strong>Download for macOS</strong></a>
+    · <a href="https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.8-win-x64.exe"><strong>Download for Windows</strong></a>
     · <a href="MacOS/README.md">Documentation</a>
     · <a href="MacOS/RELEASE_NOTES.md">Release notes</a>
     · <a href="https://github.com/ivankuprin/MelonTools/issues">Report an issue</a>
