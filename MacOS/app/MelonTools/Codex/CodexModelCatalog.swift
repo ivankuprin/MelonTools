@@ -77,7 +77,7 @@ enum CodexModelCatalog {
                 if var entry = makeEntry(from: template, model: model, source: source) {
                     // The Codex picker sorts its list by `priority`, so one
                     // band per provider keeps the models grouped in the menu
-                    // (pool → OpenCode → OpenRouter).
+                    // (pool → OpenCode → OpenRouter → Claude → Antigravity).
                     entry["priority"] = priorityBase(for: source.kind) + position
                     result.append(entry)
                     custom += 1
@@ -112,10 +112,13 @@ enum CodexModelCatalog {
         return Set(models.compactMap { $0["slug"] as? String }.filter { isThirdPartySlug($0) })
     }
 
-    /// Third-party slugs: namespaced ids (`openrouter/…`, `opencode/…`) and
-    /// slash-less Claude ids (`claude-*`). The account pool never uses those.
+    /// Third-party slugs: namespaced ids (`openrouter/…`, `opencode/…`),
+    /// slash-less Claude ids (`claude-*`), and the slash-less Antigravity ids
+    /// (`gemini-*`, `gpt-oss-*`, …). The account pool never uses those.
     nonisolated static func isThirdPartySlug(_ slug: String) -> Bool {
-        slug.contains("/") || slug.hasPrefix("claude-")
+        slug.contains("/")
+            || slug.hasPrefix("claude-")
+            || AntigravityModelRegistry.ids.contains(slug)
     }
 
     // MARK: - Provider bands
@@ -128,6 +131,7 @@ enum CodexModelCatalog {
         case .openCode: return 100
         case .openRouter: return 200
         case .claude: return 300
+        case .antigravity: return 400
         }
     }
 
@@ -137,6 +141,7 @@ enum CodexModelCatalog {
         case .openCode: return "opencode"
         case .openRouter: return "openrouter"
         case .claude: return "Claude"
+        case .antigravity: return "Antigravity"
         }
     }
 

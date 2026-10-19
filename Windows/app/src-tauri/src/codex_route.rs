@@ -265,10 +265,34 @@ fn capitalize(word: &str) -> String {
 }
 
 /// Priority band and provider tag of a gateway model id. One band per provider
-/// keeps the Codex picker grouped (pool → OpenCode → OpenRouter → Claude);
-/// `None` for ids this app does not publish.
+/// keeps the Codex picker grouped (pool → OpenCode → OpenRouter → Claude →
+/// Antigravity); `None` for ids this app does not publish.
+///
+/// Antigravity also serves `claude-*` ids, so its registry allowlist is checked
+/// before the Claude prefix. Callers that have the `/v1/models` entry should
+/// use [`third_party_band_for_model`] so ownership wins over id overlap.
 pub fn third_party_band(id: &str) -> Option<(&'static str, i32)> {
-    if id.starts_with("opencode/") {
+    if crate::antigravity::is_antigravity_model_id(id) {
+        Some(("Antigravity", 400))
+    } else if id.starts_with("opencode/") {
+        Some(("opencode", 100))
+    } else if id.starts_with("openrouter/") {
+        Some(("openrouter", 200))
+    } else if crate::claude::is_claude_model_id(id) {
+        Some(("Claude", 300))
+    } else {
+        None
+    }
+}
+
+/// Band for a full `/v1/models` entry. Ownership data (`owned_by`/`type`) wins
+/// when the engine provides it, which resolves the `claude-sonnet-4-6` overlap
+/// between the Claude and Antigravity registries.
+pub fn third_party_band_for_model(entry: &Value) -> Option<(&'static str, i32)> {
+    let id = entry.get("id").and_then(|value| value.as_str())?;
+    if crate::antigravity::is_antigravity_model_entry(entry) {
+        Some(("Antigravity", 400))
+    } else if id.starts_with("opencode/") {
         Some(("opencode", 100))
     } else if id.starts_with("openrouter/") {
         Some(("openrouter", 200))
@@ -360,25 +384,29 @@ pub async fn sync_catalog(
         .json()
         .await
         .map_err(|e| e.to_string())?;
-    let ids: Vec<String> = list
+    let mut entries: Vec<Value> = list
         .get("data")
         .and_then(|d| d.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(String::from))
-                .collect()
-        })
+        .cloned()
         .unwrap_or_default();
+    // Ownership-aware: when the same id is served by both Claude and
+    // Antigravity, the Antigravity entry wins the band.
+    entries.sort_by_key(|entry| !crate::antigravity::is_antigravity_model_entry(entry));
 
     let mut custom = 0usize;
+    let mut seen: HashSet<String> = HashSet::new();
     let mut opencode_index = 0usize;
     let mut openrouter_index = 0usize;
     let mut claude_index = 0usize;
-    for id in ids {
-        if pool_slugs.contains(&id) {
+    let mut antigravity_index = 0usize;
+    for entry in entries {
+        let Some(id) = entry.get("id").and_then(|v| v.as_str()).map(String::from) else {
+            continue;
+        };
+        if pool_slugs.contains(&id) || !seen.insert(id.clone()) {
             continue;
         }
-        let Some((tag, band)) = third_party_band(&id) else {
+        let Some((tag, band)) = third_party_band_for_model(&entry) else {
             continue;
         };
         let index = match tag {
@@ -390,6 +418,11 @@ pub async fn sync_catalog(
             "openrouter" => {
                 let index = openrouter_index;
                 openrouter_index += 1;
+                index
+            }
+            "Antigravity" => {
+                let index = antigravity_index;
+                antigravity_index += 1;
                 index
             }
             _ => {
@@ -418,7 +451,10 @@ pub async fn sync_catalog(
 
 #[cfg(test)]
 mod tests {
-    use super::{prettify, provider_tag, strip_private_catalog_metadata, third_party_band};
+    use super::{
+        prettify, provider_tag, strip_private_catalog_metadata, third_party_band,
+        third_party_band_for_model,
+    };
     use serde_json::json;
 
     #[test]
@@ -432,6 +468,58 @@ mod tests {
         // Account-pool ids are not published by this path.
         assert_eq!(third_party_band("gpt-6.1-sol"), None);
         assert_eq!(provider_tag("gpt-6.1-sol"), "openai");
+    }
+
+    #[test]
+    fn antigravity_ids_get_band_400_and_the_antigravity_tag() {
+        assert_eq!(
+            third_party_band("gemini-3-flash"),
+            Some(("Antigravity", 400))
+        );
+        assert_eq!(
+            third_party_band("claude-opus-4-6-thinking"),
+            Some(("Antigravity", 400))
+        );
+        // Antigravity also serves claude-* ids; its allowlist must win over
+        // the Claude prefix.
+        assert_eq!(
+            third_party_band("claude-sonnet-4-6"),
+            Some(("Antigravity", 400))
+        );
+        assert_eq!(provider_tag("gemini-3-flash"), "Antigravity");
+        assert_eq!(provider_tag("claude-opus-4-6-thinking"), "Antigravity");
+
+        // Ownership data resolves the overlap: an anthropic-owned
+        // claude-sonnet-4-6 stays in the Claude band.
+        assert_eq!(
+            third_party_band_for_model(&json!({
+                "id": "claude-sonnet-4-6",
+                "owned_by": "anthropic",
+                "type": "claude"
+            })),
+            Some(("Claude", 300))
+        );
+        assert_eq!(
+            third_party_band_for_model(&json!({
+                "id": "claude-sonnet-4-6",
+                "owned_by": "antigravity",
+                "type": "antigravity"
+            })),
+            Some(("Antigravity", 400))
+        );
+        // Without ownership the registry allowlist is the fallback.
+        assert_eq!(
+            third_party_band_for_model(&json!({"id": "gemini-3-flash"})),
+            Some(("Antigravity", 400))
+        );
+
+        // The existing bands stay untouched.
+        assert_eq!(third_party_band("opencode/glm-5.3"), Some(("opencode", 100)));
+        assert_eq!(
+            third_party_band("openrouter/x-ai/grok-4.7"),
+            Some(("openrouter", 200))
+        );
+        assert_eq!(third_party_band("gpt-6.1-sol"), None);
     }
 
     #[test]

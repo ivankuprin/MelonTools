@@ -551,6 +551,17 @@ final class L10n: ObservableObject {
         "The service returned an invalid login URL.": "Сервис вернул некорректный адрес входа.",
         "The login timed out — try again.": "Вход не завершился вовремя — попробуйте снова.",
         "The service rejected the login.": "Сервис отклонил вход.",
+
+        // MARK: Antigravity provider
+        "Project": "Проект",
+        "Connect Antigravity": "Подключить Antigravity",
+        "Connect your Google account to use Antigravity models.": "Подключите аккаунт Google, чтобы использовать модели Antigravity.",
+        "Disconnect this Antigravity account?": "Отключить этот аккаунт Antigravity?",
+        "Google account login; no API key is needed.": "Вход через аккаунт Google; API-ключ не нужен.",
+        "Antigravity models are served by the engine from the connected Google account.": "Модели Antigravity обслуживает сервис из подключённого аккаунта Google.",
+        "Start the service to load the Antigravity model list.": "Запустите сервис, чтобы загрузить список моделей Antigravity.",
+        "No Antigravity models — connect an account first.": "Моделей Antigravity нет — сначала подключите аккаунт.",
+        "Antigravity: %d models": "Antigravity: %d моделей",
     ]
 }
 

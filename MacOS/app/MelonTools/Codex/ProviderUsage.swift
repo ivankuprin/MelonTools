@@ -63,9 +63,22 @@ final class ProviderUsageStore: ObservableObject {
         var error: String?
     }
 
+    /// Antigravity (Google account) status: identity only. The engine exposes
+    /// no Antigravity quota endpoint, so there are deliberately no percentages
+    /// here — nothing is fabricated.
+    struct AntigravityStats: Equatable {
+        var connected = false
+        var email: String?
+        var projectID: String?
+        var modelCount = 0
+        var updatedAt: Date?
+        var error: String?
+    }
+
     @Published private(set) var openRouter: OpenRouterStats?
     @Published private(set) var openCode: OpenCodeStats?
     @Published private(set) var claude: ClaudeStats?
+    @Published private(set) var antigravity: AntigravityStats?
 
     /// Token accounting of the Codex thread the user is looking at.
     @Published private(set) var sessionUsage: SessionUsageSnapshot?
@@ -76,12 +89,16 @@ final class ProviderUsageStore: ObservableObject {
     private let openCodeTTL: TimeInterval = 1800
     /// Claude quota windows move slowly; the endpoint is polled rarely.
     private let claudeTTL: TimeInterval = 180
+    /// Antigravity has no network poll — only the auth file and selection.
+    private let antigravityTTL: TimeInterval = 180
     private var lastOpenRouterFetch = Date.distantPast
     private var lastOpenCodeFetch = Date.distantPast
     private var lastClaudeFetch = Date.distantPast
+    private var lastAntigravityFetch = Date.distantPast
     private var openRouterBusy = false
     private var openCodeBusy = false
     private var claudeBusy = false
+    private var antigravityBusy = false
 
     private init() {}
 
@@ -96,11 +113,18 @@ final class ProviderUsageStore: ObservableObject {
         await refreshOpenRouter(key: store.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines), force: force)
         await refreshOpenCode(key: store.openCodeKey.trimmingCharacters(in: .whitespacesAndNewlines), force: force)
         await refreshClaude(force: force)
+        await refreshAntigravity(force: force)
     }
 
     /// Forces a Claude usage refresh — called right after a successful login.
     func refreshClaudeNow() async {
         await refreshClaude(force: true)
+    }
+
+    /// Forces an Antigravity identity refresh — called right after a
+    /// successful login or a disconnect.
+    func refreshAntigravityNow() async {
+        await refreshAntigravity(force: true)
     }
 
     // MARK: - Session
@@ -271,6 +295,30 @@ final class ProviderUsageStore: ObservableObject {
             stats.updatedAt = Date()
         }
         claude = stats
+    }
+
+    // MARK: - Antigravity
+
+    /// Antigravity has no quota API — the card shows identity and the selected
+    /// model count only. The account comes from the engine auth file and goes
+    /// stale only when the file disappears.
+    private func refreshAntigravity(force: Bool) async {
+        guard !antigravityBusy, isStale(lastAntigravityFetch, ttl: antigravityTTL, force: force) else { return }
+        antigravityBusy = true
+        lastAntigravityFetch = Date()
+        defer { antigravityBusy = false }
+
+        guard let file = AntigravityAuthService.authFiles().first else {
+            antigravity = nil
+            return
+        }
+        var stats = AntigravityStats()
+        stats.connected = true
+        stats.email = file.email
+        stats.projectID = file.projectID
+        stats.modelCount = ModelSourcesStore.shared.antigravitySource?.selectedModels.count ?? 0
+        stats.updatedAt = Date()
+        antigravity = stats
     }
 
     // MARK: - Helpers

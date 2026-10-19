@@ -38,7 +38,7 @@ const DICT = {
     bridgeRestart: "Перезапустить Codex с чипами",
     bridgeRestartConfirm: "Codex будет закрыт и запущен заново с debug-портом (нужен для чипов). Продолжить?",
     bridgeRestarted: "Codex запущен заново",
-    providersSub: "Метрики ключей: OpenRouter, OpenCode, Claude. Ключи попадают в конфиг шлюза.",
+    providersSub: "Метрики ключей: OpenRouter, OpenCode, Claude, Antigravity. Ключи попадают в конфиг шлюза.",
     openrouter: "OpenRouter", orKey: "Ключ OpenRouter", totalCredits: "Куплено", spend: "Потрачено", remaining: "Остаток",
     keyLimit: "Лимит ключа", keySpend: "Расход ключа", opencode: "OpenCode", ocKey: "Ключ OpenCode (oc_sk_…)",
     ocHint: "После сохранения ключей перезапустите шлюз — модели opencode/* и openrouter/* появятся в списке.",
@@ -49,6 +49,14 @@ const DICT = {
     claudeHint: "OAuth — подписка Claude (основной способ). API-ключ — резерв pay-as-you-go: блок появится в конфиге шлюза, только когда тумблер включён и ключ непуст.",
     claudeDisconnected: "Claude отключён",
     confirmClaudeDisconnect: "Отключить Claude? Аккаунт будет удалён из шлюза.",
+    antigravity: "Antigravity", antigravitySub: "Google-аккаунт (Antigravity) через OAuth.",
+    antigravityConnect: "Подключить", antigravityConnecting: "Ждём подтверждение…", antigravityCancel: "Отмена",
+    antigravityDisconnect: "Отключить", antigravityConnected: "подключён", antigravityNotConnected: "не подключён",
+    antigravityLoginError: "Не удалось войти в Antigravity",
+    antigravityHint: "Вход через Google-аккаунт Antigravity (только OAuth). Квоты не отображаются — их API не предоставляет.",
+    antigravityDisconnected: "Antigravity отключён",
+    confirmAntigravityDisconnect: "Отключить Antigravity? Аккаунт будет удалён из шлюза.",
+    projectId: "Проект",
     settingsSub: "Язык, порт шлюза, интервал обновления квот.",
     language: "Язык", quotaInterval: "Обновлять квоты, сек", apply: "Применить", about: "О приложении", version: "Версия", platform: "Платформа",
     donateSub: "Поддержать Melon Tools — USDT (TRC20).",
@@ -110,7 +118,7 @@ const DICT = {
     bridgeRestart: "Restart Codex with chips",
     bridgeRestartConfirm: "Codex will close and relaunch with the debug port (required for chips). Continue?",
     bridgeRestarted: "Codex relaunched",
-    providersSub: "Key metrics: OpenRouter, OpenCode, Claude. Keys are written into the gateway config.",
+    providersSub: "Key metrics: OpenRouter, OpenCode, Claude, Antigravity. Keys are written into the gateway config.",
     openrouter: "OpenRouter", orKey: "OpenRouter key", totalCredits: "Purchased", spend: "Spent", remaining: "Remaining",
     keyLimit: "Key limit", keySpend: "Key usage", opencode: "OpenCode", ocKey: "OpenCode key (oc_sk_…)",
     ocHint: "After saving keys restart the gateway — opencode/* and openrouter/* models appear in the list.",
@@ -121,6 +129,14 @@ const DICT = {
     claudeHint: "OAuth — the Claude subscription (primary). API key — pay-as-you-go fallback: the gateway config gains the block only when the toggle is on and the key is non-empty.",
     claudeDisconnected: "Claude disconnected",
     confirmClaudeDisconnect: "Disconnect Claude? The account is removed from the gateway.",
+    antigravity: "Antigravity", antigravitySub: "Google account (Antigravity) via OAuth.",
+    antigravityConnect: "Connect", antigravityConnecting: "Waiting for confirmation…", antigravityCancel: "Cancel",
+    antigravityDisconnect: "Disconnect", antigravityConnected: "connected", antigravityNotConnected: "not connected",
+    antigravityLoginError: "Antigravity sign-in failed",
+    antigravityHint: "Sign in with the Antigravity Google account (OAuth only). No quota display — the API provides none.",
+    antigravityDisconnected: "Antigravity disconnected",
+    confirmAntigravityDisconnect: "Disconnect Antigravity? The account is removed from the gateway.",
+    projectId: "Project",
     settingsSub: "Language, gateway port, quota refresh interval.",
     language: "Language", quotaInterval: "Refresh quotas, sec", apply: "Apply", about: "About", version: "Version", platform: "Platform",
     donateSub: "Support Melon Tools — USDT (TRC20).",
@@ -164,6 +180,10 @@ const S = {
   claude: null,
   claudeLogin: null,
   lastClaudeUsageAt: 0,
+  antigravity: null,
+  antigravityLogin: null,
+  antigravityIds: null,
+  lastAntigravityAt: 0,
   info: null,
   checkResult: null,
   route: null,
@@ -243,6 +263,26 @@ function mock(cmd, args) {
     claude_usage: { connected: true, email: "demo@claude.invalid", plan: "Pro", fiveHourPercent: 72, fiveHourReset: new Date(Date.now() + 2.5 * 3600 * 1000).toISOString(), weeklyPercent: 41, weeklyReset: new Date(Date.now() + 3.2 * 86400 * 1000).toISOString(), modelCount: 3, updatedAt: new Date().toISOString(), error: null, status: "ok" },
     claude_refresh: { ok: true },
     claude_disconnect: { removed: 1, remaining: 0 },
+    antigravity_login_start: { url: "https://example.invalid/oauth/antigravity?state=ag-demo-state", state: "ag-demo-state" },
+    antigravity_login_status: { status: "wait" },
+    antigravity_login_cancel: { canceled: true },
+    antigravity_credentials: { credentials: [{ name: "antigravity-demo@gmail.invalid", type: "antigravity", email: "demo@gmail.invalid" }] },
+    antigravity_models: { models: [
+      { id: "claude-opus-4-6-thinking", displayName: "Claude Opus 4.6 Thinking" },
+      { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6" },
+      { id: "claude-opus-5-5-high", displayName: "Claude Opus 5.5 High" },
+      { id: "claude-sonnet-5-5-high", displayName: "Claude Sonnet 5.5 High" },
+      { id: "gemini-4-argon-high", displayName: "Gemini 4 Argon High" },
+      { id: "gemini-3.8-flash-high", displayName: "Gemini 3.8 Flash High" },
+      { id: "gemini-3-flash", displayName: "Gemini 3 Flash" },
+      { id: "gemini-3.1-flash-image", displayName: "Gemini 3.1 Flash Image" },
+      { id: "gpt-oss-120b-medium", displayName: "GPT-OSS 120B Medium" },
+      { id: "gemini-3.1-flash-lite", displayName: "Gemini 3.1 Flash Lite" },
+      { id: "gemini-3.5-flash-lite", displayName: "Gemini 3.5 Flash Lite" },
+    ], count: 11 },
+    antigravity_metrics: { connected: true, email: "demo@gmail.invalid", projectId: "melon-demo-project", modelCount: 11, updatedAt: new Date().toISOString(), error: null, status: "ok" },
+    antigravity_refresh: { ok: true },
+    antigravity_disconnect: { removed: 1, remaining: 0 },
     codex_route_status: { configPath: "C:\\Users\\you\\.codex\\config.toml", provider: "melon_local_access", ours: true, catalogExists: true, catalogPath: "C:\\Users\\you\\.codex\\melon-model-catalog.json" },
     codex_route_apply: { route: { provider: "melon_local_access", ours: true, catalogExists: true }, catalogCustom: 32 },
     codex_route_remove: { provider: null, ours: false, catalogExists: true },
@@ -411,6 +451,11 @@ function render() {
   if (S.section === "providers" && !S.models) A.modelsLoad();
   if (S.section === "providers" && IS_TAURI && !S.claude && !S.claudeLogin) {
     A.claudeUsageLoad().then(() => {
+      if (S.section === "providers") render();
+    }).catch(() => {});
+  }
+  if (S.section === "providers" && IS_TAURI && !S.antigravity && !S.antigravityLogin) {
+    A.antigravityUsageLoad().then(() => {
       if (S.section === "providers") render();
     }).catch(() => {});
   }
@@ -820,6 +865,38 @@ function claudeCard(settings) {
   </div>`;
 }
 
+function antigravityCard() {
+  const u = S.antigravity;
+  const login = S.antigravityLogin;
+  const connected = !!(u && u.connected);
+  const pillClass = login ? "warn" : connected ? "ok" : u && u.error ? "danger" : "";
+  const pillText = login ? t("antigravityConnecting") : connected ? t("antigravityConnected") : u && u.error ? t("error") : t("antigravityNotConnected");
+  const actions = login
+    ? `<button class="btn small" disabled>${t("antigravityConnecting")}</button>
+       <button class="ghost small" onclick="A.antigravityCancel()">${t("antigravityCancel")}</button>`
+    : `${connected ? "" : `<button class="btn small" onclick="A.antigravityConnect()" ${S.busy.antigravityConnect ? "disabled" : ""}>${t("antigravityConnect")}</button>`}
+       <button class="ghost small" onclick="A.antigravityRefresh()" ${S.busy.antigravityUsage ? "disabled" : ""}>${t("refresh")}</button>
+       ${connected ? `<button class="ghost small" onclick="A.antigravityDisconnect()" ${S.busy.antigravityDisconnect ? "disabled" : ""}>${t("antigravityDisconnect")}</button>` : ""}`;
+
+  // No quota tiles: the engine exposes no Antigravity quota API, and the spec
+  // forbids fabricating percentages (AC8).
+  return `
+  <div class="card">
+    <h2>${t("antigravity")} <span class="pill ${pillClass}">${pillText}</span></h2>
+    <div class="stack">
+      <div class="row">
+        <span class="muted">${esc((u && u.email) || "—")}</span>
+        ${u && u.projectId ? `<span class="pill gold">${t("projectId")}: ${esc(u.projectId)}</span>` : ""}
+        <span class="pill">${t("models")}: ${u && u.modelCount !== null && u.modelCount !== undefined ? u.modelCount : "—"}</span>
+      </div>
+      ${u && u.error ? `<div class="footnote">${esc(u.error)}</div>` : ""}
+      ${u && u.updatedAt ? `<div class="footnote">${t("quotaAge")}: ${esc(claudeAgeText(u.updatedAt))}</div>` : ""}
+      <div class="row">${actions}</div>
+      <div class="footnote">${t("antigravityHint")}</div>
+    </div>
+  </div>`;
+}
+
 function providersPage() {
   const settings = S.settings || {};
   const p = S.providers;
@@ -880,6 +957,8 @@ function providersPage() {
 
   ${claudeCard(settings)}
 
+  ${antigravityCard()}
+
   <div class="card">
     <h2>${t("models")} <span class="hint">${filtered.length} ${t("modelsCount")}</span></h2>
     <div class="row">
@@ -889,7 +968,11 @@ function providersPage() {
     <div style="max-height:420px;overflow:auto;margin-top:10px">
       ${filtered.slice(0, 400).map((m) => {
         const id = String(m.id || "");
-        const provider = id.startsWith("opencode/") ? "OpenCode" : id.startsWith("openrouter/") ? "OpenRouter" : id.startsWith("claude-") ? "Claude" : "OpenAI";
+        // Antigravity membership wins over the claude- prefix: it serves
+        // claude-*/gemini-*/gpt-oss ids, so prefix alone would mislabel them.
+        const provider = S.antigravityIds && S.antigravityIds.has(id)
+          ? "Antigravity"
+          : id.startsWith("opencode/") ? "OpenCode" : id.startsWith("openrouter/") ? "OpenRouter" : id.startsWith("claude-") ? "Claude" : "OpenAI";
         return `<div class="row" style="padding:3px 0;gap:8px">
           <span class="pill ${provider === "OpenAI" ? "gold" : ""}">${provider}</span>
           <span class="mono" style="font-size:11px">${esc(id)}</span>
@@ -1395,6 +1478,80 @@ const A = {
     });
   },
 
+  antigravityUsageLoad() {
+    S.lastAntigravityAt = Date.now();
+    return inv("antigravity_metrics").then((metrics) => {
+      S.antigravity = metrics;
+    });
+  },
+
+  antigravityRefresh() {
+    run("antigravityUsage", async () => {
+      await A.antigravityUsageLoad();
+    });
+  },
+
+  antigravityConnect() {
+    run("antigravityConnect", async () => {
+      const session = await inv("antigravity_login_start");
+      if (!session || !session.url || !session.state) throw new Error(t("antigravityLoginError"));
+      S.antigravityLogin = { state: session.state, done: false };
+      render();
+      inv("open_url", { url: session.url }).catch(() => {});
+      clearInterval(A._antigravityTimer);
+      A._antigravityTimer = setInterval(async () => {
+        if (!S.antigravityLogin) {
+          clearInterval(A._antigravityTimer);
+          return;
+        }
+        try {
+          const result = await inv("antigravity_login_status", { stateToken: S.antigravityLogin.state });
+          if (!S.antigravityLogin) return;
+          if (result.status === "ok") {
+            clearInterval(A._antigravityTimer);
+            S.antigravityLogin = null;
+            toast(t("done"));
+            await A.antigravityUsageLoad().catch(() => {});
+            A.modelsLoad();
+          } else if (result.status === "error") {
+            clearInterval(A._antigravityTimer);
+            S.antigravityLogin = null;
+            toast(t("antigravityLoginError"), true);
+          }
+          render();
+        } catch (error) {
+          clearInterval(A._antigravityTimer);
+          S.antigravityLogin = null;
+          toast(String(error), true);
+          render();
+        }
+      }, 2000);
+    });
+  },
+
+  antigravityCancel() {
+    const login = S.antigravityLogin;
+    if (!login) return;
+    clearInterval(A._antigravityTimer);
+    S.antigravityLogin = null;
+    render();
+    inv("antigravity_login_cancel", { stateToken: login.state }).catch(() => {});
+  },
+
+  antigravityDisconnect() {
+    // Destructive: the engine-written auth files are deleted, so the account
+    // must be reconnected. Same confirmation pattern as Claude.
+    if (!window.confirm(t("confirmAntigravityDisconnect"))) return;
+    run("antigravityDisconnect", async () => {
+      const result = await inv("antigravity_disconnect");
+      S.antigravity = null;
+      S.lastAntigravityAt = 0;
+      toast(`${t("antigravityDisconnected")} (${(result && result.removed) || 0})`);
+      await A.antigravityUsageLoad().catch(() => {});
+      A.modelsLoad();
+    });
+  },
+
   applySettings() {
     run("settings", async () => {
       const lang = document.getElementById("set-lang").value;
@@ -1496,6 +1653,21 @@ const A = {
         }
       } catch (error) {
         // Gateway down or no Claude account — the base list stays valid.
+      }
+      // Antigravity ids drive the row tag by membership (not by prefix), since
+      // it overlaps the claude-*/gemini-*/gpt-oss id space.
+      try {
+        const ag = await inv("antigravity_models");
+        const seenAg = new Set(models.map((m) => String(m.id)));
+        const ids = new Set();
+        for (const model of (ag && ag.models) || []) {
+          const id = String(model.id);
+          ids.add(id);
+          if (!seenAg.has(id)) models.push({ id, owned_by: "antigravity" });
+        }
+        S.antigravityIds = ids;
+      } catch (error) {
+        // Gateway down or no Antigravity account — the base list stays valid.
       }
       S.models = models;
     });
@@ -1705,6 +1877,14 @@ window.A = A;
     if (claudeDue && !S.claudeLogin && (S.claude ? S.claude.connected : !!(S.settings && S.settings.claudeEnabled))) {
       A.claudeUsageLoad().then(() => {
         if (S.section === "providers" && !S.claudeLogin) render();
+      }).catch(() => {});
+    }
+    // Antigravity metrics: same ≥180 s cadence. Polling is harmless when the
+    // engine exposes nothing (connected:false), so no settings gate.
+    const agDue = now - (S.lastAntigravityAt || 0) >= Math.max(180000, interval);
+    if (agDue && !S.antigravityLogin) {
+      A.antigravityUsageLoad().then(() => {
+        if (S.section === "providers" && !S.antigravityLogin) render();
       }).catch(() => {});
     }
   }, 30000);

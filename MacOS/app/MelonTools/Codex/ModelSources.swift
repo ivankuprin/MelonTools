@@ -14,6 +14,9 @@ struct ModelSource: Identifiable, Codable, Equatable {
         /// Anthropic Claude: served from the engine OAuth account by default
         /// (no key); `apiKey` holds the optional API-key fallback.
         case claude
+        /// Google Antigravity: OAuth-only (no key, no gateway config block);
+        /// the engine serves the models from its own auth file.
+        case antigravity
     }
 
     var id: String
@@ -43,6 +46,26 @@ struct SourceModel: Identifiable, Codable, Equatable {
     var cacheReadPerToken: Double?
     /// OpenCode: the model is served by the Go subscription endpoints.
     var goTier: Bool?
+}
+
+/// Registry ids served by Antigravity (CLIProxyAPI `models.json`). Used in two
+/// places: as the Antigravity allowlist when `/v1/models` omits ownership, and
+/// as the subtraction set for the Claude loader. Top-level (not actor-bound)
+/// so the ownership predicates stay `nonisolated` and testable.
+enum AntigravityModelRegistry {
+    static let ids: Set<String> = [
+        "claude-opus-4-6-thinking",
+        "claude-sonnet-4-6",
+        "claude-opus-5-5-high",
+        "claude-sonnet-5-5-high",
+        "gemini-4-argon-high",
+        "gemini-3.8-flash-high",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gpt-oss-120b-medium",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+    ]
 }
 
 /// Model sources: OpenRouter and OpenCode, both key-based. Persists user
@@ -166,6 +189,8 @@ final class ModelSourcesStore: ObservableObject {
     var openCodeSource: ModelSource? { sources.first { $0.id == "opencode" } }
 
     var claudeSource: ModelSource? { sources.first { $0.id == "claude" } }
+
+    var antigravitySource: ModelSource? { sources.first { $0.id == "antigravity" } }
 
     func source(id: String) -> ModelSource? { sources.first { $0.id == id } }
 
@@ -322,6 +347,9 @@ final class ModelSourcesStore: ObservableObject {
             let id: String
             let name: String?
             let context_length: Int?
+            /// `/v1/models` (OpenAI shape) exposes the serving provider here.
+            /// OpenRouter/OpenCode omit it, so it stays optional.
+            let owned_by: String?
             let pricing: Pricing?
         }
         let data: [Entry]
@@ -487,7 +515,14 @@ final class ModelSourcesStore: ObservableObject {
                 key: gateway.apiKey,
                 userAgent: "MelonTools/1.4"
             )
-            let claudeEntries = entries.filter { $0.id.hasPrefix("claude-") }
+            // Antigravity serves some of the same `claude-*` ids through its
+            // Google account. Ownership decides the provider: an
+            // `owned_by: "antigravity"` entry must not be claimed by the
+            // Anthropic-key/OAuth source. When the engine omits ownership,
+            // subtract the Antigravity registry ids instead.
+            let claudeEntries = entries.filter {
+                Self.isClaudeModel(id: $0.id, owner: $0.owned_by)
+            }
             guard !claudeEntries.isEmpty else {
                 note = L("No Claude models — connect an account first.")
                 return
@@ -520,6 +555,85 @@ final class ModelSourcesStore: ObservableObject {
             title: "Claude",
             baseURL: Self.claudeBaseURL,
             apiKey: claudeKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            enabled: existing?.enabled ?? true,
+            models: models
+        ))
+        save()
+    }
+
+    // MARK: - Antigravity (engine account, OAuth only)
+
+    /// `/v1/models` carries the serving provider as `owned_by`. Antigravity
+    /// entries say `"antigravity"`; Claude entries say `"anthropic"`. Only
+    /// fall back to the registry id allowlist when ownership is absent.
+    nonisolated static func isAntigravityModel(id: String, owner: String?) -> Bool {
+        if let owner, !owner.isEmpty {
+            return owner.caseInsensitiveCompare("antigravity") == .orderedSame
+        }
+        return AntigravityModelRegistry.ids.contains(id)
+    }
+
+    /// The Claude source claims raw `claude-*` ids, but not the ones the
+    /// engine serves through Antigravity.
+    nonisolated static func isClaudeModel(id: String, owner: String?) -> Bool {
+        guard id.hasPrefix("claude-") else { return false }
+        return !isAntigravityModel(id: id, owner: owner)
+    }
+
+    /// Loads the Antigravity model list from the running engine
+    /// (`GET /v1/models`), filtered by ownership rather than id prefixes —
+    /// Antigravity serves `claude-*` and `gemini-*` ids that overlap other
+    /// providers. The OAuth auth file is enough; no key is involved.
+    func loadAntigravityModels() async {
+        guard !isBusy else { return }
+        let gateway = CodexGatewayService.shared
+        guard gateway.isRunning else {
+            note = L("Start the service to load the Antigravity model list.")
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let entries = try await fetchModels(
+                url: gateway.baseURL + "/v1/models",
+                key: gateway.apiKey,
+                userAgent: "MelonTools/1.4"
+            )
+            let owned = entries.filter {
+                Self.isAntigravityModel(id: $0.id, owner: $0.owned_by)
+            }
+            guard !owned.isEmpty else {
+                note = L("No Antigravity models — connect an account first.")
+                return
+            }
+            mergeAntigravity(entries: owned)
+            note = String(format: L("Antigravity: %d models"), owned.count)
+        } catch {
+            note = L("The service did not answer the model list.")
+        }
+    }
+
+    private func mergeAntigravity(entries: [ModelList.Entry]) {
+        let existing = antigravitySource
+        var enabledById: [String: Bool] = [:]
+        for model in existing?.models ?? [] { enabledById[model.id] = model.enabled }
+        let models = entries
+            .map { entry in
+                SourceModel(
+                    id: entry.id,
+                    display: entry.name ?? Self.prettyName(entry.id),
+                    contextLength: entry.context_length,
+                    enabled: enabledById[entry.id] ?? false,
+                    alias: entry.id
+                )
+            }
+            .sorted { $0.id.lowercased() < $1.id.lowercased() }
+        replace(ModelSource(
+            id: "antigravity",
+            kind: .antigravity,
+            title: "Antigravity",
+            baseURL: "",
+            apiKey: "",
             enabled: existing?.enabled ?? true,
             models: models
         ))
@@ -570,12 +684,18 @@ final class ModelSourcesStore: ObservableObject {
     /// fallback rides `claude` — inside the SAME top-level `api-keys:` root
     /// (a second root would break the config). A Claude OAuth source carries
     /// no key and emits nothing: the engine serves it from its own account.
+    /// Antigravity is OAuth-only and likewise emits nothing.
     nonisolated static func gatewayYAML(sources: [ModelSource]) -> String {
         var compatBlocks: [String] = []
         var claudeBlocks: [String] = []
         for source in sources where source.enabled {
             let selected = source.selectedModels
             guard !selected.isEmpty else { continue }
+            if source.kind == .antigravity {
+                // OAuth-only: the engine serves the models from its Google
+                // account, so there is nothing to put into `api-keys`.
+                continue
+            }
             if source.kind == .claude {
                 // Only the explicit API-key fallback needs a config block.
                 let key = source.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -1,36 +1,27 @@
-# Melon Tools 1.5.0
+# Melon Tools 1.6.0
 
-- **Claude provider.** Connect a Claude Pro/Max subscription via OAuth or an
-  Anthropic console API key; selected Claude models appear in the Codex picker
-  (priority band 300) and route through the local gateway engine (CLIProxyAPI v8).
-- **Claude bento card.** Providers page shows connection state, account email,
-  plan, 5-hour/weekly quota windows with reset times, and the model count;
-  unavailable data renders as «—».
-- **Auth-sync fix (both platforms).** Account sync no longer wipes non-Codex
-  auth files, so Claude logins survive pool refreshes; disconnect is confirmed.
-- **Windows engine rebuilt** from the pinned CLIProxyAPI commit, so the shipped
-  engine binary provably contains the Claude and management-API code paths.
-- **In-app updates (both platforms).** The updater accepts GitHub's `release-assets.githubusercontent.com` download host, so update checks and downloads keep working after GitHub moved release traffic to its CDN; lookalike hosts and plain HTTP stay rejected.
+- **Antigravity provider.** Connect a Google account via OAuth and use the
+  Antigravity models (Gemini 4/3.x, GPT-OSS 120B and Antigravity-hosted Claude
+  variants) through the local gateway and the Codex model picker.
+- **Ownership-aware provider lists.** Models are attributed by the engine's
+  `owned_by` field, so shared ids (for example `claude-sonnet-4-6`) no longer
+  appear under the wrong provider.
+- **Claude/Codex/OpenCode/OpenRouter unchanged.** Antigravity is an additional
+  provider; no quota percentages are shown because the engine has no
+  Antigravity quota API.
 
 ## Downloads
 
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.5.0.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.5.0-win-x64.exe) — WebView2 Runtime required.
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.0.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.0-win-x64.exe) — WebView2 Runtime required.
 
 Both files include SHA-256 checksum assets on the release page.
 
-## Screenshots
-
-**Providers - model management**
-
-![Melon Tools providers](https://raw.githubusercontent.com/ivankuprin/MelonTools/main/assets/screenshots/melontools-models.jpg)
-
-**Inside Codex - model picker**
-
-![Melon Tools in Codex](https://raw.githubusercontent.com/ivankuprin/MelonTools/main/assets/screenshots/codex-model-picker.jpg)
-
 ## Earlier fixes
 
+- **1.5.0:** Claude provider (OAuth subscription + API-key fallback), Claude
+  bento card with 5-hour/weekly quota, auth-sync fix on both platforms, fixed
+  updater redirect allowlist, Windows engine rebuilt from the pinned commit.
 - **1.4.8:** In-app updates on both platforms (verified SHA-256, HTTPS-only, daily
   auto-check); reduced idle work and hardened scheduler timing across both apps;
   quota refresh responds to gateway activity; remembered scroll positions and

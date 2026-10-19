@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		03A1C09B1E98D9A166E66227 /* MTTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768560461E883B63C28E2ACB /* MTTheme.swift */; };
 		03FC5B6822365989AC52940B /* FleetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 193627B15B3B192C3BB8F5CC /* FleetStore.swift */; };
+		06E6BC70649ECDFABF6C0745 /* AntigravityAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 126A58DE87AE4967867A4491 /* AntigravityAuthService.swift */; };
 		0A6FD711E033E51224DD1A5E /* ClaudeAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F826140BEDB6A5D7ABAE63A /* ClaudeAuthTests.swift */; };
 		0C6967B388B7D4D4B1EA679A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55304F692A547242AA3220F1 /* AppState.swift */; };
 		0F0595D5C7E965925BD74D23 /* FleetCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F99FF2A97781BC7B3F32E409 /* FleetCallView.swift */; };
@@ -22,6 +23,7 @@
 		32835AA10325DA17578976BA /* composer-chips.js in Resources */ = {isa = PBXBuildFile; fileRef = B5D5481EBF3A71A36794564E /* composer-chips.js */; };
 		354D55EF6C9BD92B2C75635B /* CodexConfigRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18DB835AB1985DF1F56805B6 /* CodexConfigRoute.swift */; };
 		3DEFB14E9053148102B0EFDE /* CodexStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0ED55431DF119F7A8C5174 /* CodexStore.swift */; };
+		3EC5FC54DCC7A79071678844 /* AntigravityAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94A12DE6C0489C0163639BCE /* AntigravityAuthTests.swift */; };
 		4BC7623A3A5BCA4E228E4392 /* CodexInstancesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44B4ECC496C0A6AE2F7D50CE /* CodexInstancesView.swift */; };
 		4DE9BB4AB391848035938DF9 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DD5F2D4313079608CA034CD /* MainView.swift */; };
 		52D4C99653D19EE1DBB6B831 /* CodexRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C69B678951C7A01AABD656 /* CodexRouting.swift */; };
@@ -75,6 +77,7 @@
 /* Begin PBXFileReference section */
 		0743C522162285FF400C341E /* ProviderUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsage.swift; sourceTree = "<group>"; };
 		09A2F2F1B47F5293A84E8487 /* MelonToolsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MelonToolsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		126A58DE87AE4967867A4491 /* AntigravityAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityAuthService.swift; sourceTree = "<group>"; };
 		1856BB31708AE81A955A3E73 /* FleetCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetCLI.swift; sourceTree = "<group>"; };
 		18DB835AB1985DF1F56805B6 /* CodexConfigRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexConfigRoute.swift; sourceTree = "<group>"; };
 		193627B15B3B192C3BB8F5CC /* FleetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetStore.swift; sourceTree = "<group>"; };
@@ -103,6 +106,7 @@
 		85E9D428E6D0E235634C1C06 /* FleetDoctorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDoctorView.swift; sourceTree = "<group>"; };
 		8C7DE7781BC232D89855C509 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8D186C2A1693BC0D3B187FF3 /* CodexControlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexControlCard.swift; sourceTree = "<group>"; };
+		94A12DE6C0489C0163639BCE /* AntigravityAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityAuthTests.swift; sourceTree = "<group>"; };
 		97F88F7B7E31A85B8444101A /* FleetResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetResultsView.swift; sourceTree = "<group>"; };
 		9E4F7622B54B974672276242 /* SecureFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureFile.swift; sourceTree = "<group>"; };
 		9FBBAD5E1C94E01916E33918 /* BaseModelCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BaseModelCatalog.json; sourceTree = "<group>"; };
@@ -180,6 +184,7 @@
 		41D4C8A6D10B2C8A78104230 /* Codex */ = {
 			isa = PBXGroup;
 			children = (
+				126A58DE87AE4967867A4491 /* AntigravityAuthService.swift */,
 				65CC3D84764010FEBA404100 /* CDPSession.swift */,
 				A63C34F0C33E0120C3357320 /* ClaudeAuthService.swift */,
 				18DB835AB1985DF1F56805B6 /* CodexConfigRoute.swift */,
@@ -249,6 +254,7 @@
 		AE3B397D629299245A5F8C28 /* MelonToolsTests */ = {
 			isa = PBXGroup;
 			children = (
+				94A12DE6C0489C0163639BCE /* AntigravityAuthTests.swift */,
 				2F826140BEDB6A5D7ABAE63A /* ClaudeAuthTests.swift */,
 				3AEA90D89352DD60C34910A8 /* CodexAuthFileTests.swift */,
 				47529E0DB527DA9405074E30 /* CodexModelCatalogTests.swift */,
@@ -398,6 +404,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3EC5FC54DCC7A79071678844 /* AntigravityAuthTests.swift in Sources */,
 				0A6FD711E033E51224DD1A5E /* ClaudeAuthTests.swift in Sources */,
 				FD1B231CB13438110C05CB2B /* CodexAuthFileTests.swift in Sources */,
 				5F0462D21FD58B3E437252E6 /* CodexModelCatalogTests.swift in Sources */,
@@ -410,6 +417,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				06E6BC70649ECDFABF6C0745 /* AntigravityAuthService.swift in Sources */,
 				0C6967B388B7D4D4B1EA679A /* AppState.swift in Sources */,
 				E7B641E90F70BD1A91F3F232 /* CDPSession.swift in Sources */,
 				A5B3029C23DB0CB85B948FC6 /* ClaudeAuthService.swift in Sources */,
@@ -647,7 +655,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.5.0;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.app;
 				SDKROOT = macosx;
 			};
@@ -665,7 +673,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.5.0;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.app;
 				SDKROOT = macosx;
 			};

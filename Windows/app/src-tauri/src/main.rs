@@ -4,6 +4,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod antigravity;
 mod bridge;
 mod claude;
 mod codex_route;
@@ -691,11 +692,12 @@ async fn claude_credentials(state: State<'_, AppState>) -> Result<Value, String>
     management(&state)?.credentials().await
 }
 
-/// Claude model ids served by the running gateway (`/v1/models`).
+/// Claude model ids served by the running gateway (`/v1/models`), with
+/// Antigravity-owned ids removed.
 #[tauri::command]
 async fn claude_models(state: State<'_, AppState>) -> Result<Value, String> {
     let settings = state.settings();
-    claude::models(settings.port, &settings.api_key).await
+    antigravity::claude_models_without_antigravity(settings.port, &settings.api_key).await
 }
 
 /// Account status + quota windows for the Claude card.
@@ -722,6 +724,77 @@ async fn claude_disconnect() -> Result<Value, String> {
         }
     }
     Ok(json!({ "removed": removed, "remaining": claude::auth_files().len() }))
+}
+
+// MARK: - Antigravity provider (engine management API)
+
+fn antigravity_management(state: &State<'_, AppState>) -> Result<antigravity::Management, String> {
+    let settings = state.settings();
+    antigravity::Management::new(&settings)
+}
+
+/// Starts the engine-managed Google OAuth login: returns the authorization URL
+/// (the UI opens it through `open_url`) and the state token used for polling.
+#[tauri::command]
+async fn antigravity_login_start(state: State<'_, AppState>) -> Result<Value, String> {
+    antigravity_management(&state)?.login_start().await
+}
+
+#[tauri::command]
+async fn antigravity_login_status(
+    state: State<'_, AppState>,
+    state_token: String,
+) -> Result<Value, String> {
+    antigravity_management(&state)?.login_status(&state_token).await
+}
+
+#[tauri::command]
+async fn antigravity_login_cancel(
+    state: State<'_, AppState>,
+    state_token: String,
+) -> Result<Value, String> {
+    antigravity_management(&state)?.login_cancel(&state_token).await
+}
+
+/// Antigravity credential entries written by the engine.
+#[tauri::command]
+async fn antigravity_credentials(state: State<'_, AppState>) -> Result<Value, String> {
+    antigravity_management(&state)?.credentials().await
+}
+
+/// Antigravity model ids served by the running gateway (`/v1/models`).
+#[tauri::command]
+async fn antigravity_models(state: State<'_, AppState>) -> Result<Value, String> {
+    let settings = state.settings();
+    antigravity::models(settings.port, &settings.api_key).await
+}
+
+/// Account identity + model count for the Antigravity card. No quota values:
+/// the engine exposes no Antigravity quota endpoint.
+#[tauri::command]
+async fn antigravity_metrics(state: State<'_, AppState>) -> Result<Value, String> {
+    let settings = state.settings();
+    providers::antigravity(&settings).await
+}
+
+/// Refreshes one credential (`name`) or all of them. Failures come back as
+/// `{ "ok": false }` instead of an error.
+#[tauri::command]
+async fn antigravity_refresh(
+    state: State<'_, AppState>,
+    name: Option<String>,
+) -> Result<Value, String> {
+    Ok(antigravity_management(&state)?
+        .refresh(name.as_deref())
+        .await)
+}
+
+/// Disconnects every Antigravity account: removes only the engine-written
+/// `antigravity*.json` auth files and reports what is left.
+#[tauri::command]
+async fn antigravity_disconnect() -> Result<Value, String> {
+    let (removed, remaining) = antigravity::disconnect_in(&paths::auths_dir());
+    Ok(json!({ "removed": removed, "remaining": remaining }))
 }
 
 /// Opens an http(s) URL in the default browser (device login page).
@@ -951,6 +1024,14 @@ fn main() {
             claude_usage,
             claude_refresh,
             claude_disconnect,
+            antigravity_login_start,
+            antigravity_login_status,
+            antigravity_login_cancel,
+            antigravity_credentials,
+            antigravity_models,
+            antigravity_metrics,
+            antigravity_refresh,
+            antigravity_disconnect,
             open_url,
         ])
         .run(tauri::generate_context!())

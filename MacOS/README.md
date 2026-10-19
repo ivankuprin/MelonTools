@@ -17,6 +17,17 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## What's new in 1.6.0 «Antigravity»
+
+- **Google Antigravity joins the Providers page.** Connect a Google account via
+  OAuth (engine-native, same pattern as Claude); the account email and project
+  id land on the card, and the Antigravity models appear in the Codex picker.
+- **Ownership-aware models.** Antigravity serves Gemini, GPT-OSS and even
+  Claude-family ids; the model lists now separate them by the engine's
+  `owned_by` field, so Claude and Antigravity never claim each other's models.
+- **No invented quota.** The engine exposes no Antigravity quota API, so the card
+  shows connection state, account, project and model count only.
+
 ## What's new in 1.5.0 «Claude provider»
 
 - **Claude joins the Providers page.** Connect a Claude Pro/Max subscription with

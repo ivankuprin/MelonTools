@@ -3,6 +3,7 @@
 
 use serde_json::{json, Value};
 
+use crate::antigravity;
 use crate::claude;
 use crate::settings::Settings;
 
@@ -64,7 +65,7 @@ pub async fn openrouter(key: &str) -> Result<Value, String> {
 /// serves. Without an auth file the account is not connected; without a usage
 /// answer every number stays `null` ("—") — nothing is fabricated.
 pub async fn claude(settings: &Settings) -> Result<Value, String> {
-    let model_count = claude::models(settings.port, &settings.api_key)
+    let model_count = antigravity::claude_models_without_antigravity(settings.port, &settings.api_key)
         .await
         .ok()
         .and_then(|value| value.get("count").and_then(|c| c.as_u64()))
@@ -106,9 +107,50 @@ pub fn claude_metrics(
     })
 }
 
+/// Antigravity metrics for the Providers page: connection status, account
+/// identity (email, Google project id) and the model count. There is no
+/// Antigravity quota endpoint, so no percentages are reported.
+pub async fn antigravity(settings: &Settings) -> Result<Value, String> {
+    let model_count = antigravity::models(settings.port, &settings.api_key)
+        .await
+        .ok()
+        .and_then(|value| value.get("count").and_then(|c| c.as_u64()))
+        .unwrap_or(0) as usize;
+    let Some(file) = antigravity::newest_auth_file() else {
+        return Ok(antigravity_metrics(false, None, None, model_count, None));
+    };
+    Ok(antigravity_metrics(
+        true,
+        file.email.clone(),
+        file.project_id.clone(),
+        model_count,
+        None,
+    ))
+}
+
+/// Assembles the Antigravity metrics object. Pure, so the nil-tolerance is
+/// testable without a gateway.
+pub fn antigravity_metrics(
+    connected: bool,
+    email: Option<String>,
+    project_id: Option<String>,
+    model_count: usize,
+    error: Option<String>,
+) -> Value {
+    json!({
+        "connected": connected,
+        "email": email,
+        "projectId": project_id,
+        "modelCount": model_count,
+        "updatedAt": connected.then(|| chrono::Utc::now().to_rfc3339()),
+        "error": error,
+        "status": "ok",
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::claude_metrics;
+    use super::{antigravity_metrics, claude_metrics};
     use crate::claude::UsageSnapshot;
 
     #[test]
@@ -153,5 +195,48 @@ mod tests {
         let failing = claude_metrics(true, None, None, 0, Some("нет связи".to_string()));
         assert_eq!(failing["error"], "нет связи");
         assert_eq!(failing["updatedAt"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn antigravity_metrics_without_account_stays_empty() {
+        let value = antigravity_metrics(false, None, None, 0, None);
+        assert_eq!(value["connected"], false);
+        assert_eq!(value["email"], serde_json::Value::Null);
+        assert_eq!(value["projectId"], serde_json::Value::Null);
+        assert_eq!(value["modelCount"], 0);
+        assert_eq!(value["updatedAt"], serde_json::Value::Null);
+        assert_eq!(value["error"], serde_json::Value::Null);
+        assert_eq!(value["status"], "ok");
+        // No quota keys: Antigravity exposes no quota endpoint.
+        assert!(value.get("fiveHourPercent").is_none());
+        assert!(value.get("weeklyPercent").is_none());
+        assert!(value.get("plan").is_none());
+    }
+
+    #[test]
+    fn antigravity_metrics_carry_identity_and_model_count() {
+        let value = antigravity_metrics(
+            true,
+            Some("user@example.com".to_string()),
+            Some("project-123".to_string()),
+            11,
+            None,
+        );
+        assert_eq!(value["connected"], true);
+        assert_eq!(value["email"], "user@example.com");
+        assert_eq!(value["projectId"], "project-123");
+        assert_eq!(value["modelCount"], 11);
+        assert!(value["updatedAt"].as_str().is_some());
+
+        let failing = antigravity_metrics(
+            true,
+            None,
+            None,
+            0,
+            Some("нет связи".to_string()),
+        );
+        assert_eq!(failing["error"], "нет связи");
+        assert_eq!(failing["email"], serde_json::Value::Null);
+        assert_eq!(failing["projectId"], serde_json::Value::Null);
     }
 }

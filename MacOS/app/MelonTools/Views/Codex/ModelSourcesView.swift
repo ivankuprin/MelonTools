@@ -11,17 +11,20 @@ struct CodexProvidersView: View {
     @ObservedObject private var store = CodexStore.shared
     @ObservedObject private var usage = ProviderUsageStore.shared
     @ObservedObject private var claudeAuth = ClaudeAuthService.shared
+    @ObservedObject private var antigravityAuth = AntigravityAuthService.shared
     @Binding var selection: MTSection
 
     @State private var route: ProviderRoute?
     @State private var searches: [String: String] = [:]
     @State private var confirmClaudeDisconnect = false
+    @State private var confirmAntigravityDisconnect = false
 
     /// Sub-pages of the provider board.
     enum ProviderRoute: String, Identifiable {
         case openRouter
         case openCode
         case claude
+        case antigravity
 
         var id: String { rawValue }
 
@@ -30,6 +33,7 @@ struct CodexProvidersView: View {
             case .openRouter: return "OpenRouter"
             case .openCode: return "OpenCode"
             case .claude: return "Claude"
+            case .antigravity: return "Antigravity"
             }
         }
 
@@ -38,6 +42,7 @@ struct CodexProvidersView: View {
             case .openRouter: return "point.3.connected.trianglepath.dotted"
             case .openCode: return "chevron.left.forwardslash.chevron.right"
             case .claude: return "sparkles"
+            case .antigravity: return "globe.americas"
             }
         }
     }
@@ -54,7 +59,10 @@ struct CodexProvidersView: View {
                         openCodeCard
                     }
                     openRouterCard
-                    claudeCard
+                    HStack(alignment: .top, spacing: MTTheme.s4) {
+                        claudeCard
+                        antigravityCard
+                    }
                     applyCard
                 }
             }
@@ -328,6 +336,117 @@ struct CodexProvidersView: View {
         }
     }
 
+    // MARK: - Board: Antigravity
+
+    private var antigravityCard: some View {
+        let stats = usage.antigravity
+        let connected = stats?.connected == true
+        return MTCard(title: "Antigravity", systemImage: ProviderRoute.antigravity.systemImage) {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                HStack(spacing: MTTheme.s2) {
+                    MTStatusPill(text: connected ? L("Connected") : L("Not connected"), status: connected ? .ok : .idle)
+                    Spacer(minLength: MTTheme.s2)
+                    if let updated = stats?.updatedAt {
+                        Text(L("Updated") + " " + Self.timeFormatter.string(from: updated))
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.textTertiary)
+                    }
+                }
+                keyValueRow(L("Account"), stats?.email ?? "—")
+                keyValueRow(L("Project"), stats?.projectID ?? "—")
+                if let stats {
+                    HStack(alignment: .top, spacing: MTTheme.s3) {
+                        MTMetricTile(
+                            title: L("Models"),
+                            value: "\(stats.modelCount)",
+                            caption: L("Selected for Codex")
+                        )
+                    }
+                    if let error = stats.error {
+                        Text(error)
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.danger)
+                    }
+                } else {
+                    Text(L("Connect your Google account to use Antigravity models."))
+                        .font(MTTheme.mono(10))
+                        .foregroundStyle(MTTheme.textSecondary)
+                }
+                sessionLine(provider: "Antigravity")
+                Text(L("Google account login; no API key is needed."))
+                    .font(MTTheme.mono(9))
+                    .foregroundStyle(MTTheme.textTertiary)
+                HStack(spacing: MTTheme.s3) {
+                    if connected {
+                        MTSecondaryButton(title: L("Refresh"), systemImage: "arrow.clockwise") {
+                            Task {
+                                _ = await antigravityAuth.refreshCredential()
+                                await usage.refreshAntigravityNow()
+                            }
+                        }
+                        MTSecondaryButton(title: L("Disconnect"), systemImage: "xmark.circle") {
+                            confirmAntigravityDisconnect = true
+                        }
+                        MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
+                            route = .antigravity
+                        }
+                    } else {
+                        switch antigravityAuth.login {
+                        case .starting, .waiting:
+                            ProgressView().controlSize(.small)
+                            Text(L("Waiting for the browser…"))
+                                .font(MTTheme.mono(10))
+                                .foregroundStyle(MTTheme.textSecondary)
+                            MTSecondaryButton(title: L("Cancel login"), systemImage: "xmark") {
+                                Task { await antigravityAuth.cancelLogin() }
+                            }
+                        case .failed(let message):
+                            Text(message)
+                                .font(MTTheme.mono(10))
+                                .foregroundStyle(MTTheme.danger)
+                            connectAntigravityButton
+                            MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
+                                route = .antigravity
+                            }
+                        default:
+                            connectAntigravityButton
+                            MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
+                                route = .antigravity
+                            }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .confirmationDialog(L("Disconnect this Antigravity account?"), isPresented: $confirmAntigravityDisconnect, titleVisibility: .visible) {
+            Button(L("Disconnect"), role: .destructive) {
+                disconnectAntigravity()
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: {
+            Text(usage.antigravity?.email ?? "")
+        }
+    }
+
+    private var connectAntigravityButton: some View {
+        MTPrimaryButton(title: L("Connect Antigravity"), systemImage: "link", isLoading: antigravityAuth.login.isBusy) {
+            Task { await antigravityAuth.startLogin() }
+        }
+    }
+
+    /// Disconnect removes only the Antigravity auth files. The selected models
+    /// are cleared and the catalog regenerated so the picker drops the entries
+    /// until the account is connected again.
+    private func disconnectAntigravity() {
+        antigravityAuth.disconnect()
+        sources.setAllModels("antigravity", enabled: false)
+        Task {
+            await usage.refreshAntigravityNow()
+            await sources.apply()
+        }
+    }
+
     private func percentText(_ value: Double?) -> String {
         guard let value else { return "—" }
         return "\(Int(value.rounded()))%"
@@ -476,6 +595,8 @@ struct CodexProvidersView: View {
             openCodeSettings
         case .claude:
             claudeSettings
+        case .antigravity:
+            antigravitySettings
         }
         applyCard
     }
@@ -485,6 +606,7 @@ struct CodexProvidersView: View {
         case .openRouter: return L("Price routing: cheapest providers first.")
         case .openCode: return L("Paid models use your OpenCode account balance.")
         case .claude: return L("Connect your Claude subscription or paste an Anthropic API key.")
+        case .antigravity: return L("Connect your Google account to use Antigravity models.")
         }
     }
 
@@ -604,6 +726,79 @@ struct CodexProvidersView: View {
             Button(L("Cancel"), role: .cancel) {}
         } message: {
             Text(usage.claude?.email ?? "")
+        }
+    }
+
+    private var antigravitySettings: some View {
+        let stats = usage.antigravity
+        let connected = stats?.connected == true
+        return MTCard(title: "Antigravity", systemImage: ProviderRoute.antigravity.systemImage) {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                if connected {
+                    keyValueRow(L("Account"), stats?.email ?? "—")
+                    keyValueRow(L("Project"), stats?.projectID ?? "—")
+                    HStack(spacing: MTTheme.s3) {
+                        MTSecondaryButton(title: L("Refresh login"), systemImage: "arrow.clockwise") {
+                            Task {
+                                _ = await antigravityAuth.refreshCredential()
+                                await usage.refreshAntigravityNow()
+                            }
+                        }
+                        MTSecondaryButton(title: L("Disconnect"), systemImage: "xmark.circle") {
+                            confirmAntigravityDisconnect = true
+                        }
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    switch antigravityAuth.login {
+                    case .starting, .waiting:
+                        HStack(spacing: MTTheme.s2) {
+                            ProgressView().controlSize(.small)
+                            Text(L("Waiting for the browser…"))
+                                .font(MTTheme.mono(10))
+                                .foregroundStyle(MTTheme.textSecondary)
+                        }
+                        MTSecondaryButton(title: L("Cancel login"), systemImage: "xmark") {
+                            Task { await antigravityAuth.cancelLogin() }
+                        }
+                    case .failed(let message):
+                        Text(message)
+                            .font(MTTheme.mono(10))
+                            .foregroundStyle(MTTheme.danger)
+                        connectAntigravityButton
+                    default:
+                        connectAntigravityButton
+                    }
+                }
+                Text(L("The login opens in your browser; the service stores the account itself."))
+                    .font(MTTheme.mono(10))
+                    .foregroundStyle(MTTheme.textTertiary)
+
+                HStack(spacing: MTTheme.s2) {
+                    MTPrimaryButton(title: L("Load models"), systemImage: "arrow.down.circle", isLoading: sources.isBusy) {
+                        Task { await sources.loadAntigravityModels() }
+                    }
+                    Spacer()
+                }
+                Text(L("Antigravity models are served by the engine from the connected Google account."))
+                    .font(MTTheme.mono(10))
+                    .foregroundStyle(MTTheme.textTertiary)
+                if let source = sources.antigravitySource {
+                    modelBlock(source: source)
+                } else {
+                    Text(L("Start the service and connect an account, then load the model list."))
+                        .font(MTTheme.mono(10))
+                        .foregroundStyle(MTTheme.textSecondary)
+                }
+            }
+        }
+        .confirmationDialog(L("Disconnect this Antigravity account?"), isPresented: $confirmAntigravityDisconnect, titleVisibility: .visible) {
+            Button(L("Disconnect"), role: .destructive) {
+                disconnectAntigravity()
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: {
+            Text(usage.antigravity?.email ?? "")
         }
     }
 
