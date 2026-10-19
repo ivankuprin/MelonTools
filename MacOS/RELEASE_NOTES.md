@@ -10,6 +10,7 @@
   auth files, so Claude logins survive pool refreshes; disconnect is confirmed.
 - **Windows engine rebuilt** from the pinned CLIProxyAPI commit, so the shipped
   engine binary provably contains the Claude and management-API code paths.
+- **In-app updates (both platforms).** The updater accepts GitHub's `release-assets.githubusercontent.com` download host, so update checks and downloads keep working after GitHub moved release traffic to its CDN; lookalike hosts and plain HTTP stay rejected.
 
 ## Downloads
 
