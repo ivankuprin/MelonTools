@@ -73,9 +73,33 @@ struct MainView: View {
         .background(MTTheme.background)
         .onAppear {
             app.applyAppearance()
-            FleetStore.shared.start()
+            FleetStore.shared.setActive(fleetSectionsActive)
         }
         .onChange(of: app.appearance) { app.applyAppearance() }
+        .onChange(of: selection) { FleetStore.shared.setActive(fleetSectionsActive) }
+        .overlay {
+            // Cmd-1…9 jump to the first nine sidebar sections (the display
+            // order of MTSection).
+            ForEach(Array(MTSection.allCases.prefix(9).enumerated()), id: \.offset) { index, section in
+                Button("") { selection = section }
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    /// Fleet polling runs only while a page that shows fleet data is on
+    /// screen — there is no reason to touch the workspace files otherwise.
+    private var fleetSectionsActive: Bool {
+        switch selection {
+        case .dashboard, .fleet, .doctor, .config, .results, .call, .rules:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Sidebar card

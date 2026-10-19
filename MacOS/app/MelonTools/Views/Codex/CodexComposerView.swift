@@ -22,6 +22,7 @@ struct CodexComposerView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.composer")
         }
         .background(MTTheme.background)
         .onAppear {

@@ -42,6 +42,7 @@ struct FleetCallView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.fleet-call")
         }
         .background(MTTheme.background)
         .onAppear {

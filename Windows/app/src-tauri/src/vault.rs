@@ -153,7 +153,7 @@ pub fn save_raw(value: &Value) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let data = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
+    let tmp = paths::tmp_path(&path);
     std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
@@ -407,8 +407,11 @@ pub fn write_codex_auth_to(path: &std::path::Path, account: &Account) -> Result<
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(path, serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())
+    // Atomic replace keeps a crash from truncating the login file.
+    let data = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+    let tmp = crate::paths::tmp_path(path);
+    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 pub fn read_codex_auth_tokens() -> Option<Tokens> {

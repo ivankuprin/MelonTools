@@ -1,0 +1,513 @@
+# Measurements
+
+What has actually been measured on this project, how each number was taken, and what has not been measured yet. Nothing here is an estimate unless it says so.
+
+**Process cost** — planning, a task lead, coder effort, sub-agents and their context:
+
+| Question | Where |
+|---|---|
+| What did planning cost before 1.1.0 — the number the scout map is aimed at? | [Planning cost before the scout map](#planning-cost-before-the-scout-map) |
+| What does planning cost with the scout map, and did a fork do better? | [Planning cost with the scout map](#planning-cost-with-the-scout-map) |
+| What does a task lead cost against the session running the coder and tester itself? | [A task lead between the session and the coder](#a-task-lead-between-the-session-and-the-coder) |
+| Does a coder's effort level change what it builds? | [Coder effort: medium, high, xhigh on one task](#coder-effort-medium-high-xhigh-on-one-task) |
+| Does medium hold against xhigh when the coder has to judge, not follow? | [The matched repeat: medium and xhigh on a judgement-heavy task](#the-matched-repeat-medium-and-xhigh-on-a-judgement-heavy-task) |
+| Which effort should the tester run at, and does a second pass or an advisor buy more depth? | [The tester's effort, a second pass and an advisor](#the-testers-effort-a-second-pass-and-an-advisor) |
+| Where do sub-agent tokens go, by role? | [Sub-agents by role](#sub-agents-by-role) |
+| What fills a sub-agent's context — reading, its own output, the harness? | [Where a sub-agent's context goes](#where-a-sub-agents-context-goes) |
+| Who runs past 200 k tokens, and doing what? | [Past 200 k](#past-200-k) |
+
+**Review value** — `check`, review yield, the security audit:
+
+| Question | Where |
+|---|---|
+| What did the 1.1.0 review rounds change that a clock can see? | [`check` before and after its reviews](#check-before-and-after-its-reviews) |
+| What are three release reviews worth? | [Review yield per release](#review-yield-per-release) |
+| Does a security brief find what a plain review and a plugin miss? | [Security audit: plain, brief and plugin over one revision](#security-audit-plain-brief-and-plugin-over-one-revision) |
+
+**Resident context** — the contract, the rules file, the rent:
+
+| Question | Where |
+|---|---|
+| What does the short fleet contract save in every session? | [The fleet contract, full and short](#the-fleet-contract-full-and-short) |
+| How big is the rules file every session loads, before and after 1.2.0? | [The rules file, before and after](#the-rules-file-before-and-after) |
+| What did the session carry per request in 1.3.0, and did the rules file cause it? | [Rent and the rules file, 1.2.0 to 1.3.0](#rent-and-the-rules-file-120-to-130) |
+
+**Runtime behaviour** — the hooks, Codex web mode, unit processes, `initialize`, the fleet pane, vendor CLI versions:
+
+| Question | Where |
+|---|---|
+| Did the guard's context estimate (removed in 1.5.0) match the engine's? | [The guard's estimate against the engine](#the-guards-estimate-against-the-engine) |
+| What did the handoff hooks do across every compaction the project has had? | [The handoff hooks over five compactions](#the-handoff-hooks-over-five-compactions) |
+| Which web mode does a Codex research run get when none is set? | [The Codex web default mode](#the-codex-web-default-mode) |
+| What outlives a killed unit server, per vendor CLI? | [Unit processes after the server is gone](#unit-processes-after-the-server-is-gone) |
+| Which MCP protocol version does Claude Code ask for, and which does the server claim? | [What Claude Code sends at `initialize`](#what-claude-code-sends-at-initialize) |
+| What does the fleet pane add to each tool call? | [The fleet pane's cost per tool call](#the-fleet-panes-cost-per-tool-call) |
+| Which vendor CLI versions was each release live-gated on? | [Vendor CLI versions per release](#vendor-cli-versions-per-release) |
+
+**Unit quality** — the evals:
+
+| Question | Where |
+|---|---|
+| How do the fleet's units score on our own research and review tasks? | [The fleet's units on our own tasks](#the-fleets-units-on-our-own-tasks) |
+
+**About these numbers:**
+
+| Question | Where |
+|---|---|
+| How do I repeat these on my own sessions? | [How the numbers are taken](#how-the-numbers-are-taken) |
+| Which claims has nobody measured? | [Not measured yet](#not-measured-yet) |
+
+## Planning cost before the scout map
+
+All five releases' planners ran on the `opus` alias, which resolved to `claude-opus-5` on the Claude Code of the time; the table predates the rule that every row names its model.
+
+Until 1.1.0 every package of a release got its own planner, and every planner read the modules it needed from scratch. These are the planners of five releases, as reported by the harness when each finished (what the number means: [below](#how-the-numbers-are-taken)).
+
+| Release | Planners | Tokens, each | Tokens, total |
+|---|---:|---|---:|
+| 0.3.3 | 5 | 284 997 · 260 588 · 264 294 · 224 462 · 221 964 | 1 256 305 |
+| 0.3.4 | 3 | 376 924 · 236 573 · 256 314 | 869 811 |
+| 0.3.5 | 3 | 243 803 · 233 836 · 280 078 | 757 717 |
+| 0.3.6 | 1 | 439 485 | 439 485 |
+| 0.3.7 | 4 | 343 286 · 221 426 · 310 616 · 365 127 | 1 240 455 |
+| **All** | **16** | mean 285 236 | **4 563 773** |
+
+Planning is the second largest sub-agent cost of the project ([by role](#sub-agents-by-role)), and in 0.3.3 and 0.3.7 four or five planners each loaded much of the same `core/`. That repetition is what [the scout map](ORCHESTRATION.md#the-scout-map-when-a-fresh-planner-needs-one) is aimed at.
+
+**After:** 1.2.0 was the first release planned from a scout map — the rows are under [Planning cost with the scout map](#planning-cost-with-the-scout-map), taken the same way.
+
+## `check` before and after its reviews
+
+`melon-fleet check` went through three release reviews and three fix rounds inside 1.1.0. Two of the findings can be put on a clock; both rows below were taken on one machine (Apple M1 Pro, Node 20.19.5), with the module as it stood before the fixes (commit `b76e8af`) and as released (`v1.1.0`), on identical fixtures.
+
+| What | Before | After | Note |
+|---|---:|---:|---|
+| Worst case a reviewer built: 2000 pointers whose fragment is nowhere, into one 2 MiB source-like file | 27 597 ms | 169 ms | The first version normalised every line of the target once per pointer; the released one holds one normalised representation per target and searches it with `indexOf`. |
+| Peak resident memory, 16 newline-heavy 2 MiB targets | 221 MiB | 213 MiB | **Not improved.** The peak is the transient split of one target into a million lines, not the cache. What changed is that the cache budget now charges what it really keeps. A lower peak would need the representation built without the split; nobody has done that. |
+| `.git/index` rewritten by a run on a stamped map with a stat-dirty file | yes | no | A read-only command was writing. Found by a reviewer from git's source, reproduced by hashing the index before and after, closed by `-c diff.autoRefreshIndex=false`. The price: a touched-but-unchanged file reads `stale`. |
+| A pointer whose fragment is one character | `ok` | `weak` (fails) | Evidence that proves nothing no longer passes; neither does one true pointer repeated to reach `--require`. |
+
+## Review yield per release
+
+Every release closes its ledger with one line: findings found, accepted, rejected. It is the cheap measure of what the reviews were worth, kept since 0.3.6 and reconstructed for the two releases before it.
+
+| Release | Found | Accepted | Rejected / partial | What mattered |
+|---|---:|---:|---:|---|
+| 0.3.4 | 33 | 32 | 1 | A FIFO hanging every tool call; the Stop gate imprisoning a session with a read-only `.melon-fleet`; a quoted `--exec` passing the rebase classifier |
+| 0.3.5 | 25 | 23 | 2 | (counts from the backlog note; that release's ledger predates the yield line) |
+| 0.3.6 | 27 | 25 | 2 | A bin override resolved inside the caller's `cwd`; an image tool losing a saved file |
+| 0.3.7 | 31 | 28 | 3 | A FIFO at the rules path hanging every server start; a compaction summary able to forge a handoff heading |
+| 1.0.0 | 10 | 8 | 1 / 1 | Three diagram labels that contradicted the code; three blind spots in the docs test itself |
+| 1.1.0 | 37 | 29 | 6 / 2 | `check` writing git's index; a one-character fragment passing; staleness blind to the working tree; an unusable `commit:` value switching staleness off in silence |
+| 1.2.0 | 24 | 17 | 7 | the measuring script printing this checkout's absolute path through an uncaught throw; the release's rules-size claim being P1's figure, not the shipped file's |
+| 1.3.0 | 34 | 30 | 4 | the guard's invocation cut handing `-b new` to a nested `$(git tag -l)` (a missed write, found by the shipped reviewer and by Codex); `xargs git tag < file`; PATH still reaching an env-shebang vendor; a false "three runs" line in SECURITY; three re-review rounds found process substitutions dropped unread, `reset --hard` passing for every role, and `>>(…)` under zsh |
+
+Across eight releases, 221 findings and 192 accepted: the reviewers are rarely wrong, and the rejected ones are mostly stricter readings of a brief than of the spec. A docs-only release (1.0.0) still produced eight real defects.
+
+## Security audit: plain, brief and plugin over one revision
+
+Two runs over the same revision, `d7180b2` (v1.2.0), on 2026-09-24: Codex with no method (the control), and Codex with the whole brief SECURITY describes under [How this package is audited](SECURITY.md#how-this-package-is-audited) — the trust-class table, the attacker model, the refutation gate with the Trail of Bits links, and Cloudflare's core discipline, trust-class section and validation rules. Both on `gpt-6-astra` at effort high, one call per group — the unit servers with `units/` and `core/`, the guard, the CLI and what it renders. The third run, the `claude-security` plugin, needs the operator's own `/claude-security` invocation and ran on 2026-09-25 over `3b01e32` (v1.3.0), the whole repository at effort medium: 72 agents in one workflow — inventory, threat model, 33 researchers, a sweep and a three-lens panel on the session's model (`claude-opus-5-5`; three of its roles are pinned to `claude-sonnet-5`) — 12 candidates, 10 after deduplication, 4 past the panel. That revision already carries the ten fixes of this release, so the plugin's found-count is not comparable with the two Codex columns; its four defects all exist, unchanged, at `d7180b2` (opened by hand), so the overlap is. Counts are distinct defects per run: the brief run reported 17 items, one a duplicate.
+
+| | Plain — Codex, no method | Brief — Codex, with the brief | Plugin — `claude-security` |
+|---|---:|---:|---:|
+| Model | `gpt-6-astra` | `gpt-6-astra` | `claude-opus-5-5` |
+| Calls | 3 | 3 | 1 |
+| Found | 34 | 16 | 4 |
+| Verified | 18 | 9 | 4 |
+| Refuted | 16 | 7 | 0 |
+
+**Refutation.** Seven fresh agents on `claude-opus-5-5`, each with a clean context, one per file cluster (guard-io, guard-git, core-fs, adapters, spawn-rpc, cli-text, cli-fs), each told to disprove every finding in its cluster against the code at `d7180b2`; `verified` means the attempt failed. The plugin's four went another way: its panel had already re-read the code, so one live check on `melon-coder-medium` (`claude-opus-5-5`, effort medium) ran the vendors through the real adapter against bait files and a loopback listener. Confound: the findings of one cluster shared one agent's context, so a ruling on one could lean on another.
+
+| Finding | Run | Verdict | Settled by | Note |
+|---|---|---|---|---|
+| S2 | plain | verified, after coming back `needs-check` | a vendor probe | — |
+| S3 | plain and brief | verified | the refuting agent | already known and documented |
+| C3 | plain and brief | verified | the refuting agent | narrow |
+| G6 | plain | verified, after coming back `needs-check` | documented as a fail-open by design | — |
+| S17 | brief | verified | the refuting agent | conditional |
+| F1 | plugin | narrowed | the live check | grok's `web_fetch` runs headless with no prompt, but grok's own guard blocks private addresses, so the loopback variant is refuted and the public-exfil leg stayed unresolved (the sub-agent's sandbox had no egress) |
+| F2 | plugin | reproduced | the live check | grok's `read_file` reaches outside `--cwd` |
+| F3 | plugin | reproduced | the live check | the recommended agy rules read a file outside `cwd` with no prompt |
+| F4 | plugin | reproduced | the live check | raw ESC bytes on `doctor`'s stdout |
+
+Two answers where the model declined a credential framing are policy, not an adapter boundary, and count as nothing.
+
+**Overlap.** A defect both runs reported is one finding in each run's count and one in the overlap. Verified defects both runs found — G4, G5, S3, C3, C5, C7: plain and brief 6; plugin and either Codex run 0.
+
+**Verified by the brief only.** 3 — S17: a bare vendor name is resolved from the caller's `cwd` when `PATH` holds an empty or relative entry (Task 8); S18: the `GOOGLE_*` passthrough admits `GOOGLE_CREDENTIALS` (Task 6); S19: a gemini retry replays an accept-edits run (Task 6).
+
+**Verified by the plugin only.** 4 — F1 and F2, one root cause: the grok adapter's bare `--allow WebFetch` next to `read_file`, so injected content can read any file the operator can and fetch a URL carrying it (the fetch runs with no prompt; private addresses are blocked by grok itself; grok accepts `WebFetch(domain:…)`, the narrower form); F3: SECURITY's recommended agy rules, `read_file(*)` with `read_url(*)`, give a headless Gemini run the same reach and an egress; F4: `doctor` prints `.mcp.json` values with their control characters. The Codex runs had none of the three in their candidates.
+
+**In one line.** Over `d7180b2`: plain 34 found, 18 verified; brief 16 found, 9 verified; plugin (over `3b01e32`) 4 found, 4 verified; 3 verified by the brief only, 4 by the plugin only.
+
+Reading: the brief verified 3 defects the plain review missed, carried 12 of the plain review's 34 candidates and dropped 22 (two in three) before refutation, and 12 of the plain review's verified defects were not among its findings; the spec's condition for `melon-auditor` — defects the plain review and the plugin both missed — now reads 3 (S17, S18, S19: the plugin's candidates held none of them), all low, while the plugin verified 4 that both Codex runs missed, three of them medium and all in the units' perimeter rather than in what the brief covers; no auditor definition is built: the security brief is SECURITY's section, and a release's security review is a review run with it. What landed: the 19 findings verified at the session's ruling (S2 and G6 were settled after it) became ten tasks of the release, T4–T13 of the fixes plan, each fix with its test, all committed.
+
+## The fleet contract, full and short
+
+Since 0.3.7 a unit server that starts in a project carrying the rendered rules file returns a short contract instead of the full one, because the rules already say everything the contract says.
+
+| | Characters per server | Three servers |
+|---|---:|---:|
+| Full contract | 1 206 | 3 618 |
+| Short contract | 158 | 474 |
+| **Saved, resident in every session** | 1 048 | **3 144** |
+
+In tokens that is roughly 900 down to 120 at four characters per token — the ratio is exact, the token figures are an estimate.
+
+## The rules file, before and after
+
+The rendered `.claude/rules/melon-fleet.md` is loaded at every session start, so every character of it is resident in every session. 1.2.0 kept every rule in it word for word and moved out only the prose that explained how the handoff hooks work, to CONFIG ("The handoff hooks").
+
+| Rendered rules file | Characters | UTF-8 bytes | Tokens, estimated |
+|---|---:|---:|---:|
+| 1.1.0 | 14 390 | 14 479 | ~3 600 |
+| 1.2.0, after P1 (explanation moved out) | 12 521 | 12 592 | ~3 100 |
+| **Saved by P1** | 1 869 | 1 887 | **~500** |
+| 1.2.0 as shipped (P2 added four rules lines) | 13 069 | 13 140 | ~3 300 |
+| **Net, resident in every session** | 1 321 | 1 339 | **~330** |
+| 1.3.0 as shipped (reviewer lines, four definitions) | 13 987 | 14 062 | ~3 500 |
+| 1.4.0 as shipped (the prompt audit's rewrites, the Gemini opt-in note) | 13 946 | 14 011 | ~3 490 |
+| 1.5.0 as shipped (the scout-map mandate out) | 13 519 | 13 580 | ~3 380 |
+
+Rendered under the default merge policy (`session`; the `pr` sentence is 32 characters shorter). Tokens at four characters per token, as for the contract above: the character counts are exact, the token figures an estimate. The ceiling is 14 030 characters since 1.3.0, pinned by `test/rules-size.test.mjs`; it is a ceiling, not a pin, so 1.4.0's smaller file leaves it where it is.
+
+## Rent and the rules file, 1.2.0 to 1.3.0
+
+The rent is the resident context of the orchestrating session (`claude-fable-5-1`) on every request it makes; the rules file is part of it in every session.
+
+| | 1.2.0 | 1.3.0 |
+|---|---|---|
+| Session's resident context per request (`claude-fable-5-1`) | 210–250k | last 200 requests: mean 442k (min 259k, max 627k); all-time mean 339k over 1 354 requests |
+| Rendered rules file, characters | 13 069 | 13 987 (`session` merge policy) · 13 955 (`pr`); ceiling 14 030 |
+
+One line: the session ran 1.3.0 end to end without a compaction, so its rent roughly doubled while the rules file grew by 918 characters (about 230 tokens at four characters per token) — the growth is the session's length, not the rules file.
+
+## Planning cost with the scout map
+
+1.2.0 package P1 was planned twice from the same scout map, then compared against the 1.1.0 baseline that had none (the [Plan P1 row](#where-a-sub-agents-context-goes) further down). Arm A is a fresh planner; arm B is a fork of the orchestrating session taken mid-task. Both arms ran with the map in hand; a static rubric (0–3 across 5 criteria, judged blind by Codex `gpt-6-astra`) scored the two plans.
+
+| Arm | Model | Requests | Peak context | Cache-write Σ | Cache-read Σ | Output | Fresh-read chars | Wall | Input-token equiv. |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Baseline (1.1.0, no map) | claude-opus-5 | 78 | 437 208 | 771 607 | 21 040 175 | 94 187 | 510k | — | ≈ 3.07M |
+| Arm A: fresh planner + map | claude-opus-5-5 | 109 | 390 330 | 374 406 | 26 630 333 | 33 588 | 306k (Read 67k + Bash 239k) | 35 min | ≈ 3.13M |
+| Arm B: forked session + map | claude-fable-5-1 (inherited from the parent, not chosen) | 29 | 498 728 (≈460k inherited) | 137 442 | 12 633 430 | 8 423 | 106k | 20.5 min | ≈ 1.44M (≈ 2.9M Opus-equivalent at 2× the per-token price) |
+| Scout map itself | claude-opus-5-5 | 34 | — | 137k | 3.15M | — | — | — | ≈ 0.49M, amortised over the release |
+
+Input-token equivalents at 1.25× cache-write / 0.1× cache-read. Blinded rubric: arm A 11/15, arm B 6/15 — B's findings included a test suite left red between two tasks and a protected evidence bullet it had changed; the session built P1 from A, not B. The plan then took three more planner rounds to reach move-only (611 101 tokens, cumulative) against P2 — planned once from the map with P1's rulings already in hand: 202 772 tokens, one round, 12.6 min, 3 review findings (2 accepted, 1 rejected).
+
+Reading: the map halves fresh reading (cache-write 771 607 → 374 406), but arm A's input-equivalent landed within 2 % of the baseline (≈3.13M vs ≈3.07M) because it ran 40 % more requests — it dry-ran its plan on a scratch copy, since forbidden in the planner definition; the cost lever is requests × resident context ("rent"), and a dry run doubles both. The forked arm was cheapest but scored lowest and was not adopted. Planned once from the map with rulings in hand, P2 closed in a third of P1's cumulative cost. One lesson from watching a dry run shorten the rules file: an LLM asked to shorten a rules file loses about ten binding conditions per pass, and a substring pin cannot hold them — move explanation out, never rewrite a rule.
+
+## A task lead between the session and the coder
+
+Matched pair on 1.2.0: P1's three tasks ran through `melon-lead` (private definition, `claude-fable-5-1`, xhigh — it briefs `melon-coder` on `claude-opus-5-5` and `melon-tester` on `claude-sonnet-5`, arbitrates, and reports once); P2's three tasks ran directly by the session, with the same coder and tester definitions. All six tasks were plan-driven text edits with tests.
+
+| Task | Arm | Lead (req · cache-read Σ · cache-write Σ · min · $) | Coder $ | Tester $ | Total $ | Cache-read Σ, whole task | Wall | Rulings | Escaped defects |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| P1-T1 | lead (Fable 5.1) | 29 · 1.41M · 252k · 42 · $3.59 | $0.77 | $0.59 + $1.34 (two rounds) | $6.29 | 8.64M | 42 min | 2 | 0 |
+| P1-T2 | lead (Fable 5.1) | 22 · 0.87M · 228k · 39 · $3.17 | $0.57 | $0.97 + $0.44 | $5.14 | 5.69M | 39 min | 1 | 0 |
+| P1-T3 | lead (Fable 5.1) | 17 · 0.63M · 113k · 16 · $1.64 | $0.41 | $0.57 | $2.62 | 2.58M | 16 min | 0 | 0 |
+| P2-T1 | direct (session, claude-fable-5-1) | — | $0.36 | $0.69 | $1.05 | 2.50M | 12 min | 0 | 1 |
+| P2-T2 | direct (session, claude-fable-5-1) | — | $0.53 | $0.52 | $1.05 | 2.20M | 10 min | 0 | 0 |
+| P2-T3 | direct (session, claude-fable-5-1) | — | $0.85 | $0.23 | $1.09 | 1.22M | 17 min | 0 | 0 |
+
+Prices are the list prices of 2026-09-24: Fable $10 / $12.5 / $0.25 / $50 per M tokens (input / 5-minute cache write / cache read / output), Opus 5.5 $4 / $5 / $0.20 / $20, Sonnet 5 $2 / $2.5 / $0.20 / $10; output tokens are under-counted by the max-per-id rule, equally in both arms; totals are summed from unrounded parts, so a row can differ from the sum of its cells by a cent. P2-T1's escaped defect: a tester test pinned the tree against `HEAD`, passed the session's review, failed on the next commit, and was caught by the next coder. Session side, estimated (its windows overlap other work): running a task directly, the session (`claude-fable-5-1`, xhigh) took ≈8 requests per task at 210–250k resident context, ≈$0.7; with a lead, ≈5 requests, ≈$0.45.
+
+Reading: the lead's bill is its own cache writes at Fable rates, not its reads, and a ruling that has to escalate costs a second round outright — `SendMessage` is unavailable at depth 2, so it goes to a fresh tester, not the same one, as in P1-T1. Across three matched tasks the lead arm cost 2.4–6× the direct arm in dollars per task (4.4× in total: $14.05 vs $3.19, before the session's own share) and 1–4× in wall clock, against one fewer escaped defect and 10–15k less resident context per task carried in the session itself; `melon-lead` does not ship in 1.2.0 and is not the 1.3.0 default — it earns its place on a cheaper model, or where the session's own context is the binding constraint.
+
+## Coder effort: medium, high, xhigh on one task
+
+Same brief (turn the P0 scratchpad script into `scripts/context-by-source.mjs` with tests), three `melon-coder` copies on `claude-opus-5-5` at effort medium / high / xhigh, each in its own worktree, N = 1 per level, 2026-09-24.
+
+| Effort | Requests | Peak context | Cache-read Σ | Cache-write Σ | Own output chars | Tool uses | Wall | Own tests | Fixture vs the shipped tool | Defect found by the session | Codex blinded rank |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---:|
+| medium | 14 | 83 721 | 901 220 | 66 091 | 37 137 | 13 | 6.9 min | 7 | identical numbers | none | 3rd |
+| high | 15 | 96 152 | 1 066 002 | 69 725 | 42 327 | 14 | 8.1 min | 9 | identical numbers | repo root taken from the process cwd, so absolute paths print as `<outside>` | 2nd |
+| xhigh | 24 | 129 821 | 2 326 063 | 101 416 | 61 301 | 24 | 25.0 min | 15 | identical numbers | none | 1st |
+
+Approximate cost at `claude-opus-5-5` list prices: $0.7 (medium) · $0.8 (high) · $1.3 (xhigh). Codex's review (static, blinded, four criteria) called the differences material on robustness and test depth.
+
+Reading: on a plan-driven task all three effort levels built the same behaviour — identical fixture numbers against the shipped tool — and xhigh bought edge-case tests and robustness, largely what the clean-context tester and the review already pay for, at ~2.5× the cache reads and 3.6× the wall clock of medium. N = 1, and the one design defect landing on high rather than medium or xhigh, say this is not yet a ranking. Decision: the coder stays at `effort: xhigh` in 1.2.0; 1.3.0 repeats the trial on a judgement-heavy task and, if xhigh's edge still holds, sets `agents.coder.effort=medium`.
+
+## The matched repeat: medium and xhigh on a judgement-heavy task
+
+The release's largest security fix — the guard's git classifier, T4 of the P0 fixes plan — built twice from one commit in two worktrees, with the same decision brief word for word. The acceptance tests were written once, from the plan, by a clean-context tester (`claude-sonnet-5`; 31 requests, $0.83, 8 min) before either arm ran; a blind `melon-reviewer` (`claude-opus-5-5`, xhigh; 61 requests, $3.77, 41 min for both rounds) judged both arms without knowing which was which.
+
+| Arm | Definition · model · effort | Requests | Cache-read Σ | Cache-write Σ | Peak context | Wall | Cost | Rounds | Acceptance | Blind review |
+|---|---|---:|---:|---:|---:|---|---:|---:|---:|---|
+| A | `melon-coder-medium` · `claude-opus-5-5` · medium | 30 | 3.08M | 139k | 139k | 17.3 min | $1.33 | 1 | 39/39 | 3 real defects — a second quadratic path left in place (117 s on a 448 KB command before exit 2, a fail-open class); branch writes in a nested shell missed; a redirection before the subcommand missed — and 1 pre-existing |
+| B | `melon-coder` · `claude-opus-5-5` · xhigh | 67 | 16.38M | 785k | 373k | 46.5 min round 1 + ~12 min round 2 | $7.28 | 2 | 39/39 | 2 narrow missed writes (a value-less global option before the subcommand; split quoting) and 1 maintainability, fixed in round 2 — shipped |
+
+Reading: the acceptance tests could not tell the arms apart (39/39 each); the blind review could; N = 1. Arm A cost a fifth of arm B and left a fail-open class in the guard; arm B cost 5.5× and shipped after one fix round. Bucket log: 21 plan-driven tasks ran at medium in one round each with 0 acceptance defects and 1 tester-found defect (a line-splitting disagreement the printed diff missed), 4 stopped for a ruling the plan lacked (all stale test pins), and docs went to Sonnet 5 times. The coder default does not move: the spec moves it only if the matched repeat holds for medium, and it did not — `melon-coder` stays at xhigh, and `melon-coder-medium` is the plan-driven bucket. The shipped reviewer's release review of 1.3.0 found 14 findings, all accepted, against 1.2.0's three reviews together at 24 found / 17 accepted (that release did not record the Opus review's own share).
+
+## The tester's effort, a second pass and an advisor
+
+One diff tested over and over on 2026-09-30: 1.6.1 Task 1's (the Codex catalog and doctor's `models` line), with the Task 1 tester's brief word for word, each arm in its own scratch worktree at `7427e9d` plus the diff; the extra arms ran from temporary copies of the rendered tester definition, the marker dropped and only `name`, `model` and `effort` changed. Model and effort were read from each transcript, not taken from the definition. The scoring frame was fixed before the results — tests written, suite green, the ten review-grade findings the session had ruled on in Task 1, a mutation check or none, files touched outside the arm's own test file, turns, minutes, cost — and then replaced by the union of distinct valid findings across all arms, because nine of the frame's ten came from one arm's report (the Task 1 tester itself, Sonnet 5.5 at xhigh): 13 after the single-pass arms, 17 once the two-pass arm added four that no single-pass arm made. Every single-pass sub-agent arm ran the suite green and touched no file but its own test file.
+
+**One pass, six arms** (sub-agents; cost is list price over each transcript's cache writes, cache reads and recorded output — a lower bound):
+
+| Model · effort | Claude Code | Tests | Turns | Minutes | Cost, ≥ $ | Findings of 13 | Mutation check |
+|---|---|---:|---:|---:|---:|---:|---|
+| `claude-sonnet-5-5` · medium | 2.1.284 | 19 | 20 | 6.7 | 0.40 | 3 | no |
+| `claude-sonnet-5-5` · high | 2.1.284 | 28 | 21 | 11.5 | 0.64 | 4 | no |
+| `claude-sonnet-5-5` · xhigh | 2.1.284 | 44 | 56 | 30.8 | 2.90 | 10 | yes (16, 14 caught) |
+| `claude-opus-5-5` · medium | 2.1.284 | 20 | 27 | 9.0 | 1.01 | 5 | no |
+| `claude-opus-5-5` · high | 2.1.284 | 24 | 28 | 9.7 | 1.07 | 4 | no |
+| `claude-opus-5-5` · xhigh | 2.1.284 | 24 | 57 | 24.1 | 2.60 | 8 | no |
+
+One pass bought depth only at xhigh: Sonnet 5.5 at xhigh found 10 of 13 and ran the only mutation check; medium and high found 3 to 5 on either model, and Opus 5.5 found more than Sonnet 5.5 at the same effort only at medium (5 against 3). The four findings the second pass later added were found by no single-pass arm, so each count here is also its count of 17.
+
+**The advisor, three headless runs** (`claude --agent pair-tester-sonnet-high -p <brief>`: main sessions, not sub-agents — hence the control; cost as the harness bills it, exact):
+
+| Run | Model · effort | Claude Code | Advisor calls | Tests | Turns | Minutes | Cost, billed $ | Findings of 13 |
+|---|---|---|---:|---:|---:|---:|---|---:|
+| Control, no advisor | `claude-sonnet-5-5` · high | 2.1.285 | — | 14 | 17 | 7.5 | 0.54 | 1 |
+| `--advisor opus` | `claude-sonnet-5-5` · high, `claude-opus-5-5` advisor | 2.1.285 | 0 | 24 | 20 | 7.6 | 0.80 | 2 |
+| `--advisor opus`, the brief asking for two consultations | `claude-sonnet-5-5` · high, `claude-opus-5-5` advisor | 2.1.285 | 2 | 22 | 19 | 12.8 | 2.06 = Sonnet 0.96 + advisor 1.10 | 4 |
+
+The advisor attached to the second run was never called — its tool calls were Read 2, Bash 15, Write 1, Edit 1, and the bill is Sonnet's alone — so the first two rows are two runs of one configuration, and 14 against 24 tests is run-to-run spread. Asked to consult twice, the third run did: the two reads cost $1.10 (202 437 uncached input tokens, 14 334 output), the advice comes back encrypted in the transcript (`advisor_redacted_result`), and the run found what an unadvised high run finds — the `none` downgrade, luna with `ultra`, the priority tie, terra's stale text — plus one mutation of its own regex test; it also wrote a report file under the worktree's `.melon-fleet/reports/`, outside its test file. The harness reports real output tokens — 12 700 and 16 640 on the first two runs, about 23 % and 21 % of their cost — which is how the sub-agent costs above are known to be lower bounds by roughly a fifth to a quarter.
+
+**A second pass in the same agent** (one generic round-2 message to both arms — a mutation check in a scratch copy with tests added for the misses, then a reviewer's pass over the diff's prose, new findings only — with no hint at the known answers):
+
+| Variant | Model · Claude Code | Tests | Mutations run | Minutes | Cost, ≥ $ | Findings of 17 |
+|---|---|---|---:|---|---|---|
+| xhigh, one pass | `claude-sonnet-5-5` · 2.1.284 | 44 | 16 | 30.8 | 2.90 | 10 |
+| high, one pass (3 samples) | `claude-sonnet-5-5` · 2.1.284, headless 2.1.285 | 28 / 28 / 14–24 headless | 0 | 7.5–11.5 | 0.54–0.64 | 4 / 4 / 1–2 |
+| high, two passes | `claude-sonnet-5-5` · 2.1.284 | 31 | 39 | 24.8 | 1.46 | 13 |
+| medium, two passes | `claude-sonnet-5-5` · 2.1.284 | 26 | 22 | ~35 | 1.62 | 9 |
+| high + Opus advisor, asked twice | `claude-sonnet-5-5` + `claude-opus-5-5` advisor · 2.1.285 | 22 | 1 | 12.8 | 2.06 (billed, exact) | 4 |
+
+A directed second pass bought what effort did not: high in two passes found 13 of 17 — among them the four no single-pass arm made, the one that mattered a catalog effort that was displayed and never applied — at about half one xhigh pass's cost and 80 % of its time; medium's second pass was slower, no cheaper and reached 9.
+
+**The flow on a second diff.** The Task 1b tester (`melon-tester`, `claude-sonnet-5-5` at high, Claude Code 2.1.284) ran both passes as the rules now describe them. First pass: 43 tests, suite green, 11.3 min. Second pass: 45 tests, 33 mutants in a scratch copy — 31 killed by the three existing test files, 2 missed, tests added, none surviving — and six prose findings the first pass had not made, all verified by the session and accepted. Both passes: 39 min by the harness's clock. No single-pass arm ran beside it, so it shows the flow holding on another diff, not a margin.
+
+**The cache between and within passes** (each transcript's per-request cache fields). The one measured long pause — 31.5 minutes idle before the medium arm's second pass — made that pass's first request write 76 439 cache tokens and read none; the high arm's second pass, sent within ten seconds of its report, wrote 58 878 in all. A tool call that runs past about five minutes cools the cache the same way: in the Task 1b run three tool calls ran 6.2, 10.0 and 6.5 minutes, and the request after each read nothing from cache. So the second pass is sent at once, and a long mutation sweep is better run as several shorter commands.
+
+**Limits.**
+
+- One task, one run per cell; the second diff is one more run, unpaired.
+- Sub-agent costs are lower bounds by roughly a fifth to a quarter: the transcript under-records streamed output tokens, which the headless runs report.
+- The headless runs are main sessions, not sub-agents.
+- The cheap runs' hits are correlated: the two sub-agent runs at high found the same four findings and the headless pair at high found one and two, so repeating the brief buys nothing new and the spread between two runs of one configuration is large; six medium and high runs together found 5 of the 13.
+- The scoring frame favoured the Sonnet xhigh arm by construction; the union count is the fairer one.
+
+**Decision (1.6.1).** `agents.tester.effort` is `high`; the second pass ships in the tester template and in the rules' tester flow, sent by continuing the same tester; the tester's model is pinned by exact id; the advisor is documented, not adopted. One task's evidence, N = 1 per cell: a second task can move it ([Not measured yet](#not-measured-yet)).
+
+## Sub-agents by role
+
+Every sub-agent the orchestrating session of releases 0.3.3 → 1.1.0 saw finish: 76 agents.
+
+| Role | Agents | Tokens | Tool uses | Minutes |
+|---|---:|---:|---:|---:|
+| coder | 27 | 5 714 634 | 3 095 | 989 |
+| planner | 16 | 4 563 773 | 880 | 360 |
+| tester | 19 | 2 410 517 | 1 008 | 466 |
+| reviewer | 6 | 1 202 849 | 342 | 504 |
+| docs | 3 | 721 125 | 128 | 75 |
+| other | 5 | 537 105 | 157 | 60 |
+| **All** | **76** | **15 150 003** | 5 610 | 2 454 |
+
+Minutes are wall clock and include time an agent spent waiting on a permission prompt — one reviewer sat on prompts for seven hours — so they say more about the harness than about the work. The fleet's own units (Gemini, Grok, Codex) are not in this table: they run on their vendors' subscriptions and are counted by `melon-fleet results --stats`.
+
+## Where a sub-agent's context goes
+
+Every sub-agent of the 0.3.3 → 1.1.0 session — 76, those that started before 2026-09-18 — read from its own transcript (`scripts/context-by-source.mjs --before 2026-09-18`; [how](#how-the-numbers-are-taken)). "Logged text" is what each turn *added* to the agent's context, by where it came from; the resident context of a request is the `usage` sum, whose peak is the second column. All ran on `claude-opus-5` (coders, planners, reviewers, docs) or `claude-sonnet-5` (testers).
+
+| Role | Agents | Peak context, mean | Requests, mean | Logged text by source: brief · Read · Bash that reads a file · other Bash · Edit · harness attachments · the agent's own output | Read calls overlapping an earlier Read of the same file |
+|---|---:|---:|---:|---|---:|
+| coder | 27 | 208 449 | 103 | 1 % · 32 % · 30 % · 5 % · 2 % · 4 % · 27 % | 43 of 230 |
+| planner | 16 | 283 587 | 47 | 1 % · 35 % · 32 % · 5 % · 0 % · 3 % · 24 % | 15 of 175 |
+| tester | 19 | 125 049 | 40 | 2 % · 46 % · 34 % · 6 % · 0 % · 0 % · 12 % | 20 of 136 |
+| reviewer | 6 | 197 962 | 54 | 1 % · 32 % · 49 % · 4 % · 0 % · 5 % · 9 % | 1 of 31 |
+| docs | 3 | 237 373 | 34 | 1 % · 72 % · 16 % · 2 % · 0 % · 2 % · 8 % | 1 of 18 |
+
+Four things the table says:
+
+- **Reading is two thirds of everything an agent takes in** — 62 % for coders, 67 % for planners, 80 % and more for testers and reviewers — and half of that reading goes through `cat`/`sed -n` rather than `Read`, which a count of `Read` calls alone would miss.
+- **An agent rarely re-reads within itself** (9 % of a planner's `Read` calls overlap an earlier one, 19 % of a coder's). The repetition is *across* agents: `bin/melon-fleet.mjs` (3 400 lines) was read 89 times by the 16 planners and 255 times by the 27 coders; `test/cli.test.mjs` 61 and 138 times. That is what one scout map per release is aimed at, and it is the right target.
+- **Harness attachments are a floor.** The 2–5 % counts only attachment entries that carry text (instructions, skill listings); bookkeeping entries without text are not counted, because the transcript does not say what of them the model saw.
+- **A quarter of a planner's or coder's context is its own output** — thinking, and the plan or the code it writes through `Write`/`Edit`, which then sits in the context for every later request. A planner's plan file is ~100 k characters.
+
+The four transcripts the 1.2.0 spec asked for, one line each (the two 1.1.0 coders; the 1.1.0 planner and one from 0.3.7 as the second, 1.1.0 having had one planner):
+
+| Agent | Requests | Peak context | Output tokens | Cache-read tokens, summed over requests | Read chars | Bash-read chars | Own output chars | Overlapping Reads |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Plan P1 (1.1.0, `check`) | 78 | 437 208 | 94 187 | 21 040 175 | 414 852 | 95 480 | 203 496 | 2 of 26 |
+| Plan P4 (0.3.7, merge policy + lane) | 47 | 363 734 | 27 266 | 10 230 094 | 462 928 | 29 039 | 106 816 | 4 of 24 |
+| Implement `check` (1.1.0, four rounds) | 138 | 319 330 | 188 112 | 27 331 176 | 88 401 | 44 906 | 246 155 | 3 of 15 |
+| Implement P1 code (1.1.0) | 120 | 291 275 | 42 798 | 23 598 599 | 212 329 | 136 330 | 145 092 | 3 of 7 |
+
+The cache-read column is the rent: the `check` coder's 138 requests each re-read an average of 198 k tokens from cache, 27 M in all, at a tenth of the input price — more input-token equivalents than everything it read fresh.
+
+## Past 200 k
+
+From the same transcripts: 31 of 76 sub-agents ran a request whose context exceeded 200 000 tokens — every one of the 16 planners, 11 of the 27 coders, none of the 19 testers — typically between 40 % and 65 % of the way through their requests. No sub-agent transcript holds a compaction marker: they ran in the 1 M window and never compacted. Of the logged text after the crossing, 87 % is reading (53 % `Read`, 34 % Bash reads) and 2 % editing; since overlapping reads are rare (above), that tail is new reading, not recovery. It argues for keeping the `[1m]` window on the shipped definitions, but it does not settle it: whether the same task done inside 200 k with a compaction comes out as good is a matched experiment (1.2.0 spec, P0), not something a tail can say.
+
+## The guard's estimate against the engine
+
+The handoff guard estimates the context fill from the session transcript; Claude Code's function-hooks API (early access, behind `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` on 2.1.280) reports the engine's own figure, `$.session.usage().context`. A throwaway probe plugin logged both on the same request (2026-09-22, three short sessions, early point only).
+
+| What | Engine | Guard | Gap |
+|---|---:|---:|---|
+| `tokens` (the last response's input side) | 32 770 · 33 755 · 35 342 | the same three numbers | none — the arithmetic is the same |
+| `window` | 200 000 (the session's model was Haiku) | 1 000 000 | the whole gap: the guard takes the window from `handoff.contextWindow` when the config sets it, and this install sets it to 1 M for its `[1m]` sessions; the engine knows the live model's window |
+| `percent` at the same request | 16–18 | 3 | 13–15 points, all from the window; at an equal window the two differ by at most 1 point (the engine rounds, the guard floors) |
+
+Not yet taken: the near-threshold and post-compaction points, which need a working `[1m]` session run with the probe loaded. The row that matters for the guard's design is the window one: an estimate that reads its window from config cannot follow a session whose model differs, and the engine's figure can — which is the case for moving the guard into a function-hooks module once that API leaves early access (backlog N1).
+
+1.5.0 removed the estimator; this section stays as the record of why an estimate read from config could not follow the session's model.
+
+## The handoff hooks over five compactions
+
+Taken 2026-09-25 from every ledger under `.melon-fleet/` (current and archived) and the 116 session transcripts of this project, after the closing assessment of 1.3.0 named the handoff machine as the first thing three of four readers would cut. The question: how many compactions did a hook-written handoff actually rescue?
+
+| Compaction (ledger stamp) | Trigger | A session-written `## Handoff` already above it | Lines between them | Hook summary written into |
+|---|---|---|---:|---|
+| 2026-09-08 14:08 | manual | yes ("written before the operator's restart") | 10 | 0.3.3 (no summary: PostCompact shipped in 0.3.7) |
+| 2026-09-11 09:30 | manual | yes ("RELEASED — written before the operator's restart") | 7 | 0.3.7 — 47 lines |
+| 2026-09-20 08:34 | manual | yes ("measurements published") | 6 | post-1.1 — 27 lines |
+| 2026-09-22 21:29 | manual | yes ("before the operator's /compact") | 10 | 1.2.0 — 38 lines, and a copy in post-1.1 |
+| 2026-09-24 17:34 | manual | yes ("spec approved; operator compacting") | 7 | 1.3.0 — 153 lines, and copies in 1.2.0 and post-1.1 |
+
+- **Compactions:** 5 in 17 days, every one manual (`trigger: manual`); no automatic compaction has happened in this project. Before each, the session had written its own handoff block six to ten lines earlier, four times naming the coming compaction in the heading.
+- **The threshold nudge and the Stop gate** (`PostToolUse` / `Stop`): fired on one day, 2026-09-08, twice, at "91% of 200000 tokens (default)" — the window fell back to the 200 k default in a 1 M session, so the crossing was not real (18 % of the live window). One of the two was followed by a handoff, the other was not. Since `handoff.contextWindow` was set to 1 M (1.2.0) neither has fired: the operator compacts between packages, far below 90 %. `handoff-state.json` holds `{}`.
+- **The PostCompact summary:** 7 written, 3 of them duplicates — the hook stamps every `ledger-*.md` in `.melon-fleet/`, so the 1.3.0 summary also landed in the 1.2.0 and post-1.1 ledgers. 23–153 lines each.
+- **The SessionStart / PostCompact print** (the ledger tail into the fresh context): present after each of the five, and the session continued each time without re-deriving state — but what it printed was the session's own handoff, not anything a hook wrote.
+
+Reading: over five compactions the hook-authored parts — the nudge, the gate and the compaction summary — rescued nothing that the session had not already written itself, and the summary left three duplicate blocks in ledgers they do not belong to. The part that carried value is the cheapest one: printing the ledger tail at session start and after a compaction. The estimator behind the nudge (window detection, the transcript scan, `handoff-state.json`) is the largest piece of the guard and the source of [the window gap above](#the-guards-estimate-against-the-engine). N = 5, all manual: whether the nudge would earn its place under automatic compactions is not measured, because none has occurred.
+
+**Acted on in 1.5.0.** The nudge, the gate and the summary were removed; the stamp and the print stay. `hooks/melon-guard.mjs` went from 1 929 lines / 95 871 bytes to 1 152 lines / 57 184 bytes (the rendered guard, `renderHookFile`, has the same line count: the marker replaces the placeholder line).
+
+## The Codex web default mode
+
+Taken 2026-09-25 on codex-cli 0.156.1 with `gpt-6-astra`, one run per setting, over a prompt that needs a page fetched (quote the `<title>` of https://example.com/ and name the tool used). The question: which of `cached`, `indexed` and `live` a research run gets when the adapter sets no mode, as it has since 1.3.0.
+
+| Setting | `web_search` items | What the answer showed |
+|---|---|---|
+| none (the CLI's default) | 2 (one query, one `open_page` of the URL) | "Example Domain", via `web.run`, marked "Crawled: today"; the model could not say live or cache; `curl` failed DNS in the sandbox |
+| `web_search="cached"` | 2 (the same two) | the same |
+| `web_search="live"` | 2 (the same two) | the same |
+
+Measured 2026-09-25 on codex-cli 0.156.1: with no `web_search` setting, with `"cached"` and with `"live"`, a page-fetch prompt produced the same two `web_search` items (a query and an `open_page`) and the same answer marked `Crawled: today`; the default is indistinguishable from either on the exec output, and the only mode with an observable difference is `"disabled"` (zero items, 1.4.0).
+
+## Unit processes after the server is gone
+
+Measured 2026-09-25 on agy 1.2.11, grok 1.0.41 and codex-cli 0.157.0, before the 1.6.0 changes (the numbers this release's unit-timeout work answers). Two questions, four runs.
+
+**(a) The MCP server is killed from outside.** `melon-fleet call <unit> <unit>_research '{"prompt":"<a long research prompt>"}' --timeout 15` — the client SIGKILLs the server at 15 s, below every unit's `timeoutS` — then `ps -eo pid,pgid,ppid,etime,stat,comm` every 12 s.
+
+| CLI | After the server died | Bound |
+|---|---|---|
+| agy | orphaned (ppid 1, its own process group), still running at 95 s, killed by hand | none — the server's hard-kill timer died with the server |
+| grok | orphaned, still running at 3 min 06 s (state S), killed by hand | none |
+| codex | orphaned, gone on its own between 12 s and 24 s | the closed stdout pipe: codex writes JSONL as it goes and exits on the broken pipe |
+
+**(b) A normal run ends.** `<unit>_research` on "Reply with exactly the word OK", the vendor child's process group sampled every second during the run and at 0, 2 and 5 s after the call returned: one member (the child itself) during the run, none after, for all three CLIs. Nothing to reap at the end of a run.
+
+**(c), (d) Codex with tool use.** `codex_code_review` on a prompt that runs shell commands: codex starts each command's `/bin/zsh` and its `codex-code-mode-host` **in their own process groups** (`setsid`), outside the group `core/spawn.mjs` kills. With the server killed while codex was *writing* (c), codex and its helper were gone within 5 s. With the server killed while codex was *waiting on* `sleep 120` (d), codex, the shell, the `sleep` and the helper were all alive 30 s later and were killed by hand: codex lives until its current command ends, and that command is out of reach of a group kill on any path.
+
+**What 1.6.0 does with this.** `call --timeout` cancels the request before it signals the server, and the server meets SIGTERM/SIGHUP by killing its live process groups — the (a) case for a server that is *told* to stop. What remains, and SECURITY says so: a SIGKILLed server (agy and grok run to their own end; codex until its current command ends), and a shell command Codex is running, which sits in its own group. No reaper at the end of a run, per (b).
+
+**How it was taken.** Four zsh scripts (in the session's scratchpad, not the repository): (a) the `call` above, then `ps` filtered to `agy|grok|codex` with `ppid == 1` or an `etime` under a minute, five samples; (b) the call in the background, `pgrep -P` from the call's pid to the server to the vendor child, `ps -o pgid=` on it, then `ps -eo pid,pgid,comm | awk '$2==pgid'` every second and after the return; (c) and (d) the same walk on `codex_code_review`, listing every process whose pid or ppid is the vendor child's, every second for the call's length and every 5 s for 40 s after.
+
+## What Claude Code sends at `initialize`
+
+Measured 2026-09-25 on Claude Code 2.1.282: every `initialize` request carries `protocolVersion: "2025-11-25"` — 299 initialize records across the mcp logs on the machine, files dated 2026-08-12 to 2026-09-25, under `~/Library/Caches/claude-cli-nodejs/*/mcp-logs-<server>/`, where Claude Code records `negotiatedProtocolVersion` and `protocolEra: "legacy"` (its word for the `initialize` handshake; the stateless 2026-07-28 revision is "modern"). No `server/discover` probe appears in any log. Through 1.5.0 the server echoed the requested version, so it claimed 2025-11-25 without having checked what that revision requires; 1.6.0 answers from `SUPPORTED_PROTOCOLS` (`core/jsonrpc.mjs`), whose entries were checked against the specification's changelogs: every 2025-06-18 and 2025-11-25 addition is optional for a tools-only stdio server, 2025-03-26 is excluded for its mandatory batch receipt, 2026-07-28 is a different protocol and is not claimed.
+
+**How it was taken.** `grep -h -o 'rotocolVersion[^0-9]*[0-9-]*' ~/Library/Caches/claude-cli-nodejs/*/mcp-logs-orion-*/*.jsonl | sort | uniq -c` on the operator's machine; the changelogs at `modelcontextprotocol.io/specification/<revision>/changelog`.
+
+## The fleet pane's cost per tool call
+
+Measured 2026-10-09 at the 1.7.0 live gate on Claude Code 2.1.295. The program's stop line: more than 150 ms added per tool call stops the slice.
+
+| Mod | Calls | Median | Mean |
+|---|---:|---:|---:|
+| enabled | 38 | 597.0 ms | 605.2 ms |
+| disabled | 40 | 597.5 ms | 602.8 ms |
+
+No measurable cost: the medians differ by half a millisecond the other way, the means by 2.4 ms, inside the spread between series (their own medians run from 593 to 602 ms).
+
+**How it was taken.** `claude -p` on `claude-haiku-5-5` in an empty folder, asked to call Bash with `true` twenty times, one call per turn, with `--output-format stream-json --verbose` and `--allowedTools 'Bash(true)'`. Each call is timed from the arrival of the assistant line carrying the `tool_use` to the line carrying its `tool_result`. Two series with the mod enabled, two after `claude plugin disable melon-fleet@melon-fleet`; the first, cold call of each series is dropped. A headless run never opens the pane, so the tick and the drawing are not in these numbers, only the hooks every tool call passes through.
+
+## Vendor CLI versions per release
+
+The versions the live gate ran on, from the ledgers' live-gate lines and the CHANGELOG; "—" means the ledger did not record it (the CLIs auto-update, so a release without a recorded version was gated on whatever was installed that day).
+
+| melon-fleet | agy | grok | codex-cli |
+|---|---|---|---|
+| 0.2.0 (2026-09-03) | — | — | 0.153.0 |
+| 0.3.0 (2026-09-06) | — | — | 0.153.4 |
+| 1.1.0 (2026-09-17) | — | 1.0.41 | 0.156.1 |
+| 1.2.0 (2026-09-24) | — | 1.0.41 | 0.156.1 |
+| 1.3.0 (2026-09-25) | — | 1.0.41 | 0.156.1 |
+| 1.4.0 (2026-09-25) | — | 1.0.41 | 0.156.1 |
+| 1.5.0 (2026-09-25) | 1.2.11 | 1.0.41 | 0.156.1 |
+| 1.6.0 (2026-09-26) | 1.2.11 | 1.0.41 | 0.157.0 |
+| 1.6.1 (2026-09-30) | 1.2.14 | 1.0.44 | 0.159.2 |
+| 1.6.2 (2026-10-03) | 1.2.16 | 1.0.46 | 0.159.2 |
+| 1.7.0 (2026-10-09) | 1.3.2 | 1.0.50 | 0.160.0 |
+| 1.7.1 (2026-10-16) | 1.4.0 | 1.0.60 | 0.162.1 |
+
+Each release adds its row at the live gate (a step of the release procedure the ledger records; this repository's own checklist is the operator's, not a published file).
+
+**Units per release.** From 1.6.0 the release line of each ledger records `melon-fleet results --stats --since "$(git log -1 --format=%cI <first commit>)"` — the ISO time of the branch's first commit with its offset (`2026-09-25T18:47:00+03:00`); UTC, with or without milliseconds, reads the same (calls, wall-clock, spool per unit); a unit whose call count equals `resultsKeep` (50) is a floor, not a count, because the spool prunes as it fills. 1.6.0, from the branch's first commit (2026-09-25T18:47Z) to the merge — the U1 measurement's runs, the live gate and the release reviews included: gemini 5 calls / 10 min 20 s / 10 KB; grok 4 / 3 min 7 s / 11 KB (one of them the live gate's hard kill: `status: error`, nothing salvaged; another the 60 s kill with text, `partial: true`); codex 14 / 1 h 5 min 7 s / 54 KB — 23 calls, 1 h 18 min of vendor wall-clock, none at the cap. The row taken with `--since 2026-09-25` (the whole day) read 78 calls and 5 h 58 min, most of it 1.5.0's release day and codex's 50 the cap — the wrong window, kept here as the reason the rule names the commit time. 1.6.1, from the branch's first commit (2026-09-30T13:34:33+03:00, read with `git log -1 --format=%cI`) to the merge: 5 calls, 33 min 18 s of unit wall-clock — grok 1 (the release sweep, 22 min), codex 4 (a code review from another session's server at 11:11Z, the two release reviews, the live gate's image run); the Gemini research for the catalog ran before the first commit and is not in the window; none at the `resultsKeep` floor. 1.6.2, whose one commit landed after all the work (so the first-commit window would have been empty), from the branch's creation (reflog, 2026-10-03T13:24:06+03:00) to the merge: grok 1 call (the release sweep, 4 min 17 s, 710 B spool, 112 206 tokens in / 17 417 out), gemini and codex 0 through the unit — the two Claude smoke runs and the tester's one call went to agy directly and are not in the window; the catalog's live gate through the unit is deferred to the bucket's reset. The nine tester and two coder measurement arms ran on Claude sub-agents, not on units, and are in [their own section](#the-testers-effort-a-second-pass-and-an-advisor). 1.7.0, from the branch's first commit (2026-10-04T12:11:40+03:00) to the merge — the release reviews, their re-reviews and the desktop live gate's session included: gemini 2 calls / 7 min 34 s / 21 KB (one `partial`); grok 4 / 49 min 27 s / 37 KB; codex 5 / 32 min 5 s / 34 KB — 11 calls, 1 h 29 min of unit wall-clock, none at the `resultsKeep` floor. 1.7.1, from the first lane commit (2026-10-12T20:56:47+03:00) to the merge — the Argon research (Astra), the release reviews and re-reviews and the live gate included: gemini 13 calls / 12 min 56 s / 18 KB (2 errors); grok 4 / 25 min 40 s / 28 KB (1 error); codex 21 / 2 h 29 min 47 s / 95 KB — 38 calls, 3 h 8 min of unit wall-clock, none at the `resultsKeep` floor. The live gate ran `gemini_research` once on `Gemini 3.8 Flash (High)` (10.3 s) and once on `Gemini 4 Argon (Low)` (8.5 s), both answering.
+
+## The fleet's units on our own tasks
+
+Round one of the evals, 2026-10-16, on agy 1.4.0, codex 0.162.1 and grok 1.0.60: 138 calls, none failed. The method, its limits and the charts are in [evals/README](../evals/README.md); the tasks, keys and answers stay private.
+
+| Arm | Runs | R correct, of 10 | V recall | V precision | V wall per call |
+|---|---:|---:|---:|---:|---:|
+| Gemini 3.8 Flash · Low | 2 | 9 | 21 % | 27 % | 12 s |
+| Gemini 3.8 Flash · Medium | 2 | 9 | 43 % | 40 % | 497 s |
+| Gemini 3.8 Flash · High | 2 | 8.5 | 29 % | 24 % | 511 s |
+| Gemini 4 Argon · Low | 1 | 8 * | 29 % | 22 % | 58 s |
+| Gemini 4 Argon · Medium | 1 | 9 * | 29 % | 38 % | 69 s |
+| Gemini 4 Argon · High | 1 | 9 * | 29 % | 50 % | 560 s |
+| Grok 4.7 | 2 | 10 | 36 % | 64 % | 924 s |
+| GPT-6.1 Sol · xhigh | 2 | 10 | 43 % | 83 % | 273 s |
+| GPT-6 Astra · xhigh | 2 | 10 | 43 % | 93 % | 328 s |
+
+\* one prompt for all ten questions; a per-question Argon round follows in the week of 2026-10-19. Recall is key defects found, of 7. Precision is the findings that are key items or new defects the session confirmed, over all findings; a new finding the session could not confirm (10 in the round, most of them hanging on how the engine behaves) counts against it.
+
+| Question | What round one says (N = 1–2) |
+|---|---|
+| Research | Codex and Grok answered all ten in every run; every Gemini arm missed the same question, naming a later release where the key asks for the first. No cited URL was invented (58 graded). The trap question caught one Flash High run. |
+| Review | Codex is the most precise reviewer (83–93 %), and no arm found more than 3 of the 7 key defects; three of them no arm found. Gemini's precision ran 22–50 %. |
+| Effort | Neither Gemini model gains steadily from Low to High: Flash's best V recall is at Medium, and Argon High doubles Low's precision at ten times the wall time. |
+| Grok | 20 of 20 on research here does not lift [never a sole source](ORCHESTRATION.md#never-a-sole-source): ten questions, two runs. |
+
+<img src="../evals/charts/r-accuracy.svg" alt="R: correct answers out of 10 and invented URLs per arm, the bar the mean and each dot a run." width="760">
+
+<img src="../evals/charts/v-recall-precision.svg" alt="V: recall of the 7 key defects and precision per arm, the bar the mean and each dot a run." width="760">
+
+<img src="../evals/charts/effort.svg" alt="Effort: Gemini 3.8 Flash and Gemini 4 Argon at Low, Medium and High, R share correct and V recall." width="760">
+
+<img src="../evals/charts/cost.svg" alt="Cost: R share correct and V recall per arm against mean wall time and tokens per call, log scales." width="760">
+
+**How it was graded.** One clean `melon-reviewer` graded the blinded answers (383 lines). The session checked every uncertain grade and every claimed new defect, plus a seeded 10 % sample of the rest (33 lines, none changed). It overturned 8 grades: 7 under one ruling (a race in the tick that the key's stale-tick defect covers), 1 for consistency with a matching finding. It dropped 13 duplicate lines for that same race.
+
+## How the numbers are taken
+
+- **Sub-agent tokens.** `node scripts/agent-usage.mjs <transcript.jsonl>` (in the repository; not part of the installed package) reads a Claude Code session transcript (`~/.claude/projects/<project>/<session>.jsonl`) and collects the task notifications the harness writes when a background sub-agent finishes — `subagent_tokens`, `tool_uses`, `duration_ms` — one row per agent. It reads nothing else, and a description that carries an absolute path is cut to its last segment. The transcript itself is private and is not in this repository; only the aggregates above are.
+- **Per-request usage, by source.** `node scripts/context-by-source.mjs <session.jsonl> <subagents dir> [--agents]` reads each sub-agent's own transcript (`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`; since Claude Code 2.1.280 a `.meta.json` beside it names the role and model). One API request is one `message.id`; its context is `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`; text is attributed to the tool that produced it, a Bash command counting as reading when a pipeline segment starts with `cat`, `head`, `tail`, `sed -n`, `git show`, `git diff` or the like. It prints aggregates and repository-relative file names, never content; `--before <ISO date>` names the cutoff, because a resumed session keeps writing sub-agents into the same directory. This is the better source, and the one 1.2.0's measurements are taken from.
+- **What `subagent_tokens` means.** It is the harness's count for the agent at the moment it stopped. A resumed agent reports again with a larger number (the 1.1.0 coder reported 139 834, 184 245, 286 692 and 320 000 across four rounds), so the script keeps the largest. Read it as the size of the context the agent ended with — a floor on what it had to read — not as a bill: the billed total, with cache reads on every turn, is larger and is not in the transcript in this form.
+- **`check` timings.** A throwaway harness imports `core/check.mjs` from each commit, builds the fixture in a temp directory, and times `checkPointers` with `process.hrtime`; memory is `process.resourceUsage().maxRSS` from a fresh process per run (an idle Node process on that machine: 33 MiB). The fixtures are the ones described in the table; the timing one is also a test (`test/check.test.mjs`, "the worst case is bounded").
+- **Review yield.** The `review yield:` line of each release's ledger (`.melon-fleet/ledger-<release>.md`, kept by the orchestrator, not in the repository).
+- **Security-audit counts.** The P0 lines of the 1.3.0 ledger (same place): one `candidate` line per finding per run, then its `verified` or `refuted` ruling once a fresh agent had tried to disprove it (the plugin's four: one live check that ran the vendors, ledger 2026-09-25) — the refuting agents, their clusters and the confound are under [Refutation](#security-audit-plain-brief-and-plugin-over-one-revision). Duplicates within a run are merged before counting; the overlap is matched by the session, by location and scenario. Three runs: the plugin run ran on the operator's own `/claude-security` invocation on 2026-09-25, over `3b01e32`.
+- **Matched-repeat numbers.** Per-request usage from each sub-agent's own transcript, priced at the list prices of the day ([above](#a-task-lead-between-the-session-and-the-coder)); output tokens are taken as the maximum per message id, so they are under-counted, equally in both arms. Acceptance is the tester's tests, written before either arm ran, run against each arm's tree.
+- **Rent.** Per-request context from the orchestrating session's own transcript, counted as under "Per-request usage, by source" above; the 1.3.0 rules sizes are `renderRulesFile` under each merge policy, as above.
+- **Contract sizes.** `FLEET_CONTRACT.length` and `SHORT_CONTRACT.length` from `core/rules.mjs`.
+- **Rules file size.** `renderRulesFile('1.2.0', { merge: 'session' })` from `core/rules.mjs` — `.length` for characters, `Buffer.byteLength` for bytes — and, for 1.1.0, the same three substitutions applied to `git show v1.1.0:rules/melon-fleet.md`.
+- **Per-task cost tables.** Taken from sub-agent transcripts with `scripts/context-by-source.mjs --agents` — roles come from each agent's `.meta.json` `agentType` since commit `1997a71`, guessed from the description only when a run predates it — and that day's list prices. Session-side numbers are estimates: the session's own windows overlap other, concurrent work, so they are not read off a clean transcript the way a sub-agent's are.
+- **The Codex web default mode.** Three runs, each in a fresh empty directory with stdin closed (`< /dev/null`: codex reads stdin to EOF when it is not a TTY): `codex exec -s read-only --ignore-user-config --ignore-rules --json -m gpt-6-astra '<prompt>'`, the same with `-c 'web_search="cached"'`, and the same with `-c 'web_search="live"'`; the number is the count of `"type":"web_search"` items in each `--json` stream.
+
+## Not measured yet
+
+- **Whether the five-section report shortens the orchestrator's reading.** The orchestrator's own tokens per release have not been separated out of its single long session.
+- **Whether `check` catches wrong evidence in practice.** In 1.1.0 it caught one off-by-one pointer in the orchestrator's own documentation and one weak fragment in the coder's own report. Two is an anecdote.
+- **A second judgement-heavy effort trial.** [The matched repeat](#the-matched-repeat-medium-and-xhigh-on-a-judgement-heavy-task) is one task, N = 1; the two-bucket rule rests on it and on an observational bucket log. A second judgement-heavy pair is what would make it a ranking.
+- **The second pass on another task, against one xhigh pass.** [The tester measurement](#the-testers-effort-a-second-pass-and-an-advisor) is one task, one run per cell; the flow held on 1.6.1 Task 1b, but with no single-pass arm beside it. A matched pair on a second task is what would make the margin a ranking.
+- **The second pass after a skill-forked first pass.** Every measured second pass continued a tester dispatched by hand through the Agent tool; whether a tester forked by the `/melon-test` skill can be continued was not tried, and the fallback — a fresh `melon-tester` given the first one's test file — is unmeasured too.
+- **Opus as the second-pass reader.** Only Sonnet 5.5 has run the second pass; whether `claude-opus-5-5` reads what a diff writes better for its price is unmeasured.
+
+The plugin run of the security audit, listed here until 1.6.1, ran on 2026-09-25 on the operator's own `/claude-security` invocation: [the row](#security-audit-plain-brief-and-plugin-over-one-revision) has all three runs.

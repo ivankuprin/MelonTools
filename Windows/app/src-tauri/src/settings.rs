@@ -74,7 +74,10 @@ pub fn save(s: &Settings) -> Result<(), String> {
     let dir = paths::appdata_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let data = serde_json::to_string_pretty(s).map_err(|e| e.to_string())?;
-    std::fs::write(paths::settings_path(), data).map_err(|e| e.to_string())
+    let path = paths::settings_path();
+    let tmp = paths::tmp_path(&path);
+    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
 fn generate_api_key() -> String {

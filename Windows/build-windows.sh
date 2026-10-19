@@ -48,7 +48,14 @@ else
 fi
 
 echo "==> 3/4 cargo xwin build (x86_64-pc-windows-msvc)"
-(cd app/src-tauri && cargo xwin build --release --target x86_64-pc-windows-msvc)
+(
+  cd app/src-tauri
+  # cargo does not track ui/ changes (the assets are embedded by the
+  # generate_context! macro), so a UI-only edit would ship a stale frontend.
+  # Touching the crate entry point forces the recompile that re-embeds it.
+  touch src/main.rs
+  cargo xwin build --release --target x86_64-pc-windows-msvc
+)
 
 echo "==> 4/4 collecting artifacts (single executable)"
 mkdir -p dist

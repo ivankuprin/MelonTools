@@ -84,6 +84,7 @@ struct FleetResultsView: View {
                 }
             }
             .padding(.vertical, MTTheme.s2)
+            .mtScrollMemory("scroll.fleet-results")
         }
     }
 

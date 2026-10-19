@@ -23,8 +23,8 @@ final class AppState: ObservableObject {
     init() {
         appearance = Appearance(rawValue: UserDefaults.standard.string(forKey: "appAppearance") ?? "") ?? .system
         fleetHome = UserDefaults.standard.string(forKey: "fleetHome")
-            ?? ProcessInfo.processInfo.environment["fleet_HOME"]
-            ?? "~/.fleet"
+            ?? ProcessInfo.processInfo.environment["MELON_FLEET_HOME"]
+            ?? "~/.melon-fleet"
         codexHome = UserDefaults.standard.string(forKey: "codexHome")
             ?? ProcessInfo.processInfo.environment["CODEX_HOME"]
             ?? "~/.codex"

@@ -55,6 +55,7 @@ struct CodexProvidersView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.providers")
         }
         .background(MTTheme.background)
         .onAppear {

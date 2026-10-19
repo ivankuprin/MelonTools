@@ -67,6 +67,7 @@ struct CodexAccountsView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.accounts")
         }
         .background(MTTheme.background)
         .onAppear { store.load() }

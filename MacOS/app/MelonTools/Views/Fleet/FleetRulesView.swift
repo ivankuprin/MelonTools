@@ -110,6 +110,7 @@ struct FleetRulesView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.fleet-rules")
         }
         .background(MTTheme.background)
         .onAppear { store.start() }

@@ -57,6 +57,7 @@ const DICT = {
     routing: "Роутинг", strategy: "Стратегия", strategyAuto: "Авто (по остатку)", strategyQuotaHigh: "Больше квоты — выше",
     strategyQuotaLow: "Меньше квоты — выше", strategyPlanHigh: "Старше план — выше", strategyPlanLow: "Младше план — выше",
     strategyExpiry: "Скоро истекает — выше", strategyCustom: "Ручной порядок", orderUp: "Выше", orderDown: "Ниже", resetOrder: "Сбросить порядок",
+    orderCustom: "Включён ручной порядок — шлюз следует списку карточек",
     preferred: "Первый", backup: "Бэкап", recentCalls: "Последние вызовы", noCalls: "пока пусто",
     fleet: "Fleet", fleetStatus: "Статус", fleetResults: "Результаты", fleetConfig: "Конфиг", fleetCommands: "Команды",
     fleetHome: "Папка Fleet", fleetCli: "CLI", fleetCliMissing: "не найден в PATH", fleetRun: "Выполнить", fleetOutput: "Вывод",
@@ -117,6 +118,7 @@ const DICT = {
     routing: "Routing", strategy: "Strategy", strategyAuto: "Auto (by remaining)", strategyQuotaHigh: "More quota first",
     strategyQuotaLow: "Less quota first", strategyPlanHigh: "Higher plan first", strategyPlanLow: "Lower plan first",
     strategyExpiry: "Ending soon first", strategyCustom: "Manual order", orderUp: "Up", orderDown: "Down", resetOrder: "Reset order",
+    orderCustom: "Manual order enabled — the gateway follows the card list",
     preferred: "Preferred", backup: "Backup", recentCalls: "Recent calls", noCalls: "empty for now",
     fleet: "Fleet", fleetStatus: "Status", fleetResults: "Results", fleetConfig: "Config", fleetCommands: "Commands",
     fleetHome: "Fleet folder", fleetCli: "CLI", fleetCliMissing: "not found in PATH", fleetRun: "Run", fleetOutput: "Output",
@@ -194,7 +196,7 @@ function mock(cmd, args) {
     },
   ];
   const mocks = {
-    app_info: { name: "Melon Tools", version: "1.4.6", platform: "windows", dataDir: "C:\\Users\\you\\AppData\\Roaming\\MelonTools", codexHome: "C:\\Users\\you\\.codex" },
+    app_info: { name: "Melon Tools", version: "1.4.7", platform: "windows", dataDir: "C:\\Users\\you\\AppData\\Roaming\\MelonTools", codexHome: "C:\\Users\\you\\.codex" },
     settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "" },
     settings_set: (a) => a.settings,
     vault_list: demoAccounts,
@@ -221,7 +223,7 @@ function mock(cmd, args) {
     device_login_poll: { done: false },
     gateway_models: [{ id: "gpt-6.1-sol", owned_by: "openai" }, { id: "opencode/grok-4.7", owned_by: "opencode-go" }],
     gateway_recent_calls: [{ time: "19:19:41", status: "200", duration: "9.743s", method: "POST", path: "/v1/responses" }],
-    fleet_status: { home: "C:\\Users\\you\\.fleet", cli: null, snapshots: [], logTail: [] },
+    fleet_status: { home: "C:\\Users\\you\\.melon-fleet", cli: null, snapshots: [], logTail: [] },
     fleet_results: [],
     fleet_read_result: "(demo)",
     fleet_config_get: { path: "…\\fleet.config.json", text: "{}" },
@@ -846,7 +848,7 @@ function settingsPage() {
       </div>
       <div class="row">
         <label class="field" style="flex:1">${t("fleetHome")}
-          <input type="text" id="set-fleet-home" value="${esc(settings.fleetHome || "")}" placeholder="%USERPROFILE%\\.fleet">
+          <input type="text" id="set-fleet-home" value="${esc(settings.fleetHome || "")}" placeholder="%USERPROFILE%\\.melon-fleet">
         </label>
       </div>
       <div class="row">
@@ -1105,6 +1107,7 @@ const A = {
   },
 
   refreshQuotas() {
+    S.lastQuotaRefreshAt = Date.now();
     run("quotas", async () => {
       const result = await inv("quota_refresh");
       S.accounts = result.accounts;
@@ -1215,6 +1218,9 @@ const A = {
     run("order", async () => {
       S.routing = await inv("move_priority", { id, up });
       if (S.routing.accounts) S.accounts = S.routing.accounts;
+      // Moving a card is what the manual order is: the planner follows the
+      // list only in custom mode, and the switch happens silently otherwise.
+      toast(t("orderCustom"));
     });
   },
 
@@ -1385,11 +1391,19 @@ window.A = A;
 (async function boot() {
   await A.loadAll();
   setInterval(() => A.refreshStatus(), 5000);
+  // Adaptive quota refresh: the configured interval when idle, ~30 s while
+  // the gateway is actually serving — a fixed cadence lets accounts burn
+  // through a small reserve between checks.
   setInterval(() => {
     if (!IS_TAURI) return;
-    const interval = (S.settings && S.settings.quotaInterval) || 300;
-    A.refreshQuotas();
-  }, ((S.settings && S.settings.quotaInterval) || 300) * 1000);
+    const now = Date.now();
+    const interval = ((S.settings && S.settings.quotaInterval) || 300) * 1000;
+    const since = now - (S.lastQuotaRefreshAt || 0);
+    const underLoad = !!(S.status && S.status.requestsLastMinute > 0);
+    if (since >= interval || (underLoad && since >= 30000)) {
+      A.refreshQuotas();
+    }
+  }, 30000);
   if (S.section === "providers" && IS_TAURI) {
     A.openrouterRefresh();
   }

@@ -133,6 +133,7 @@ struct SettingsView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 840, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.settings")
         }
         .background(MTTheme.background)
     }

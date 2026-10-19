@@ -11,9 +11,9 @@ pub fn home(settings: &Settings) -> PathBuf {
         return PathBuf::from(settings.fleet_home.trim());
     }
     if let Ok(profile) = std::env::var("USERPROFILE") {
-        return PathBuf::from(profile).join(".fleet");
+        return PathBuf::from(profile).join(".melon-fleet");
     }
-    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".fleet")
+    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".melon-fleet")
 }
 
 /// Workspace overview: snapshots + the tail of the ndjson log.
@@ -185,7 +185,7 @@ pub async fn cli_run(settings: &Settings, args: Vec<String>) -> Result<String, S
     })?;
     let mut command = tokio::process::Command::new(&cli);
     command.args(&args);
-    command.env("fleet_HOME", home(settings));
+    command.env("MELON_FLEET_HOME", home(settings));
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
     let output = tokio::time::timeout(std::time::Duration::from_secs(120), command.output())

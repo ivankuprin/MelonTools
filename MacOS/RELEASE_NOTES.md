@@ -1,12 +1,18 @@
-# Melon Tools 1.4.6
+# Melon Tools 1.4.7
 
-This release sanitizes bundled and imported model catalogs before saving them.
-Prompt, policy, and experimental tool metadata are excluded from generated
-entries, including models routed to configured third-party providers.
+- Reduced idle work and hardened scheduler timing across both apps; quota refresh responds to gateway activity.
+- Hardened account, gateway, and Fleet process handling; fixed reliability issues found in the cross-platform audit.
+- Added remembered scroll positions and sidebar keyboard shortcuts on macOS.
+- Preserved the model catalog privacy protections introduced in 1.4.6.
 
-The macOS DMG contains a universal app and gateway for Apple Silicon and Intel
-Macs running macOS 14 or later. It is ad-hoc signed and is not notarized; use
-right-click → Open on first launch if Gatekeeper blocks it.
+## Downloads
 
-This release also includes the Codex account-switch and live quota-routing
-fixes from 1.4.5.
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.7.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.4.7-win-x64.exe) — WebView2 Runtime required.
+
+Both files include SHA-256 checksum assets on the release page.
+
+## Earlier fixes
+
+- **1.4.6:** Sanitized generated model catalogs and made quota reserve refresh respond to active gateway traffic.
+- **1.4.5:** Fixed Codex account switching and live quota-routing updates.

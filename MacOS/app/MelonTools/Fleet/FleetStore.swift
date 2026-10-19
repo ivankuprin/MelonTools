@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-/// Live view over the fleet home directory (~/.fleet):
+/// Live view over the fleet home directory (~/.melon-fleet):
 /// status snapshots, ndjson log tail, result spool, doctor, config.
 @MainActor
 final class FleetStore: ObservableObject {
@@ -48,6 +48,17 @@ final class FleetStore: ObservableObject {
         watchSource = nil
         pollTimer?.invalidate()
         pollTimer = nil
+    }
+
+    /// Fleet data is only polled while its pages (or the dashboard that shows
+    /// the summary) are visible; switching away suspends the poll timer and
+    /// the directory watcher, switching back re-arms them.
+    func setActive(_ active: Bool) {
+        if active {
+            start()
+        } else {
+            stop()
+        }
     }
 
     private func startWatcher() {
@@ -371,5 +382,5 @@ final class FleetStore: ObservableObject {
 final class AppStateLocator {
     static let shared = AppStateLocator()
     var homePath: String = UserDefaults.standard.string(forKey: "fleetHome")
-        ?? NSString(string: "~/.fleet").expandingTildeInPath
+        ?? NSString(string: "~/.melon-fleet").expandingTildeInPath
 }

@@ -28,6 +28,7 @@ struct DashboardView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.dashboard")
         }
         .background(MTTheme.background)
         .onAppear {

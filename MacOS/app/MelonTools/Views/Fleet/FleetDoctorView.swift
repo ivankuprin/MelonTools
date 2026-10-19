@@ -33,6 +33,7 @@ struct FleetDoctorView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.fleet-doctor")
         }
         .background(MTTheme.background)
         .onAppear {
@@ -123,7 +124,7 @@ struct FleetDoctorView: View {
     private func sanitized(_ text: String) -> String {
         text
             .replacingOccurrences(of: "melon-fleet", with: "fleet")
-            .replacingOccurrences(of: "fleet-", with: "")
-            .replacingOccurrences(of: "fleet_", with: "FLEET_")
+            .replacingOccurrences(of: "melon-", with: "")
+            .replacingOccurrences(of: "MELON_FLEET_", with: "FLEET_")
     }
 }

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "defaults": {
+    "status": true
+  },
+  "units": {
+    "gemini": {
+      "enabled": true,
+      "mode": "read-only",
+      "model": "Gemini 3.8 Flash (High)",
+      "timeoutS": 300
+    },
+    "grok": {
+      "enabled": true,
+      "mode": "read-only",
+      "timeoutS": 1800,
+      "maxTurns": 30
+    },
+    "codex": {
+      "enabled": true,
+      "mode": "read-only",
+      "webSearch": true,
+      "timeoutS": 600
+    }
+  }
+}

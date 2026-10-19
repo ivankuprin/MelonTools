@@ -1,0 +1,11 @@
+{
+  "name": "melon-fleet",
+  "owner": { "name": "adxd-og" },
+  "plugins": [
+    {
+      "name": "melon-fleet",
+      "source": "./mods/melon-fleet",
+      "description": "A pane that draws the fleet (the orchestrator, its sub-agents and the units) and who is calling whom; it only reads"
+    }
+  ]
+}

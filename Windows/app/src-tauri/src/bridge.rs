@@ -21,12 +21,25 @@ const INJECTED_SCRIPT: &str = include_str!("../../resources/composer-chips.js");
 
 pub struct BridgeState {
     pub status: Mutex<Value>,
+    /// Debug-port discovery cache — the PowerShell scan is far too heavy for
+    /// the 5 s tick.
+    discovery: Mutex<Option<(Option<u16>, std::time::Instant)>>,
+    /// Rollout path per thread id: saves a full sessions walk every tick.
+    session_path: Mutex<Option<(String, PathBuf, std::time::Instant)>>,
+    /// Gateway model list for the chips (short freshness).
+    models: Mutex<Option<(Value, std::time::Instant)>>,
+    /// OpenRouter metrics for the chips popover (5-minute freshness).
+    providers: Mutex<Option<(Value, std::time::Instant)>>,
 }
 
 impl BridgeState {
     pub fn new() -> Self {
         Self {
             status: Mutex::new(json!({"attached": false, "reason": "starting"})),
+            discovery: Mutex::new(None),
+            session_path: Mutex::new(None),
+            models: Mutex::new(None),
+            providers: Mutex::new(None),
         }
     }
 }
@@ -100,6 +113,44 @@ fn find_debug_port() -> Option<u16> {
         }
         None
     }
+}
+
+/// Cached discovery: the PowerShell process scan runs at most once per TTL,
+/// or immediately when the previous port goes silent (Codex restarted).
+fn find_debug_port_cached(state: &BridgeState) -> Option<u16> {
+    if let Ok(explicit) = std::env::var("MELON_CODEX_DEBUG_PORT") {
+        return explicit.parse().ok();
+    }
+    if let Ok(guard) = state.discovery.lock() {
+        if let Some((cached, at)) = guard.as_ref() {
+            let ttl = if cached.is_some() { 45 } else { 30 };
+            if at.elapsed() < Duration::from_secs(ttl) {
+                return *cached;
+            }
+        }
+    }
+    let found = find_debug_port();
+    if let Ok(mut guard) = state.discovery.lock() {
+        *guard = Some((found, std::time::Instant::now()));
+    }
+    found
+}
+
+fn invalidate_discovery(state: &BridgeState) {
+    if let Ok(mut guard) = state.discovery.lock() {
+        *guard = None;
+    }
+}
+
+/// One long-lived HTTP client for the whole bridge.
+fn client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default()
+    })
 }
 
 // MARK: - CDP
@@ -268,9 +319,10 @@ fn provider_of(model: &str) -> &'static str {
 /// the macOS bridge sends (session/provider details degrade to "no data"
 /// until those subsystems are ported).
 async fn status_payload(
-    client: &reqwest::Client,
+    state: &BridgeState,
     port: u16,
     api_key: &str,
+    openrouter_key: &str,
     model: Option<String>,
 ) -> Value {
     let accounts = vault::accounts();
@@ -325,8 +377,43 @@ async fn status_payload(
         .collect();
 
     // Picker models: names + providers, so the chips can label the active one.
+    let models = picker_models(state, port, api_key).await;
+
+    let mut payload = json!({
+        "accounts": total,
+        "groups": group_list,
+        "health": {
+            "working": working,
+            "total": total,
+            "failed": failed,
+            "paused": paused,
+        },
+        "refreshing": false,
+        "updatedAt": if latest > 0.0 { (latest + vault::APPLE_REF_UNIX_OFFSET) as i64 } else { vault::unix_now() as i64 },
+        "requests": crate::gateway::requests_last_minute(),
+        "models": models,
+        "providers": providers_metrics(state, openrouter_key).await,
+    });
+    let model_name = model.clone().unwrap_or_default();
+    payload["active"] = json!({
+        "model": if model_name.is_empty() { Value::Null } else { json!(model_name.clone()) },
+        "provider": if model_name.is_empty() { Value::Null } else { json!(provider_of(&model_name)) },
+    });
+    payload
+}
+
+/// Gateway model list with a short freshness window — the 5 s tick has no
+/// reason to hit the gateway every time.
+async fn picker_models(state: &BridgeState, port: u16, api_key: &str) -> Vec<Value> {
+    if let Ok(guard) = state.models.lock() {
+        if let Some((value, at)) = guard.as_ref() {
+            if at.elapsed() < Duration::from_secs(45) {
+                return value.as_array().cloned().unwrap_or_default();
+            }
+        }
+    }
     let mut models: Vec<Value> = Vec::new();
-    if let Ok(response) = client
+    if let Ok(response) = client()
         .get(format!("http://127.0.0.1:{}/v1/models", port))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
@@ -346,50 +433,57 @@ async fn status_payload(
             }
         }
     }
+    if let Ok(mut guard) = state.models.lock() {
+        *guard = Some((Value::Array(models.clone()), std::time::Instant::now()));
+    }
+    models
+}
 
-    let mut payload = json!({
-        "accounts": total,
-        "groups": group_list,
-        "health": {
-            "working": working,
-            "total": total,
-            "failed": failed,
-            "paused": paused,
-        },
-        "refreshing": false,
-        "updatedAt": if latest > 0.0 { (latest + vault::APPLE_REF_UNIX_OFFSET) as i64 } else { vault::unix_now() as i64 },
-        "requests": crate::gateway::requests_last_minute(),
-        "models": models,
-        "providers": {},
+/// OpenRouter metrics for the chips popover (cached for five minutes).
+async fn providers_metrics(state: &BridgeState, openrouter_key: &str) -> Value {
+    if openrouter_key.trim().is_empty() {
+        return json!({});
+    }
+    if let Ok(guard) = state.providers.lock() {
+        if let Some((value, at)) = guard.as_ref() {
+            if at.elapsed() < Duration::from_secs(300) {
+                return value.clone();
+            }
+        }
+    }
+    let Ok(data) = crate::providers::openrouter(openrouter_key).await else {
+        return json!({});
+    };
+    let value = json!({
+        "openrouter": {
+            "total": data.get("totalCredits").cloned().unwrap_or(Value::Null),
+            "usage": data.get("totalUsage").cloned().unwrap_or(Value::Null),
+            "remaining": data.get("remaining").cloned().unwrap_or(Value::Null),
+            "keyUsage": data.get("usage").cloned().unwrap_or(Value::Null),
+            "keyLimit": data.get("limit").cloned().unwrap_or(Value::Null),
+        }
     });
-    let model_name = model.clone().unwrap_or_default();
-    payload["active"] = json!({
-        "model": if model_name.is_empty() { Value::Null } else { json!(model_name.clone()) },
-        "provider": if model_name.is_empty() { Value::Null } else { json!(provider_of(&model_name)) },
-    });
-    payload
+    if let Ok(mut guard) = state.providers.lock() {
+        *guard = Some((value.clone(), std::time::Instant::now()));
+    }
+    value
 }
 
 // MARK: - Tick
 
-pub async fn tick(state: &BridgeState, port: u16, api_key: &str, lang: &str) {
-    let Some(debug_port) = find_debug_port() else {
+pub async fn tick(state: &BridgeState, settings: &crate::settings::Settings) {
+    let port = settings.port;
+    let api_key = settings.api_key.as_str();
+    let openrouter_key = settings.openrouter_key.as_str();
+    let lang = settings.lang.as_str();
+    let Some(debug_port) = find_debug_port_cached(state) else {
         set_status(state, json!({"attached": false, "reason": "codex_not_running"}));
         return;
     };
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-    {
-        Ok(client) => client,
-        Err(error) => {
-            set_status(state, json!({"attached": false, "reason": error.to_string()}));
-            return;
-        }
-    };
-    let targets = match fetch_targets(&client, debug_port).await {
+    let targets = match fetch_targets(client(), debug_port).await {
         Ok(targets) => targets,
         Err(error) => {
+            invalidate_discovery(state);
             set_status(
                 state,
                 json!({"attached": false, "reason": format!("targets: {}", error), "debugPort": debug_port}),
@@ -409,6 +503,7 @@ pub async fn tick(state: &BridgeState, port: u16, api_key: &str, lang: &str) {
     let mut session = match Session::connect(ws_url).await {
         Ok(session) => session,
         Err(error) => {
+            invalidate_discovery(state);
             set_status(
                 state,
                 json!({"attached": false, "reason": format!("ws: {}", error), "debugPort": debug_port}),
@@ -458,9 +553,11 @@ pub async fn tick(state: &BridgeState, port: u16, api_key: &str, lang: &str) {
         }
     }
 
-    let mut payload = status_payload(&client, port, api_key, model.clone()).await;
+    let mut payload = status_payload(state, port, api_key, openrouter_key, model.clone()).await;
     payload["active"]["threadId"] = json!(thread_id.clone());
-    if let Some(session_usage) = thread_id.as_deref().and_then(session_usage) {
+    if let Some(session_usage) =
+        thread_id.as_deref().and_then(|id| session_usage_cached(state, id))
+    {
         payload["session"] = session_usage;
     }
     let push = format!(
@@ -493,14 +590,16 @@ pub async fn tick(state: &BridgeState, port: u16, api_key: &str, lang: &str) {
 
 /// Token usage of the thread the composer is looking at: the newest rollout
 /// file whose name carries the thread id, parsed from its tail.
-fn session_usage(thread_id: &str) -> Option<Value> {
+fn find_rollout(thread_id: &str) -> Option<PathBuf> {
     let sessions = crate::paths::codex_home().join("sessions");
     let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
     let mut scanned = 0usize;
     walk_rollouts(&sessions, thread_id, &mut newest, &mut scanned, 0);
-    let (_, path) = newest?;
+    newest.map(|(_, path)| path)
+}
 
-    let data = std::fs::read(&path).ok()?;
+fn read_session_usage(path: &std::path::Path) -> Option<Value> {
+    let data = std::fs::read(path).ok()?;
     let cap = 4 * 1024 * 1024;
     let slice = if data.len() > cap {
         &data[data.len() - cap..]
@@ -543,6 +642,37 @@ fn session_usage(thread_id: &str) -> Option<Value> {
         "model": model,
         "contextWindow": Value::Null,
     }))
+}
+
+/// The directory walk is the expensive part — the resolved path is cached per
+/// thread (a rolling file keeps its path), with a short TTL as a safety net
+/// and an existence check so a fresh thread re-scans immediately.
+fn session_usage_cached(state: &BridgeState, thread_id: &str) -> Option<Value> {
+    let cached = state.session_path.lock().ok().and_then(|guard| {
+        guard
+            .as_ref()
+            .filter(|(thread, path, at)| {
+                thread == thread_id
+                    && path.exists()
+                    && at.elapsed() < Duration::from_secs(20)
+            })
+            .map(|(_, path, _)| path.clone())
+    });
+    let path = match cached {
+        Some(path) => path,
+        None => {
+            let found = find_rollout(thread_id)?;
+            if let Ok(mut guard) = state.session_path.lock() {
+                *guard = Some((
+                    thread_id.to_string(),
+                    found.clone(),
+                    std::time::Instant::now(),
+                ));
+            }
+            found
+        }
+    };
+    read_session_usage(&path)
 }
 
 fn walk_rollouts(

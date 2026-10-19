@@ -93,6 +93,7 @@ final class ComposerBridge: ObservableObject {
                 await self?.tick()
             }
         }
+        tickTimer?.tolerance = 0.5
         Task { @MainActor in
             await tick()
         }

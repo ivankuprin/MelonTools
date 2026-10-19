@@ -53,6 +53,7 @@ struct CodexInstancesView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.instances")
         }
         .background(MTTheme.background)
         .onAppear {

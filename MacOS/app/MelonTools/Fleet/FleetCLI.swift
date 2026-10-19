@@ -53,9 +53,9 @@ final class FleetCLI: ObservableObject {
         guard let nodePath, let entryPath else {
             throw ShellError.launchFailed(unavailabilityReason ?? "fleet CLI unavailable")
         }
-        var env: [String: String] = ["fleet_UPDATE_CHECK": "0"]
+        var env: [String: String] = ["MELON_FLEET_UPDATE_CHECK": "0"]
         if let homeOverride = UserDefaults.standard.string(forKey: "fleetHome"), !homeOverride.isEmpty {
-            env["fleet_HOME"] = homeOverride
+            env["MELON_FLEET_HOME"] = homeOverride
         }
         return try await ShellService.run(nodePath, [entryPath] + arguments, cwd: cwd, env: env, timeout: timeout)
     }
@@ -71,9 +71,9 @@ final class FleetCLI: ObservableObject {
             onStderr(unavailabilityReason ?? "fleet CLI unavailable")
             return -1
         }
-        var env: [String: String] = ["fleet_UPDATE_CHECK": "0"]
+        var env: [String: String] = ["MELON_FLEET_UPDATE_CHECK": "0"]
         if let homeOverride = UserDefaults.standard.string(forKey: "fleetHome"), !homeOverride.isEmpty {
-            env["fleet_HOME"] = homeOverride
+            env["MELON_FLEET_HOME"] = homeOverride
         }
         return await ShellService.stream(nodePath, [entryPath] + arguments, cwd: cwd, env: env, onStdout: onStdout, onStderr: onStderr)
     }
@@ -90,9 +90,9 @@ final class FleetCLI: ObservableObject {
             onStderr(unavailabilityReason ?? "fleet CLI unavailable")
             throw ShellError.launchFailed(unavailabilityReason ?? "fleet CLI unavailable")
         }
-        var env: [String: String] = ["fleet_UPDATE_CHECK": "0"]
+        var env: [String: String] = ["MELON_FLEET_UPDATE_CHECK": "0"]
         if let homeOverride = UserDefaults.standard.string(forKey: "fleetHome"), !homeOverride.isEmpty {
-            env["fleet_HOME"] = homeOverride
+            env["MELON_FLEET_HOME"] = homeOverride
         }
         return try ShellService.streamCancelable(nodePath, [entryPath] + arguments, cwd: cwd, env: env, onExit: onExit, onStdout: onStdout, onStderr: onStderr)
     }

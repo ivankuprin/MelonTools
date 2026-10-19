@@ -797,7 +797,7 @@ final class CodexGatewayService: ObservableObject {
         } else {
             logReadOffset = size
         }
-        logTailTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        logTailTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.readNewLogBytes()
             }

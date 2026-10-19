@@ -1,0 +1,54 @@
+{
+  "name": "melon-fleet",
+  "version": "1.7.1",
+  "description": "Plug Gemini, Grok and Codex into Claude Code as read-only research and review units — on the subscriptions you already pay for, fail-closed by design.",
+  "type": "module",
+  "license": "MIT",
+  "author": "adxd-og",
+  "homepage": "https://github.com/adxd-og/melon-fleet#readme",
+  "bugs": {
+    "url": "https://github.com/adxd-og/melon-fleet/issues"
+  },
+  "bin": {
+    "melon-fleet": "bin/melon-fleet.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "files": [
+    "bin",
+    "core",
+    "units",
+    "servers",
+    "docs",
+    "!docs/superpowers",
+    "examples",
+    "rules",
+    "agents",
+    "hooks",
+    "skills",
+    "mods",
+    "!mods/melon-fleet/tests",
+    ".claude-plugin",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adxd-og/melon-fleet.git"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "gemini",
+    "grok",
+    "codex",
+    "agents",
+    "read-only",
+    "fleet"
+  ]
+}

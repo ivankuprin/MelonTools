@@ -54,6 +54,7 @@ struct FleetConfigView: View {
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
+        .mtScrollMemory("scroll.fleet-config")
         }
         .background(MTTheme.background)
         .onAppear {

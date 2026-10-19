@@ -456,17 +456,34 @@ final class CodexStore: ObservableObject {
 
     private var quotaTimer: Timer?
 
+    /// When the bulk quota refresh last ran — the adaptive scheduler uses it
+    /// to throttle itself while the gateway is under load.
+    private var lastQuotaRefreshAt: Date?
+
     /// Periodic quota refresh. Interval comes from settings (default 5 min, 0 = off).
     func startQuotaScheduler() {
         quotaTimer?.invalidate()
         quotaTimer = nil
         let interval = UserDefaults.standard.object(forKey: "quotaRefreshInterval") as? Int ?? 300
         guard interval > 0 else { return }
-        quotaTimer = Timer.scheduledTimer(withTimeInterval: Double(interval), repeats: true) { [weak self] _ in
+        // A fixed cadence cannot protect a 5% reserve: heavy agent traffic burns
+        // several percent per minute, so a five-minute check lets an account
+        // cross the reserve — and reach 0% — between reads (the pause then
+        // lands late, and Codex shows its "usage limit" banner). Poll every
+        // 30 s and refresh on the configured interval, or much faster while
+        // the gateway is actually serving requests.
+        quotaTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                await self?.refreshAllQuotas()
+                guard let self else { return }
+                guard CodexGatewayService.shared.isRunning else { return }
+                let elapsed = Date().timeIntervalSince(self.lastQuotaRefreshAt ?? .distantPast)
+                let due = elapsed >= Double(interval)
+                let urgent = CodexGatewayService.shared.requestsLastMinute > 0 && elapsed >= 30
+                guard due || urgent else { return }
+                await self.refreshAllQuotas()
             }
         }
+        quotaTimer?.tolerance = 3.0
     }
 
     func refreshQuota(for accountId: String, forceTokens: Bool = false) async {
@@ -548,6 +565,7 @@ final class CodexStore: ObservableObject {
     }
 
     func refreshAllQuotas(forceTokens: Bool = false) async {
+        lastQuotaRefreshAt = Date()
         for account in accounts {
             await refreshQuota(for: account.id, forceTokens: forceTokens)
         }

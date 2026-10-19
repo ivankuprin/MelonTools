@@ -26,6 +26,7 @@
 		5721650C91F03EE4219CFD9C /* CodexAccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAD0F5803A4F71DEA4B885E /* CodexAccountsView.swift */; };
 		5BF1757222CDC389386D799B /* CodexComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1EE785A557ED470937D1D38 /* CodexComposerView.swift */; };
 		5F0462D21FD58B3E437252E6 /* CodexModelCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47529E0DB527DA9405074E30 /* CodexModelCatalogTests.swift */; };
+		620CDA5833964937BD9EB056 /* MTScrollMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49370FA7B0D3BE7C9C77DD3F /* MTScrollMemory.swift */; };
 		67FCC88A8AE0E1767FBF9B1B /* MelonToolsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5F2432BAABE944A58797826 /* MelonToolsApp.swift */; };
 		6D0D6F32C375BDA877E61CE8 /* MTComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACD01EC0F82F6F7D0B4D401 /* MTComponents.swift */; };
 		70092A4A70BBD78D1B57CAED /* TerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FB7C6A30E71A442B95A2E9 /* TerminalLauncher.swift */; };
@@ -81,6 +82,7 @@
 		44B370D20064EDBC82BF5CDA /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		44B4ECC496C0A6AE2F7D50CE /* CodexInstancesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexInstancesView.swift; sourceTree = "<group>"; };
 		47529E0DB527DA9405074E30 /* CodexModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexModelCatalogTests.swift; sourceTree = "<group>"; };
+		49370FA7B0D3BE7C9C77DD3F /* MTScrollMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MTScrollMemory.swift; sourceTree = "<group>"; };
 		4DD5F2D4313079608CA034CD /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		535140492A01BCB2D4079865 /* MTAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MTAssets.swift; sourceTree = "<group>"; };
 		55304F692A547242AA3220F1 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -158,6 +160,7 @@
 				44B370D20064EDBC82BF5CDA /* L10n.swift */,
 				535140492A01BCB2D4079865 /* MTAssets.swift */,
 				FACD01EC0F82F6F7D0B4D401 /* MTComponents.swift */,
+				49370FA7B0D3BE7C9C77DD3F /* MTScrollMemory.swift */,
 				768560461E883B63C28E2ACB /* MTTheme.swift */,
 			);
 			path = Design;
@@ -371,7 +374,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nRES=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nFLEET_SRC=\"$SRCROOT/../_sources/melon-fleet\"\nGATEWAY_BIN=\"$SRCROOT/../build/cliproxyapi\"\nif [ -d \"$FLEET_SRC\" ]; then\n  rm -rf \"$RES/melon-fleet\"\n  mkdir -p \"$RES/melon-fleet\"\n  rsync -a --exclude '._*' --exclude '.git' --exclude 'test' --exclude 'evals' \"$FLEET_SRC/\" \"$RES/melon-fleet/\"\n  echo \"embedded melon-fleet CLI -> $RES/melon-fleet\"\nfi\nif [ -f \"$GATEWAY_BIN\" ]; then\n  mkdir -p \"$RES/bin\"\n  cp \"$GATEWAY_BIN\" \"$RES/bin/cliproxyapi\"\n  chmod +x \"$RES/bin/cliproxyapi\"\n  echo \"embedded gateway binary -> $RES/bin/cliproxyapi\"\nelse\n  echo \"warning: gateway binary missing at $GATEWAY_BIN (build it with build.sh)\"\nfi\n";
+			shellScript = "set -euo pipefail\nRES=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nFLEET_SRC=\"$SRCROOT/Resources/melon-fleet\"\nGATEWAY_BIN=\"$SRCROOT/../build/cliproxyapi\"\nif [ -d \"$FLEET_SRC\" ]; then\n  # Drop stale fleet bundles from earlier builds (any name we used\n  # before) so only the current copy ships.\n  find \"$RES\" -maxdepth 1 -type d -name '*-fleet' ! -name 'melon-fleet' -exec rm -rf {} + 2>/dev/null || true\n  rm -rf \"$RES/melon-fleet\"\n  mkdir -p \"$RES/melon-fleet\"\n  rsync -a --exclude '.git' --exclude 'test' --exclude 'evals' \"$FLEET_SRC/\" \"$RES/melon-fleet/\"\n  echo \"embedded melon-fleet CLI -> $RES/melon-fleet\"\nfi\nif [ -f \"$GATEWAY_BIN\" ]; then\n  mkdir -p \"$RES/bin\"\n  cp \"$GATEWAY_BIN\" \"$RES/bin/cliproxyapi\"\n  chmod +x \"$RES/bin/cliproxyapi\"\n  echo \"embedded gateway binary -> $RES/bin/cliproxyapi\"\nelse\n  echo \"warning: gateway binary missing at $GATEWAY_BIN (build it with build.sh)\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -420,6 +423,7 @@
 				20168DA912EEE1A1968D496E /* LoopbackServer.swift in Sources */,
 				FD07753954102A3079EF335B /* MTAssets.swift in Sources */,
 				6D0D6F32C375BDA877E61CE8 /* MTComponents.swift in Sources */,
+				620CDA5833964937BD9EB056 /* MTScrollMemory.swift in Sources */,
 				03A1C09B1E98D9A166E66227 /* MTTheme.swift in Sources */,
 				4DE9BB4AB391848035938DF9 /* MainView.swift in Sources */,
 				67FCC88A8AE0E1767FBF9B1B /* MelonToolsApp.swift in Sources */,
@@ -616,14 +620,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 16;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MelonTools/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.6;
+				MARKETING_VERSION = 1.4.7;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.app;
 				SDKROOT = macosx;
 			};
@@ -634,14 +638,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 16;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MelonTools/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.6;
+				MARKETING_VERSION = 1.4.7;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.app;
 				SDKROOT = macosx;
 			};

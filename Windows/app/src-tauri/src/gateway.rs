@@ -152,7 +152,12 @@ transient-error-cooldown-seconds: 20
         ));
     }
 
-    fs::write(paths::config_path(), yaml).map_err(|e| e.to_string())
+    // Atomic replace: a crash mid-write must not leave a broken config the
+    // engine would refuse to start with.
+    let path = paths::config_path();
+    let tmp = paths::tmp_path(&path);
+    fs::write(&tmp, yaml).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
 // MARK: - Auth files
@@ -281,6 +286,16 @@ pub async fn start(gateway: &Gateway, settings: &Settings) -> Result<String, Str
     write_config(settings)?;
     sync_accounts(settings)?;
 
+    // A wedged child (alive but not answering health) would hold the port:
+    // terminate it before spawning a fresh engine, otherwise the retry path
+    // accumulates engines that can never bind.
+    if let Ok(mut guard) = gateway.child.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
     let binary = resolve_sidecar_checked()?;
 
     let log = fs::OpenOptions::new()
@@ -338,11 +353,10 @@ pub fn stop(gateway: &Gateway) -> Result<String, String> {
 
 // MARK: - Live rate
 
-/// POST /v1/* requests in the last 60 seconds, parsed from the gateway log.
+/// POST /v1/* requests in the last 60 seconds, parsed from the gateway log
+/// tail (bounded read — the log grows through the session).
 pub fn requests_last_minute() -> usize {
-    let Ok(text) = fs::read_to_string(paths::log_path()) else {
-        return 0;
-    };
+    let text = log_tail(256 * 1024);
     let now = chrono::Local::now().naive_local();
     text.lines()
         .rev()

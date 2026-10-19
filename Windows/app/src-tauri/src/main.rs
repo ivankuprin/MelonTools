@@ -30,6 +30,22 @@ pub struct AppState {
     pub settings: Mutex<settings::Settings>,
     /// Low-quota notification cooldowns: "<account>:<window>" → unix seconds.
     pub notified: Mutex<HashMap<String, i64>>,
+    /// Engine watchdog bookkeeping.
+    pub watchdog: Mutex<Watchdog>,
+}
+
+/// Keeps the local engine alive: after we started (or adopted) the gateway,
+/// two consecutive failed health probes trigger a bounded restart — unless
+/// the user stopped it explicitly.
+#[derive(Default, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Watchdog {
+    pub supervised: bool,
+    pub user_stopped: bool,
+    #[serde(skip)]
+    pub misses: u32,
+    pub restarts: u32,
+    pub last_restart: Option<String>,
 }
 
 impl AppState {
@@ -52,7 +68,7 @@ fn hidden_command(_command: &mut std::process::Command) {
 fn app_info() -> Value {
     json!({
         "name": "Melon Tools",
-        "version": "1.4.6",
+        "version": "1.4.7",
         "platform": std::env::consts::OS,
         "dataDir": paths::appdata_dir().to_string_lossy(),
         "codexHome": paths::codex_home().to_string_lossy(),
@@ -95,6 +111,11 @@ async fn gateway_status(state: State<'_, AppState>) -> Result<Value, String> {
         "sidecarFound": gateway::resolve_sidecar().is_some(),
         "dataDir": paths::appdata_dir().to_string_lossy(),
         "logPath": paths::log_path().to_string_lossy(),
+        "watchdog": state
+            .watchdog
+            .lock()
+            .map(|w| w.clone())
+            .unwrap_or_default(),
     }))
 }
 
@@ -106,6 +127,13 @@ async fn gateway_start(state: State<'_, AppState>) -> Result<String, String> {
     if let Ok(client) = quota::client() {
         let _ = codex_route::sync_catalog(&client, settings.port, &settings.api_key).await;
     }
+    if let Ok(mut guard) = state.watchdog.lock() {
+        guard.supervised = true;
+        guard.user_stopped = false;
+        guard.misses = 0;
+        // A manual start resets the restart budget: the user asked for it.
+        guard.restarts = 0;
+    }
     Ok(result)
 }
 
@@ -113,6 +141,10 @@ async fn gateway_start(state: State<'_, AppState>) -> Result<String, String> {
 async fn gateway_stop(state: State<'_, AppState>) -> Result<String, String> {
     let result = gateway::stop(&state.gw)?;
     let _ = codex_route::remove();
+    if let Ok(mut guard) = state.watchdog.lock() {
+        guard.user_stopped = true;
+        guard.supervised = false;
+    }
     Ok(result)
 }
 
@@ -605,7 +637,74 @@ async fn open_url(url: String) -> Result<(), String> {
 
 // MARK: - Entry point
 
+/// Restarts the engine when it dies while we believe it should run.
+async fn watchdog_check(state: &AppState) {
+    let (supervised, user_stopped, misses, restarts) = match state.watchdog.lock() {
+        Ok(guard) => (
+            guard.supervised,
+            guard.user_stopped,
+            guard.misses,
+            guard.restarts,
+        ),
+        Err(_) => return,
+    };
+    if !supervised || user_stopped || restarts >= 3 {
+        return;
+    }
+    let settings = state.settings();
+    if gateway::health(settings.port, &settings.api_key).await {
+        if let Ok(mut guard) = state.watchdog.lock() {
+            guard.misses = 0;
+        }
+        return;
+    }
+    let missed = misses + 1;
+    if let Ok(mut guard) = state.watchdog.lock() {
+        guard.misses = missed;
+    }
+    if missed < 2 {
+        return;
+    }
+    // Every attempt counts toward the bound (a persistently failing start
+    // must not retry forever), and the miss counter resets so a failed
+    // attempt is followed by a fresh two-miss wait instead of a hot loop.
+    let outcome = gateway::start(&state.gw, &settings).await;
+    if let Ok(mut guard) = state.watchdog.lock() {
+        guard.misses = 0;
+        guard.restarts += 1;
+        if outcome.is_ok() {
+            guard.last_restart = Some(chrono::Utc::now().to_rfc3339());
+        }
+    }
+}
+
+/// Holds the instance lock for the whole process lifetime; the OS releases it
+/// even after a crash. A second launch exits instead of racing over the vault.
+static INSTANCE_LOCK: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+
+fn ensure_single_instance() {
+    let dir = paths::appdata_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("app.lock");
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(&path)
+    else {
+        return; // No lock file — run anyway rather than blocking the app.
+    };
+    use fs2::FileExt;
+    if file.try_lock_exclusive().is_ok() {
+        let _ = INSTANCE_LOCK.set(file);
+    } else {
+        eprintln!("Melon Tools is already running.");
+        std::process::exit(0);
+    }
+}
+
 fn main() {
+    ensure_single_instance();
     let initial_settings = settings::load();
 
     tauri::Builder::default()
@@ -615,6 +714,7 @@ fn main() {
             bridge: bridge::BridgeState::new(),
             settings: Mutex::new(initial_settings),
             notified: Mutex::new(HashMap::new()),
+            watchdog: Mutex::new(Watchdog::default()),
         })
         .setup(|app| {
             // System tray: open window / quit.
@@ -662,19 +762,25 @@ fn main() {
                                 codex_route::sync_catalog(&client, settings.port, &settings.api_key)
                                     .await;
                         }
+                        // Arm the watchdog: without this the auto-started
+                        // engine would get no auto-restart after a crash.
+                        if let Ok(mut guard) = state.watchdog.lock() {
+                            guard.supervised = true;
+                            guard.user_stopped = false;
+                            guard.misses = 0;
+                        }
                     }
                 }
+                let mut tick: u64 = 0;
                 loop {
                     {
                         let state = handle.state::<AppState>();
                         let settings = state.settings();
-                        bridge::tick(
-                            &state.bridge,
-                            settings.port,
-                            &settings.api_key,
-                            &settings.lang,
-                        )
-                        .await;
+                        bridge::tick(&state.bridge, &settings).await;
+                        tick += 1;
+                        if tick % 6 == 0 {
+                            watchdog_check(&state).await;
+                        }
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 }

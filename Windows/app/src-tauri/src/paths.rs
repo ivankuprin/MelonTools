@@ -58,3 +58,17 @@ pub fn codex_auth_path() -> PathBuf {
 pub fn yaml_path(p: &std::path::Path) -> String {
     p.to_string_lossy().replace('\\', "/")
 }
+
+/// A unique temporary sibling for atomic writes: two concurrent writers of
+/// the same file must not share one tmp path — the rename would publish the
+/// wrong content and the other writer would fail on a missing file.
+pub fn tmp_path(path: &std::path::Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let tick = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let name = path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "tmp".to_string());
+    path.with_file_name(format!(".{}.{}.{}.tmp", name, std::process::id(), tick))
+}

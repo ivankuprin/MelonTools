@@ -28,9 +28,18 @@ fn version_path() -> PathBuf {
     engine_dir().join("engine.version")
 }
 
+/// The extraction runs once per process: the result (success or failure) is
+/// cached, so a failing extract never retries a 68 MB decompress on every
+/// status poll.
+static EXTRACTED: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+
 /// Extracts the embedded engine when missing or from an older app version.
 /// Returns the path to a runnable executable.
 pub fn ensure_engine() -> Result<PathBuf, String> {
+    EXTRACTED.get_or_init(extract_engine).clone()
+}
+
+fn extract_engine() -> Result<PathBuf, String> {
     let dir = engine_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = engine_path();
