@@ -72,6 +72,103 @@ final class CodexModelCatalogTests: XCTestCase {
         XCTAssertFalse(CodexModelCatalog.isThirdPartySlug("gpt-6.1-sol"))
     }
 
+    // MARK: - Shared model names
+
+    /// The same model can be served by OpenCode and Antigravity. Codex keys
+    /// picker rows by display name, so both rows must carry a provider suffix
+    /// or one of them disappears from the menu.
+    func testSharedModelNamesStayVisibleForBothProviders() throws {
+        let base: [[String: Any]] = [[
+            "slug": "gpt-6.1-sol",
+            "display_name": "GPT-6.1 Sol",
+            "context_window": 128_000,
+            "priority": 0,
+        ]]
+        let openCode = ModelSource(
+            id: "opencode",
+            kind: .openCode,
+            title: "OpenCode",
+            baseURL: "",
+            apiKey: "key",
+            enabled: true,
+            models: [
+                SourceModel(
+                    id: "gemini-3.5-flash-lite",
+                    display: "Gemini 3.5 Flash Lite",
+                    contextLength: nil,
+                    enabled: true,
+                    alias: "opencode/gemini-3.5-flash-lite"
+                ),
+            ]
+        )
+        let antigravity = ModelSource(
+            id: "antigravity",
+            kind: .antigravity,
+            title: "Antigravity",
+            baseURL: "",
+            apiKey: "",
+            enabled: true,
+            models: [
+                SourceModel(
+                    id: "gemini-3.5-flash-lite",
+                    display: "Gemini 3.5 Flash Lite",
+                    contextLength: nil,
+                    enabled: true,
+                    alias: "gemini-3.5-flash-lite"
+                ),
+            ]
+        )
+
+        let generated = CodexModelCatalog.generatedEntries(
+            base: base,
+            sources: [openCode, antigravity],
+            defaults: nil
+        )
+        let names = generated.entries.compactMap { $0["display_name"] as? String }
+        XCTAssertEqual(generated.custom, 2)
+        XCTAssertTrue(names.contains("Gemini 3.5 Flash Lite (OpenCode)"))
+        XCTAssertTrue(names.contains("Gemini 3.5 Flash Lite (Antigravity)"))
+        XCTAssertEqual(
+            Set(names.filter { $0.hasPrefix("Gemini 3.5 Flash Lite") }).count,
+            2
+        )
+    }
+
+    /// A name that is not shared stays clean; only collisions get a suffix.
+    func testUniqueModelNameIsNotSuffixed() {
+        let base: [[String: Any]] = [[
+            "slug": "gpt-6.1-sol",
+            "display_name": "GPT-6.1 Sol",
+            "context_window": 128_000,
+        ]]
+        let source = ModelSource(
+            id: "opencode",
+            kind: .openCode,
+            title: "OpenCode",
+            baseURL: "",
+            apiKey: "key",
+            enabled: true,
+            models: [
+                SourceModel(
+                    id: "unique-model",
+                    display: "Unique Model",
+                    contextLength: nil,
+                    enabled: true,
+                    alias: "opencode/unique-model"
+                ),
+            ]
+        )
+        let generated = CodexModelCatalog.generatedEntries(
+            base: base,
+            sources: [source],
+            defaults: nil
+        )
+        XCTAssertEqual(
+            generated.entries.compactMap { $0["display_name"] as? String },
+            ["GPT-6.1 Sol", "Unique Model"]
+        )
+    }
+
     // MARK: - Image input
 
     /// OpenRouter's `architecture.input_modalities` drives the store flag;

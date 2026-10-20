@@ -595,6 +595,49 @@ fn custom_catalog_entry(
     entry
 }
 
+/// Human-readable provider tag used only when a display name is shared.
+fn provider_display_name(tag: &str) -> &str {
+    match tag {
+        "opencode" => "OpenCode",
+        "openrouter" => "OpenRouter",
+        other => other,
+    }
+}
+
+/// The Codex picker keys rows by display name. A model offered by both
+/// OpenCode and Antigravity (for example Gemini 3.5 Flash Lite) would
+/// otherwise render once and steal the other provider's slot. Qualify only
+/// colliding names with the provider so both rows stay selectable.
+fn append_unique_catalog_entries(
+    models: &mut Vec<Value>,
+    pending: Vec<(Value, String)>,
+) -> usize {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for entry in models.iter() {
+        if let Some(name) = entry.get("display_name").and_then(Value::as_str) {
+            *counts.entry(name.to_lowercase()).or_default() += 1;
+        }
+    }
+    for (entry, _) in &pending {
+        if let Some(name) = entry.get("display_name").and_then(Value::as_str) {
+            *counts.entry(name.to_lowercase()).or_default() += 1;
+        }
+    }
+    let custom = pending.len();
+    for (mut entry, provider) in pending {
+        let display = entry
+            .get("display_name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if counts.get(&display.to_lowercase()).copied().unwrap_or(0) > 1 {
+            entry["display_name"] = json!(format!("{} ({})", display, provider));
+        }
+        models.push(entry);
+    }
+    custom
+}
+
 /// Regenerates `%~/.codex/melon-model-catalog.json`: the bundled base entries
 /// (account-pool models) plus one cloned entry per gateway model that is not
 /// in the pool list (opencode/*, openrouter/*). Returns the custom count.
@@ -646,7 +689,7 @@ pub async fn sync_catalog(
     // Antigravity, the Antigravity entry wins the band.
     entries.sort_by_key(|entry| !crate::antigravity::is_antigravity_model_entry(entry));
 
-    let mut custom = 0usize;
+    let mut pending: Vec<(Value, String)> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     let mut opencode_index = 0usize;
     let mut openrouter_index = 0usize;
@@ -686,9 +729,9 @@ pub async fn sync_catalog(
         };
         let owned_by = entry.get("owned_by").and_then(|v| v.as_str());
         let generated = custom_catalog_entry(&template, &id, owned_by, band, index);
-        models.push(generated);
-        custom += 1;
+        pending.push((generated, provider_display_name(tag).to_string()));
     }
+    let custom = append_unique_catalog_entries(&mut models, pending);
 
     // The bundled entries were stripped of private metadata above; restore the
     // schema-required fields from the Codex cache (best effort).
@@ -708,11 +751,12 @@ pub async fn sync_catalog(
 #[cfg(test)]
 mod tests {
     use super::{
-        custom_catalog_entry, inject_catalog_schema, models_cache_from_value, prettify,
-        provider_tag, strip_private_catalog_metadata, third_party_band, third_party_band_for_model,
+        append_unique_catalog_entries, custom_catalog_entry, inject_catalog_schema,
+        models_cache_from_value, prettify, provider_display_name, provider_tag,
+        strip_private_catalog_metadata, third_party_band, third_party_band_for_model,
         vision_capable,
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     #[test]
     fn claude_ids_get_band_300_and_the_claude_tag() {
@@ -786,6 +830,57 @@ mod tests {
         assert_eq!(prettify("opencode/claude-haiku-5-5"), "Claude Haiku 5.5");
         assert_eq!(prettify("deepseek-v4.1-flash"), "Deepseek V4.1 Flash");
         assert_eq!(prettify("glm-5.3"), "Glm 5.3");
+    }
+
+    #[test]
+    fn shared_model_names_keep_both_provider_rows() {
+        let mut models = vec![json!({
+            "slug": "gpt-6.1-sol",
+            "display_name": "GPT-6.1 Sol"
+        })];
+        let pending = vec![
+            (
+                json!({
+                    "slug": "opencode/gemini-3.5-flash-lite",
+                    "display_name": "Gemini 3.5 Flash Lite"
+                }),
+                provider_display_name("opencode").to_string(),
+            ),
+            (
+                json!({
+                    "slug": "gemini-3.5-flash-lite",
+                    "display_name": "Gemini 3.5 Flash Lite"
+                }),
+                provider_display_name("Antigravity").to_string(),
+            ),
+        ];
+        assert_eq!(append_unique_catalog_entries(&mut models, pending), 2);
+        let names: Vec<&str> = models
+            .iter()
+            .filter_map(|entry| entry.get("display_name").and_then(Value::as_str))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "GPT-6.1 Sol",
+                "Gemini 3.5 Flash Lite (OpenCode)",
+                "Gemini 3.5 Flash Lite (Antigravity)"
+            ]
+        );
+    }
+
+    #[test]
+    fn unique_model_names_are_not_suffixed() {
+        let mut models = vec![json!({"display_name": "GPT-6.1 Sol"})];
+        let pending = vec![(
+            json!({
+                "slug": "opencode/unique",
+                "display_name": "Unique Model"
+            }),
+            provider_display_name("opencode").to_string(),
+        )];
+        append_unique_catalog_entries(&mut models, pending);
+        assert_eq!(models[1]["display_name"], "Unique Model");
     }
 
     #[test]

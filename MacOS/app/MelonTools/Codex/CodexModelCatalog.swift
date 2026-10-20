@@ -87,9 +87,8 @@ enum CodexModelCatalog {
         guard let template = referenceEntry(in: entries) else {
             return (applyRequiredSchema(to: entries, defaults: defaults), 0)
         }
-        var result = entries
+        var pending: [(entry: [String: Any], display: String, provider: String)] = []
         let poolSlugs = Set(entries.compactMap { $0["slug"] as? String })
-        var custom = 0
         for source in sources where source.enabled {
             for (position, model) in source.selectedModels.enumerated() {
                 // Never shadow an account-pool model.
@@ -99,12 +98,46 @@ enum CodexModelCatalog {
                     // band per provider keeps the models grouped in the menu
                     // (pool → OpenCode → OpenRouter → Claude → Antigravity).
                     entry["priority"] = priorityBase(for: source.kind) + position
-                    result.append(entry)
-                    custom += 1
+                    pending.append((
+                        entry: entry,
+                        display: entry["display_name"] as? String ?? model.alias,
+                        provider: source.title
+                    ))
                 }
             }
         }
-        return (applyRequiredSchema(to: result, defaults: defaults), custom)
+
+        // The Codex picker keys rows by display name. When the same model is
+        // offered by two providers (for example Gemini 3.5 Flash Lite from
+        // OpenCode and Antigravity), identical names collapse into one row and
+        // the surviving provider steals the other provider's slot. Keep both
+        // rows by qualifying only the colliding names with the provider.
+        var displayCounts: [String: Int] = [:]
+        for entry in entries {
+            guard let name = entry["display_name"] as? String else { continue }
+            displayCounts[name.lowercased(), default: 0] += 1
+        }
+        for item in pending {
+            displayCounts[item.display.lowercased(), default: 0] += 1
+        }
+        var result = entries
+        for item in pending {
+            var entry = item.entry
+            if displayCounts[item.display.lowercased(), default: 0] > 1 {
+                entry["display_name"] = Self.disambiguatedDisplayName(
+                    item.display,
+                    provider: item.provider
+                )
+            }
+            result.append(entry)
+        }
+        return (applyRequiredSchema(to: result, defaults: defaults), pending.count)
+    }
+
+    /// The picker's deduplication key is the display name, so a shared model
+    /// needs a provider suffix to stay visible in both provider sections.
+    nonisolated static func disambiguatedDisplayName(_ display: String, provider: String) -> String {
+        "\(display) (\(provider))"
     }
 
     // MARK: - Required schema fields
