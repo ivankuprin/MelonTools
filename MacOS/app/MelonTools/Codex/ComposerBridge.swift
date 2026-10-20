@@ -446,6 +446,26 @@ final class ComposerBridge: ObservableObject {
             entry["error"] = stats.error ?? NSNull()
             payload["opencode"] = entry
         }
+        if let stats = providerUsage.claude {
+            var entry: [String: Any] = ["title": "Claude", "connected": stats.connected, "modelCount": stats.modelCount]
+            entry["email"] = stats.email ?? NSNull()
+            entry["plan"] = stats.plan ?? NSNull()
+            entry["fiveHourPercent"] = stats.fiveHourPercent ?? NSNull()
+            entry["fiveHourReset"] = stats.fiveHourReset.map { Int($0.timeIntervalSince1970) } ?? NSNull()
+            entry["weeklyPercent"] = stats.weeklyPercent ?? NSNull()
+            entry["weeklyReset"] = stats.weeklyReset.map { Int($0.timeIntervalSince1970) } ?? NSNull()
+            entry["updatedAt"] = stats.updatedAt.map { Int($0.timeIntervalSince1970) } ?? NSNull()
+            entry["error"] = stats.error ?? NSNull()
+            payload["claude"] = entry
+        }
+        if let stats = providerUsage.antigravity {
+            var entry: [String: Any] = ["title": "Antigravity", "connected": stats.connected, "modelCount": stats.modelCount]
+            entry["email"] = stats.email ?? NSNull()
+            entry["projectID"] = stats.projectID ?? NSNull()
+            entry["updatedAt"] = stats.updatedAt.map { Int($0.timeIntervalSince1970) } ?? NSNull()
+            entry["error"] = stats.error ?? NSNull()
+            payload["antigravity"] = entry
+        }
         return payload
     }
 
@@ -835,10 +855,20 @@ final class ComposerBridge: ObservableObject {
             "of": L("of"),
             "yes": L("Yes"),
             "no": L("No"),
+            "account": L("Account"),
+            "project": L("Project"),
+            "plan": L("Plan"),
+            "verificationRequired": L("Google requires account verification."),
         ]
         let config: [String: Any] = [
             "labels": labels,
-            "providers": ["openai": "OpenAI", "opencode": "OpenCode", "openrouter": "OpenRouter"],
+            "providers": [
+                "openai": "OpenAI",
+                "opencode": "OpenCode",
+                "openrouter": "OpenRouter",
+                "claude": "Claude",
+                "antigravity": "Antigravity",
+            ],
         ]
         let configJSON = (try? JSONSerialization.data(withJSONObject: config))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"

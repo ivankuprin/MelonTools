@@ -59,6 +59,10 @@
     of: 'из',
     yes: 'Да',
     no: 'Нет',
+    account: 'Аккаунт',
+    project: 'Проект',
+    plan: 'План',
+    verificationRequired: 'Google требует подтвердить аккаунт.',
   }, CFG.labels || {});
   const PROVIDERS = Object.assign({ openai: 'OpenAI', opencode: 'OpenCode', openrouter: 'OpenRouter' }, CFG.providers || {});
 
@@ -236,10 +240,8 @@
     display: inline-flex; align-items: center; gap: 4px;
   }
   .melon-chips .melon-provider-group { display: none; }
-  .melon-chips[data-melon-mode="opencode"] .melon-pool-group,
-  .melon-chips[data-melon-mode="openrouter"] .melon-pool-group { display: none; }
-  .melon-chips[data-melon-mode="opencode"] .melon-provider-group,
-  .melon-chips[data-melon-mode="openrouter"] .melon-provider-group { display: inline-flex; }
+  .melon-chips:not([data-melon-mode="openai"]) .melon-pool-group { display: none; }
+  .melon-chips:not([data-melon-mode="openai"]) .melon-provider-group { display: inline-flex; }
   /* Picker grouping (injected into the Codex model menu). */
   .melon-pick-group {
     padding: 10px 12px 4px 12px;
@@ -256,6 +258,9 @@
   }
   .melon-chip-label { color: var(--melon-dim); font-weight: 500; }
   .melon-chip-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .melon-provider-group .melon-chip-value {
+    max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .melon-chip-sep { color: var(--melon-dim); opacity: 0.55; margin: 0 1px; }
   .melon-dot {
     width: 6px; height: 6px; border-radius: 50%;
@@ -439,10 +444,14 @@
   }
 
   /// Provider of the selected model, or null for the account-pool models.
+  function providerKey(provider) {
+    return String(provider || '').toLowerCase() || null;
+  }
+
   function providerMode() {
     const model = currentModel();
-    const provider = model && model.provider;
-    return provider && provider !== 'openai' ? provider : null;
+    const key = providerKey(model && model.provider);
+    return key && key !== 'openai' ? key : null;
   }
 
   function activeThreadId() {
@@ -486,16 +495,54 @@
     return { amount, cost, stats };
   }
 
+  function providerDot(kind) {
+    if (kind === 'opencode') return 'melon-dot-teal';
+    if (kind === 'antigravity') return 'melon-dot-purple';
+    if (kind === 'claude') return 'melon-dot-green';
+    return 'melon-dot-orange';
+  }
+
   function renderProvider(kind) {
     const status = state.status || {};
     const stats = (status.providers || {})[kind] || null;
     const spend = providerSpend(kind);
 
     providerChip.label.textContent = PROVIDERS[kind] || kind;
-    providerChip.dot.className = 'melon-dot ' + (kind === 'opencode' ? 'melon-dot-teal' : 'melon-dot-orange');
+    providerChip.dot.className = 'melon-dot ' + providerDot(kind);
     const session = status.session || null;
     const ctx = contextStats(session);
     const modelName = activeModelName();
+
+    // Antigravity and Claude are subscription accounts, not pay-per-token
+    // keys. Show the account identity or the rolling quota instead of a
+    // meaningless spend figure.
+    if (kind === 'antigravity') {
+      const email = stats && stats.email ? String(stats.email) : '';
+      providerChip.value.textContent = email || (stats && stats.modelCount ? String(stats.modelCount) : '—');
+      const title = [
+        modelName || null,
+        email ? LABELS.account + ': ' + email : null,
+        stats && stats.projectID ? LABELS.project + ': ' + stats.projectID : null,
+        ctx.detail ? LABELS.context + ': ' + ctx.detail : null,
+      ].filter(Boolean).join(' · ');
+      providerChip.chip.title = title || (stats && stats.error ? String(stats.error) : LABELS.noData);
+      return;
+    }
+    if (kind === 'claude') {
+      const five = stats && stats.fiveHourPercent != null ? round(stats.fiveHourPercent) + '%' : null;
+      const weekly = stats && stats.weeklyPercent != null ? round(stats.weeklyPercent) + '%' : null;
+      providerChip.value.textContent = five || (stats && stats.email ? String(stats.email) : '—');
+      const title = [
+        modelName || null,
+        stats && stats.email ? LABELS.account + ': ' + stats.email : null,
+        five ? LABELS.fiveHour + ': ' + five : null,
+        weekly ? LABELS.week + ': ' + weekly : null,
+        ctx.detail ? LABELS.context + ': ' + ctx.detail : null,
+      ].filter(Boolean).join(' · ');
+      providerChip.chip.title = title || (stats && stats.error ? String(stats.error) : LABELS.noData);
+      return;
+    }
+
     if (ctx.percent != null) {
       providerChip.value.textContent = ctx.percent + '%';
       let title = (modelName ? modelName + ' · ' : '') + LABELS.context + ': ' + (ctx.detail || ctx.percent + '%');
@@ -613,7 +660,7 @@
     const title = pop.querySelector('.melon-pop-title');
     const dot = pop.querySelector('.melon-pop-head .melon-dot');
     if (title) title.textContent = (PROVIDERS[kind] || kind) + ' · ' + LABELS.providerData;
-    if (dot) dot.className = 'melon-dot ' + (kind === 'opencode' ? 'melon-dot-teal' : 'melon-dot-orange');
+    if (dot) dot.className = 'melon-dot ' + providerDot(kind);
 
     const body = pop.querySelector('.melon-pop-body');
     const foot = pop.querySelector('.melon-pop-foot');
@@ -667,6 +714,19 @@
       body.appendChild(popRow(LABELS.workspace, stats.workspace || LABELS.noData));
       body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
       body.appendChild(popRow(LABELS.balance, LABELS.balanceUnavailable));
+      if (stats.error) body.appendChild(popRow('—', String(stats.error)));
+    } else if (kind === 'antigravity' && stats) {
+      body.appendChild(popRow(LABELS.account, stats.email || LABELS.noData));
+      body.appendChild(popRow(LABELS.project, stats.projectID || LABELS.noData));
+      body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
+      body.appendChild(popNote(LABELS.verificationRequired));
+      if (stats.error) body.appendChild(popRow('—', String(stats.error)));
+    } else if (kind === 'claude' && stats) {
+      body.appendChild(popRow(LABELS.account, stats.email || LABELS.noData));
+      body.appendChild(popRow(LABELS.plan || LABELS.providerData, stats.plan || LABELS.noData));
+      body.appendChild(popRow(LABELS.fiveHour, stats.fiveHourPercent != null ? round(stats.fiveHourPercent) + '%' : LABELS.noData));
+      body.appendChild(popRow(LABELS.week, stats.weeklyPercent != null ? round(stats.weeklyPercent) + '%' : LABELS.noData));
+      body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
       if (stats.error) body.appendChild(popRow('—', String(stats.error)));
     } else {
       body.appendChild(popRow(LABELS.providerData, LABELS.noData));
@@ -976,12 +1036,13 @@
           item.removeAttribute('data-melon-provider');
           continue;
         }
-        if (model.provider === 'openai') item.removeAttribute('data-melon-provider');
-        else item.setAttribute('data-melon-provider', PROVIDERS[model.provider] || model.provider);
-        if (model.provider !== lastProvider) {
-          lastProvider = model.provider;
+        const key = providerKey(model.provider);
+        if (!key) item.removeAttribute('data-melon-provider');
+        else item.setAttribute('data-melon-provider', PROVIDERS[key] || key);
+        if (key !== lastProvider) {
+          lastProvider = key;
           groups += 1;
-          const header = el('div', 'melon-pick-group', PROVIDERS[model.provider] || model.provider);
+          const header = el('div', 'melon-pick-group', PROVIDERS[key] || key || '');
           header.setAttribute('role', 'presentation');
           if (item.parentElement) item.parentElement.insertBefore(header, item);
         }

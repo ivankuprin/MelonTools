@@ -155,6 +155,35 @@ final class AntigravityAuthTests: XCTestCase {
         XCTAssertEqual(ModelSourcesStore.gatewayYAML(sources: [source]), "")
     }
 
+    // MARK: - Verification diagnostics
+
+    func testVerificationIssueExtractsURLAndModel() throws {
+        let log = """
+        [2026-10-21 00:37:36] [9b5d57f7] [warn ] upstream execution failed: provider=antigravity model=gemini-3.8-flash-high auth=provider=antigravity err={ "error": { "reason": "VALIDATION_REQUIRED", "metadata": { "validation_url": "https:\\/\\/accounts.google.com\\/verify?token=abc" } } }
+        """
+        let issue = try XCTUnwrap(
+            AntigravityAuthService.verificationIssue(inLog: Data(log.utf8))
+        )
+        XCTAssertEqual(issue.model, "gemini-3.8-flash-high")
+        XCTAssertEqual(issue.url, "https://accounts.google.com/verify?token=abc")
+        XCTAssertFalse(issue.message.isEmpty)
+    }
+
+    func testVerificationIssueIsClearedByALaterSuccess() {
+        let log = """
+        [1] provider=antigravity model=gemini-3-flash VALIDATION_REQUIRED "validation_url":"https:\\/\\/example.test"
+        [2] provider=antigravity model=gemini-3-flash 200 OK
+        """
+        XCTAssertNil(AntigravityAuthService.verificationIssue(inLog: Data(log.utf8)))
+    }
+
+    func testOtherProviderErrorsDoNotTriggerAntigravityWarning() {
+        let log = """
+        [1] provider=claude model=claude-sonnet-4-6 VALIDATION_REQUIRED
+        """
+        XCTAssertNil(AntigravityAuthService.verificationIssue(inLog: Data(log.utf8)))
+    }
+
     // MARK: - Helpers
 
     private func makeTempDir() throws -> URL {

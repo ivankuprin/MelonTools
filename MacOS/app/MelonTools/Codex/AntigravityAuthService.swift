@@ -98,6 +98,67 @@ final class AntigravityAuthService: ObservableObject {
         authFiles(in: CodexGatewayService.authDir)
     }
 
+    // MARK: - Google verification diagnostics
+
+    /// Google sometimes accepts OAuth but blocks model calls until the account
+    /// is verified (`VALIDATION_REQUIRED`). The gateway logs the full upstream
+    /// error, including a one-click verification URL. Surface the newest such
+    /// line instead of leaving the user with an endless Codex reconnect loop.
+    struct VerificationIssue: Equatable {
+        var message: String
+        var url: String?
+        var model: String?
+    }
+
+    nonisolated static func verificationIssue(inLog data: Data) -> VerificationIssue? {
+        let text = String(decoding: data, as: UTF8.self)
+        // Only the newest Antigravity attempt matters: a successful request
+        // after verification must clear the warning.
+        guard let line = text.split(whereSeparator: \.isNewline).reversed().first(where: {
+            $0.contains("provider=antigravity")
+        }) else { return nil }
+        guard line.contains("VALIDATION_REQUIRED") || line.contains("Verify your account") else {
+            return nil
+        }
+
+        var url: String?
+        if let range = line.range(of: "\"validation_url\"") {
+            let tail = line[range.upperBound...]
+            if let start = tail.firstIndex(of: "\""),
+               let end = tail[tail.index(after: start)...].firstIndex(of: "\"") {
+                let raw = String(tail[tail.index(after: start)..<end])
+                url = raw.replacingOccurrences(of: "\\/", with: "/")
+            }
+        }
+
+        var model: String?
+        if let range = line.range(of: "model=") {
+            let tail = line[range.upperBound...]
+            model = String(tail.prefix { !$0.isWhitespace })
+        }
+
+        return VerificationIssue(
+            message: L("Google requires account verification."),
+            // The gateway truncates long upstream errors, so the one-click
+            // URL is often absent from the log. Google Account is the safe
+            // fallback where the user can complete verification.
+            url: url ?? "https://myaccount.google.com/",
+            model: model
+        )
+    }
+
+    /// Reads only the tail; the gateway log can grow during a long session.
+    static func latestVerificationIssue() -> VerificationIssue? {
+        let url = URL(fileURLWithPath: CodexGatewayService.shared.logPath)
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        let start = size > 256 * 1024 ? size - 256 * 1024 : 0
+        try? handle.seek(toOffset: start)
+        guard let data = try? handle.readToEnd() else { return nil }
+        return verificationIssue(inLog: data)
+    }
+
     /// Removes only Antigravity auth files from `directory` and returns their
     /// names. Claude/Codex auth files and foreign files are left untouched.
     @discardableResult

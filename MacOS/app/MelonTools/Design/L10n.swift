@@ -598,6 +598,9 @@ final class L10n: ObservableObject {
 
         // MARK: Antigravity provider
         "Project": "Проект",
+        "Google requires account verification.": "Google требует подтвердить аккаунт.",
+        "Antigravity verification required": "Требуется подтверждение Antigravity",
+        "Verify account": "Подтвердить аккаунт",
         "Connect Antigravity": "Подключить Antigravity",
         "Connect your Google account to use Antigravity models.": "Подключите аккаунт Google, чтобы использовать модели Antigravity.",
         "Disconnect this Antigravity account?": "Отключить этот аккаунт Antigravity?",

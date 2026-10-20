@@ -156,12 +156,12 @@ struct DashboardView: View {
                     columns: [GridItem(.adaptive(minimum: 340), spacing: MTTheme.s3)],
                     spacing: MTTheme.s3
                 ) {
-                    if showPoolHealth { poolHealthCard }
-                    if showScheduler { schedulerCard }
-                    if showQuotaTrends { quotaTrendsCard }
-                    if showSpend { spendCard }
-                    codexCard
-                    gatewayCard
+                    if showPoolHealth { dashboardTile { poolHealthCard } }
+                    if showScheduler { dashboardTile { schedulerCard } }
+                    if showQuotaTrends { dashboardTile { quotaTrendsCard } }
+                    if showSpend { dashboardTile { spendCard } }
+                    dashboardTile { codexCard }
+                    dashboardTile { gatewayCard }
                 }
             }
             .padding(MTTheme.s5)
@@ -179,6 +179,14 @@ struct DashboardView: View {
             Task { await gateway.healthCheck() }
             Task { await usage.refreshSession(threadUUID: ComposerBridge.shared.activeThreadID) }
         }
+    }
+
+    /// Every dashboard card has the same height, regardless of how much
+    /// content it carries. The grid then reads as one aligned surface instead
+    /// of a staircase of differently sized tiles.
+    private func dashboardTile<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, minHeight: 250, maxHeight: 250, alignment: .top)
     }
 
     // MARK: - Pool health

@@ -20,6 +20,7 @@ struct CodexProvidersView: View {
     @State private var searches: [String: String] = [:]
     @State private var confirmClaudeDisconnect = false
     @State private var confirmAntigravityDisconnect = false
+    @State private var antigravityIssue: AntigravityAuthService.VerificationIssue?
 
     /// Sub-pages of the provider board.
     enum ProviderRoute: String, Identifiable {
@@ -499,6 +500,30 @@ struct CodexProvidersView: View {
                 }
                 keyValueRow(L("Account"), stats?.email ?? "—")
                 keyValueRow(L("Project"), stats?.projectID ?? "—")
+                if let issue = antigravityIssue {
+                    HStack(alignment: .top, spacing: MTTheme.s2) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(MTTheme.warn)
+                        VStack(alignment: .leading, spacing: MTTheme.s1) {
+                            Text(L("Antigravity verification required"))
+                                .font(MTTheme.body(11, weight: .semibold))
+                                .foregroundStyle(MTTheme.textPrimary)
+                            Text(issue.message)
+                                .font(MTTheme.mono(9))
+                                .foregroundStyle(MTTheme.textSecondary)
+                            if let url = issue.url, let target = URL(string: url) {
+                                Button(L("Verify account")) {
+                                    NSWorkspace.shared.open(target)
+                                }
+                                .buttonStyle(.link)
+                                .font(MTTheme.mono(10, weight: .semibold))
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(MTTheme.s2)
+                    .background(MTTheme.warn.opacity(0.10), in: RoundedRectangle(cornerRadius: MTTheme.rSmall))
+                }
                 if let stats {
                     HStack(alignment: .top, spacing: MTTheme.s3) {
                         MTMetricTile(
@@ -527,6 +552,7 @@ struct CodexProvidersView: View {
                         Task {
                             _ = await antigravityAuth.refreshCredential()
                             await usage.refreshAntigravityNow()
+                            antigravityIssue = AntigravityAuthService.latestVerificationIssue()
                         }
                     }
                     MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
@@ -534,6 +560,9 @@ struct CodexProvidersView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            antigravityIssue = AntigravityAuthService.latestVerificationIssue()
         }
     }
 

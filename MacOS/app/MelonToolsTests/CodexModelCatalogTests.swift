@@ -132,6 +132,13 @@ final class CodexModelCatalogTests: XCTestCase {
             Set(names.filter { $0.hasPrefix("Gemini 3.5 Flash Lite") }).count,
             2
         )
+
+        // The composer matches the selected menu row by name; the index must
+        // use the same provider-qualified names as the catalog.
+        let pickerNames = CodexModelCatalog.pickerIndex(sources: [openCode, antigravity])
+            .map(\.name)
+            .filter { $0.hasPrefix("Gemini 3.5 Flash Lite") }
+        XCTAssertEqual(Set(pickerNames), Set(names.filter { $0.hasPrefix("Gemini 3.5 Flash Lite") }))
     }
 
     /// A name that is not shared stays clean; only collisions get a suffix.

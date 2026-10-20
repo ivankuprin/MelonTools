@@ -306,17 +306,35 @@ enum CodexModelCatalog {
         return list
     }
 
-    /// Every model the picker can show, with its provider.
+    /// Every model the picker can show, with its provider. Names must match
+    /// the generated catalog, including provider suffixes for shared models;
+    /// otherwise the composer cannot tell which provider row is selected.
     static func pickerIndex(sources: [ModelSource]) -> [PickerModel] {
-        var list = basePickerModels()
+        let base = basePickerModels()
+        var pending: [(display: String, provider: String, title: String, slug: String)] = []
         for source in sources where source.enabled {
             for model in source.selectedModels {
-                list.append(PickerModel(
-                    name: model.display.isEmpty ? model.alias : model.display,
+                pending.append((
+                    display: model.display.isEmpty ? model.alias : model.display,
                     provider: providerTag(for: source.kind),
+                    title: source.title,
                     slug: model.alias
                 ))
             }
+        }
+        var counts: [String: Int] = [:]
+        for entry in base {
+            counts[entry.name.lowercased(), default: 0] += 1
+        }
+        for entry in pending {
+            counts[entry.display.lowercased(), default: 0] += 1
+        }
+        var list = base
+        for entry in pending {
+            let name = counts[entry.display.lowercased(), default: 0] > 1
+                ? disambiguatedDisplayName(entry.display, provider: entry.title)
+                : entry.display
+            list.append(PickerModel(name: name, provider: entry.provider, slug: entry.slug))
         }
         return list
     }
