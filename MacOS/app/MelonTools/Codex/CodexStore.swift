@@ -3,6 +3,143 @@ import Foundation
 import Combine
 import UserNotifications
 
+// MARK: - Low-quota notifications
+
+/// One rolling quota window the notification policy watches.
+enum QuotaNotificationWindow: String, CaseIterable {
+    case hourly
+    case weekly
+}
+
+/// What the policy last told the user about one account/window pair.
+struct QuotaNotificationRecord: Codable, Equatable {
+    var notifiedAt: Date
+    /// Identity of the window (its reset timestamp); empty when unknown.
+    var windowKey: String
+}
+
+/// Pure low-quota decision helper. The store owns persistence and delivery;
+/// this type only answers which account/window pairs deserve a notification.
+enum QuotaNotificationPolicy {
+    /// Legacy weekly threshold when the account has no weekly reserve.
+    static let weeklyDefaultThreshold: Double = 10
+    /// Without a reset timestamp a window cannot be identified, so the
+    /// legacy six-hour debounce remains.
+    static let fallbackDebounce: TimeInterval = 6 * 3600
+
+    struct Decision: Equatable {
+        let window: QuotaNotificationWindow
+        let remaining: Double
+        let threshold: Double
+        let windowKey: String
+        let stateKey: String
+    }
+
+    /// One decision per window that is at or below its threshold and has not
+    /// been announced for the current reset window yet.
+    ///
+    /// The hourly window is opt-in through the account reserve: it moves fast
+    /// and would be noisy. The weekly window keeps the legacy 10 % default and
+    /// uses the weekly reserve when one is configured.
+    static func decisions(
+        accountId: String,
+        hourlyRemaining: Double?,
+        hourlyReset: Date?,
+        hourlyReservePercent: Int?,
+        weeklyRemaining: Double?,
+        weeklyReset: Date?,
+        weeklyReservePercent: Int?,
+        records: [String: QuotaNotificationRecord],
+        now: Date = Date()
+    ) -> [Decision] {
+        var result: [Decision] = []
+
+        if let remaining = hourlyRemaining,
+           let reserve = hourlyReservePercent, reserve > 0,
+           let decision = decision(
+               accountId: accountId,
+               window: .hourly,
+               remaining: remaining,
+               threshold: Double(reserve),
+               reset: hourlyReset,
+               records: records,
+               now: now
+           ) {
+            result.append(decision)
+        }
+
+        let weeklyThreshold: Double
+        if let reserve = weeklyReservePercent, reserve > 0 {
+            weeklyThreshold = Double(reserve)
+        } else {
+            weeklyThreshold = weeklyDefaultThreshold
+        }
+        if let remaining = weeklyRemaining,
+           let decision = decision(
+               accountId: accountId,
+               window: .weekly,
+               remaining: remaining,
+               threshold: weeklyThreshold,
+               reset: weeklyReset,
+               records: records,
+               now: now
+           ) {
+            result.append(decision)
+        }
+
+        return result
+    }
+
+    /// True when this window has not been announced yet. A known reset
+    /// timestamp arms a fresh notification for the next window; otherwise the
+    /// legacy time-based debounce applies.
+    static func shouldNotify(
+        stateKey: String,
+        windowKey: String,
+        records: [String: QuotaNotificationRecord],
+        now: Date
+    ) -> Bool {
+        guard let record = records[stateKey] else { return true }
+        if !windowKey.isEmpty, !record.windowKey.isEmpty {
+            return windowKey != record.windowKey
+        }
+        return now.timeIntervalSince(record.notifiedAt) >= fallbackDebounce
+    }
+
+    /// Stable identity of a rolling window: its reset timestamp in seconds.
+    static func windowKey(for reset: Date?) -> String {
+        guard let reset else { return "" }
+        return String(Int(reset.timeIntervalSince1970))
+    }
+
+    private static func decision(
+        accountId: String,
+        window: QuotaNotificationWindow,
+        remaining: Double,
+        threshold: Double,
+        reset: Date?,
+        records: [String: QuotaNotificationRecord],
+        now: Date
+    ) -> Decision? {
+        guard remaining <= threshold else { return nil }
+        let key = windowKey(for: reset)
+        let stateKey = "\(accountId):\(window.rawValue)"
+        guard shouldNotify(
+            stateKey: stateKey,
+            windowKey: key,
+            records: records,
+            now: now
+        ) else { return nil }
+        return Decision(
+            window: window,
+            remaining: remaining,
+            threshold: threshold,
+            windowKey: key,
+            stateKey: stateKey
+        )
+    }
+}
+
 /// Codex account management: import, switch, quotas — one shared store for the whole app.
 /// Account vault lives in ~/Library/Application Support/MelonTools/codex/accounts.json (0600).
 @MainActor
@@ -553,6 +690,14 @@ final class CodexStore: ObservableObject {
                 accounts[idx] = account
             }
             save()
+            QuotaHistoryStore.shared.record(
+                QuotaHistorySample(
+                    at: Date(),
+                    hourly: account.quota?.hourlyRemainingPercent,
+                    weekly: account.quota?.weeklyRemainingPercent
+                ),
+                for: accountId
+            )
             maybeNotifyLowQuota(account)
             applyRoutingIfNeeded(reason: L("quota refreshed"))
             return
@@ -573,27 +718,75 @@ final class CodexStore: ObservableObject {
         }
     }
 
-    /// One notification per account when the weekly window drops below 10% (max once per 6h).
+    private static let notificationRecordsKey = "quotaNotificationRecords"
+    private var notificationAuthorizationRequested = false
+
+    /// Persisted per account/window bookkeeping. The reset timestamp in
+    /// `windowKey` is what makes a notification “once per window” instead of
+    /// merely “once per six hours”.
+    private var notificationRecords: [String: QuotaNotificationRecord] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: Self.notificationRecordsKey),
+                  let records = try? JSONDecoder().decode([String: QuotaNotificationRecord].self, from: data) else {
+                return [:]
+            }
+            return records
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            UserDefaults.standard.set(data, forKey: Self.notificationRecordsKey)
+        }
+    }
+
+    /// One notification per account/window when the remaining quota reaches
+    /// the configured reserve threshold (weekly defaults to 10 %). Called only
+    /// after a successful quota refresh.
     private func maybeNotifyLowQuota(_ account: CodexAccount) {
         guard UserDefaults.standard.bool(forKey: "quotaNotifications") else { return }
-        guard let remaining = account.quota?.weeklyRemainingPercent, remaining < 10 else { return }
-        let key = "quotaNotified_\(account.id)"
-        if let last = UserDefaults.standard.object(forKey: key) as? Date,
-           Date().timeIntervalSince(last) < 6 * 3600 {
-            return
-        }
-        UserDefaults.standard.set(Date(), forKey: key)
+        guard let quota = account.quota else { return }
+
+        var records = notificationRecords
+        let decisions = QuotaNotificationPolicy.decisions(
+            accountId: account.id,
+            hourlyRemaining: quota.hourlyRemainingPercent,
+            hourlyReset: quota.hourlyResetAt,
+            hourlyReservePercent: account.hourlyReservePercent,
+            weeklyRemaining: quota.weeklyRemainingPercent,
+            weeklyReset: quota.weeklyResetAt,
+            weeklyReservePercent: account.weeklyReservePercent,
+            records: records
+        )
+        guard !decisions.isEmpty else { return }
 
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard granted else { return }
+        requestNotificationAuthorizationIfNeeded(center)
+        let now = Date()
+        for decision in decisions {
+            records[decision.stateKey] = QuotaNotificationRecord(
+                notifiedAt: now,
+                windowKey: decision.windowKey
+            )
+            let windowLabel: String
+            switch decision.window {
+            case .hourly: windowLabel = L("hourly")
+            case .weekly: windowLabel = L("weekly")
+            }
             let content = UNMutableNotificationContent()
             content.title = L("Low Codex quota")
-            content.body = "\(account.displayName): \(L("weekly")) \(Int(remaining))%"
+            content.body = "\(account.displayName): \(windowLabel) \(Int(decision.remaining.rounded()))%"
             content.sound = .default
-            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-            center.add(request)
+            let identifier = "quota-\(decision.stateKey)-\(Int(now.timeIntervalSince1970))"
+            center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
         }
+        notificationRecords = records
+    }
+
+    /// The authorization prompt is one-shot per app session; adding requests
+    /// before the user answers is harmless (the system queues or drops them).
+    private func requestNotificationAuthorizationIfNeeded(_ center: UNUserNotificationCenter) {
+        guard !notificationAuthorizationRequested else { return }
+        notificationAuthorizationRequested = true
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     // MARK: - Launch in Codex

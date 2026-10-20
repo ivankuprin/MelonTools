@@ -46,6 +46,58 @@ final class UpdaterTests: XCTestCase {
         XCTAssertNil(UpdaterStore.parseSha256File(""))
         XCTAssertNil(UpdaterStore.parseSha256File(String(repeating: "f", count: 63)))
     }
+
+    func testPeriodicTimerStillHonoursTheDailyThrottle() {
+        XCTAssertEqual(UpdaterStore.periodicCheckInterval, 6 * 3600)
+        XCTAssertEqual(UpdaterStore.automaticCheckThrottle, 24 * 3600)
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertFalse(UpdaterStore.shouldCheckAutomatically(lastCheck: now.addingTimeInterval(-23 * 3600), now: now))
+        XCTAssertFalse(UpdaterStore.shouldCheckAutomatically(lastCheck: now.addingTimeInterval(-24 * 3600), now: now))
+        XCTAssertTrue(UpdaterStore.shouldCheckAutomatically(lastCheck: now.addingTimeInterval(-25 * 3600), now: now))
+        XCTAssertTrue(UpdaterStore.shouldCheckAutomatically(lastCheck: .distantPast, now: now))
+    }
+
+    func testInstallerScriptKeepsTheOldBundleUntilTheNewAppRuns() throws {
+        let script = UpdaterStore.installerScript(
+            appPath: "/Applications/Melon Tools.app",
+            dmgPath: "/tmp/MelonTools-1.7.0.dmg",
+            pid: 4242
+        )
+        XCTAssertTrue(script.contains("PID=4242"))
+        XCTAssertTrue(script.contains("APP=\"/Applications/Melon Tools.app\""))
+        XCTAssertTrue(script.contains("/usr/bin/pgrep -f \"$APP/Contents/MacOS/MelonTools\""))
+
+        let probe = try XCTUnwrap(script.range(of: "LAUNCHED=0"))
+        let pgrep = try XCTUnwrap(script.range(of: "/usr/bin/pgrep -f"))
+        let rollback = try XCTUnwrap(script.range(of: "The new bundle did not start; restoring the previous one."))
+        let restore = try XCTUnwrap(script.range(of: "mv \"$APP.melon-old\" \"$APP\"", options: [], range: rollback.lowerBound..<script.endIndex))
+        let successCleanup = try XCTUnwrap(script.range(of: "rm -rf \"$APP.melon-old\" \"$MNT\" \"$DMG\""))
+        XCTAssertLessThan(probe.lowerBound, pgrep.lowerBound)
+        XCTAssertLessThan(pgrep.lowerBound, rollback.lowerBound)
+        XCTAssertLessThan(rollback.lowerBound, restore.lowerBound)
+        XCTAssertLessThan(pgrep.lowerBound, successCleanup.lowerBound)
+    }
+
+    func testInstallerScriptIsSyntacticallyValid() throws {
+        let script = UpdaterStore.installerScript(
+            appPath: "/Applications/Melon Tools.app",
+            dmgPath: "/tmp/MelonTools-1.7.0.dmg",
+            pid: 4242
+        )
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("UpdaterScriptTests-\(UUID().uuidString).sh")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try script.write(to: url, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-n", url.path]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+    }
 }
 
 /// The secrets writer must never leave a half-written or world-readable file:

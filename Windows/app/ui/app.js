@@ -27,6 +27,8 @@ const DICT = {
     bHourly: "5-часовое окно исчерпано", bWeekly: "недельное окно исчерпано",
     bHourlyReserve: "осталось {r}% ≤ резерва {l}%", bWeeklyReserve: "осталось {r}% ≤ резерва {l}%",
     quotaAge: "квота обновлена", never: "никогда", stale: "устарела",
+    history: "История", historyHint: "Остаток квоты по последним обновлениям.",
+    notificationsHint: "Тост, когда остаток пересекает резерв аккаунта (или 10%).",
     apiSub: "Локальный OpenAI-совместимый шлюз для Codex: пул аккаунтов, апстримы, ключ доступа.",
     endpoint: "Адрес", apiKey: "Ключ", copy: "Копировать", copied: "Скопировано",
     endpointsTitle: "Endpoint-ы", checkTitle: "Сквозная проверка", checkHint: "маленький запрос через пул — видно, что шлюз обслуживает модели.",
@@ -90,6 +92,17 @@ const DICT = {
     updateUpToDate: "У вас последняя версия ({v})", updateFailed: "Не удалось проверить обновления",
     updateDownloading: "Скачиваем обновление…", updateInstalling: "Устанавливаем… приложение перезапустится",
     updateCancel: "Отмена", updateApply: "Обновить",
+    onboardingTitle: "Добро пожаловать в Melon Tools",
+    onboardingWelcome: "Настройте приложение за три шага.",
+    onboardingStep1: "Добавьте или импортируйте аккаунт Codex.",
+    onboardingStep2: "Подключите провайдеров: OpenRouter, OpenCode, Claude, Antigravity.",
+    onboardingStep3: "Запустите API-сервис и откройте Codex.",
+    onboardingDisclaimer: "Используйте только свои аккаунты. Соблюдайте условия провайдеров: за нарушение правил возможна блокировка аккаунта.",
+    onboardingAccounts: "Открыть аккаунты", onboardingProviders: "Открыть провайдеров", onboardingDone: "Готово",
+    diagTitle: "Проверка подключений", diagHint: "только чтение", diagRun: "Проверить подключения",
+    diagIdle: "Проверка ещё не запускалась.", diagAt: "проверено", diagProvider: "Провайдер",
+    diagAuth: "Авторизация", diagQuota: "Последняя квота", diagCodex: "Аккаунты Codex",
+    diagKeySet: "ключ есть", diagKeyMissing: "ключа нет", diagUp: "доступен", diagDown: "недоступен", diagApiOk: "API ok",
   },
   en: {
     dashboard: "Dashboard", accounts: "Accounts", api: "API Service", providers: "Providers", donate: "Donate", settings: "Settings",
@@ -110,6 +123,8 @@ const DICT = {
     bHourly: "5-hour window exhausted", bWeekly: "weekly window exhausted",
     bHourlyReserve: "{r}% left ≤ {l}% reserve", bWeeklyReserve: "{r}% left ≤ {l}% reserve",
     quotaAge: "quota updated", never: "never", stale: "stale",
+    history: "History", historyHint: "Quota remaining across recent refreshes.",
+    notificationsHint: "Toast when remaining crosses an account reserve (or 10%).",
     apiSub: "Local OpenAI-compatible gateway for Codex: account pool, upstreams, access key.",
     endpoint: "Base URL", apiKey: "Key", copy: "Copy", copied: "Copied",
     endpointsTitle: "Endpoints", checkTitle: "End-to-end check", checkHint: "a tiny request through the pool — proves models are served.",
@@ -173,6 +188,17 @@ const DICT = {
     updateUpToDate: "You are up to date ({v})", updateFailed: "Could not check for updates",
     updateDownloading: "Downloading the update…", updateInstalling: "Installing… the app will restart",
     updateCancel: "Cancel", updateApply: "Update",
+    onboardingTitle: "Welcome to Melon Tools",
+    onboardingWelcome: "Set up the app in three steps.",
+    onboardingStep1: "Add or import a Codex account.",
+    onboardingStep2: "Connect providers: OpenRouter, OpenCode, Claude, Antigravity.",
+    onboardingStep3: "Start the API service and launch Codex.",
+    onboardingDisclaimer: "Use only your own accounts. Follow provider terms — accounts can be banned for rule violations.",
+    onboardingAccounts: "Open Accounts", onboardingProviders: "Open Providers", onboardingDone: "Done",
+    diagTitle: "Connection check", diagHint: "read-only", diagRun: "Check connections",
+    diagIdle: "The check has not run yet.", diagAt: "checked", diagProvider: "Provider",
+    diagAuth: "Auth", diagQuota: "Last quota", diagCodex: "Codex accounts",
+    diagKeySet: "key set", diagKeyMissing: "no key", diagUp: "up", diagDown: "down", diagApiOk: "API ok",
   },
 };
 
@@ -180,6 +206,7 @@ const S = {
   lang: "ru",
   section: "dashboard",
   accounts: [],
+  history: [],
   status: null,
   settings: null,
   providers: null,
@@ -197,6 +224,8 @@ const S = {
   routing: null,
   calls: [],
   models: null,
+  modelsQuery: "",
+  diag: null,
   fleet: null,
   fleetTab: "status",
   fleetResult: null,
@@ -222,6 +251,18 @@ function esc(value) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
     // Ids and paths land inside single-quoted onclick attributes.
     .replace(/'/g, "&#39;");
+}
+
+// Tauri rejects with a string, but keep the message for Error-like values.
+function errorText(error) {
+  if (error === null || error === undefined) return String(error);
+  if (typeof error === "string") return error;
+  if (typeof error.message === "string") return error.message;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
 }
 
 // OAuth polls give up after 10 minutes instead of polling forever.
@@ -256,11 +297,25 @@ function mock(cmd, args) {
       hourlyReservePercent: 5, weeklyReservePercent: null, preferredFirst: false, hasTokens: true,
     },
   ];
+  const historySeries = (key, start, drop) => Array.from({ length: 12 }, (_, index) => ({
+    key,
+    provider: key === "claude" ? "claude" : key === "openrouter" ? "openrouter" : "codex",
+    timestamp: nowSec - (11 - index) * 300,
+    hourlyLeft: Math.max(0, start - index * drop),
+    weeklyLeft: Math.max(0, 90 - index * 2),
+  }));
+  const historyMocks = [
+    ...historySeries("demo-1", 100, 7),
+    ...historySeries("demo-2", 80, 6),
+    ...historySeries("claude", 88, 2),
+    ...historySeries("openrouter", 60, 3),
+  ];
   const mocks = {
     app_info: { name: "Melon Tools", version: "1.4.7", platform: "windows", dataDir: "C:\\Users\\you\\AppData\\Roaming\\MelonTools", codexHome: "C:\\Users\\you\\.codex" },
-    settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "", claudeEnabled: false, claudeApiKey: "" },
+    settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "", claudeEnabled: false, claudeApiKey: "", notifyLowQuota: true },
     settings_set: (a) => a.settings,
     vault_list: demoAccounts,
+    quota_history: historyMocks,
     quota_refresh: { accounts: demoAccounts, errors: [], syncedAccounts: 2 },
     gateway_status: { running: true, port: 18317, requestsLastMinute: 0, sidecarFound: true, dataDir: "…", logPath: "…\\gateway.log" },
     gateway_start: "started", gateway_stop: "stopped", gateway_sync: { syncedAccounts: 2 },
@@ -395,6 +450,42 @@ function quotaTint(percent) {
   if (percent <= 5) return "danger";
   if (percent <= 25) return "warn";
   return "ok";
+}
+
+// Quota history: `key` is an account id or a provider id; samples carry
+// timestamp (Unix seconds) and hourlyLeft/weeklyLeft shares (0…100).
+function historySamples(key, field) {
+  return (S.history || [])
+    .filter((sample) => sample && sample.key === key)
+    .map((sample) => Number(sample[field]))
+    .filter((value) => Number.isFinite(value));
+}
+
+function sparkline(key, field, label) {
+  const values = historySamples(key, field);
+  if (!values.length) {
+    return `<span class="spark-empty">${esc(label)}: —</span>`;
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const points = values.map((value, index) => {
+    const x = values.length === 1 ? 50 : (index / (values.length - 1)) * 100;
+    const y = 22 - ((value - min) / span) * 20;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const title = `${label}: ${Math.round(values[0])}% → ${Math.round(values[values.length - 1])}%`;
+  return `<span class="spark" title="${esc(title)}"><svg viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="${esc(title)}"><polyline points="${points}"></polyline></svg></span>`;
+}
+
+function historyStrip(key) {
+  const samples = (S.history || []).filter((sample) => sample && sample.key === key);
+  if (!samples.length) return "";
+  return `<div class="spark-row" title="${esc(t("historyHint"))}">
+    <span class="spark-label">${esc(t("history"))}</span>
+    ${sparkline(key, "hourlyLeft", t("fiveHour"))}<span class="spark-name">${esc(t("fiveHour"))}</span>
+    ${sparkline(key, "weeklyLeft", t("week"))}<span class="spark-name">${esc(t("week"))}</span>
+  </div>`;
 }
 
 function blockText(info) {
@@ -657,6 +748,7 @@ function accountCard(account) {
       <div class="stack">
         ${quotaBlock(t("fiveHour"), account.hourlyRemaining, account.hourlyResetAt, account.hourlyWindowPresent)}
         ${quotaBlock(t("week"), account.weeklyRemaining, account.weeklyResetAt, account.weeklyWindowPresent)}
+        ${historyStrip(account.id)}
 
         ${account.blocked ? `<div class="footnote">⏸ ${esc(blockText(account.blockInfo))}</div>` : ""}
         <div class="row">
@@ -871,6 +963,7 @@ function claudeCard(settings) {
         ${claudeQuotaTile(t("fiveHour"), u ? u.fiveHourPercent : null, u ? u.fiveHourReset : null)}
         ${claudeQuotaTile(t("week"), u ? u.weeklyPercent : null, u ? u.weeklyReset : null)}
       </div>
+      ${historyStrip("claude")}
       ${u && u.error ? `<div class="footnote">${esc(u.error)}</div>` : ""}
       ${u && u.updatedAt ? `<div class="footnote">${t("quotaAge")}: ${esc(claudeAgeText(u.updatedAt))}</div>` : ""}
       <div class="row">${actions}</div>
@@ -922,13 +1015,62 @@ function antigravityCard() {
   </div>`;
 }
 
+// Read-only diagnostics: every value comes from an existing IPC call, and
+// rejected calls are printed verbatim instead of being summarized.
+function diagCell(value) {
+  const text = value && value.text !== undefined && value.text !== null && value.text !== ""
+    ? String(value.text)
+    : "—";
+  const cls = value && value.cls ? ` ${value.cls}` : "";
+  return `<td><span class="pill${cls}">${esc(text)}</span></td>`;
+}
+
+function diagnosticsCard() {
+  const diag = S.diag;
+  return `
+  <div class="card">
+    <h2>${t("diagTitle")} <span class="hint">${t("diagHint")}</span></h2>
+    <div class="row">
+      <button class="btn small" onclick="A.diagRun()" ${S.busy.diag ? "disabled" : ""}>${t("diagRun")}</button>
+      <span class="footnote" style="margin-top:0">${diag ? `${t("diagAt")}: ${esc(ageText(diag.at / 1000))}` : t("diagIdle")}</span>
+    </div>
+    ${diag ? `
+      <table class="diag">
+        <thead><tr>
+          <th>${t("diagProvider")}</th>
+          <th>${t("gateway")}</th>
+          <th>${t("diagAuth")}</th>
+          <th>${t("models")}</th>
+          <th>${t("diagQuota")}</th>
+        </tr></thead>
+        <tbody>
+          ${diag.rows.map((row) => `<tr>
+            <td>${esc(row.name)}</td>
+            ${diagCell(row.reach)}
+            ${diagCell(row.auth)}
+            ${diagCell(row.models)}
+            ${diagCell(row.quota)}
+          </tr>`).join("")}
+        </tbody>
+      </table>
+      ${diag.errors.length ? `<div class="stack" style="margin-top:10px">
+        ${diag.errors.map((item) => `<div class="footnote mono" style="margin-top:0;white-space:pre-wrap">${esc(item.command)}: ${esc(item.message)}</div>`).join("")}
+      </div>` : ""}` : ""}
+  </div>`;
+}
+
 function providersPage() {
   const settings = S.settings || {};
   const p = S.providers;
   const models = S.models || [];
-  const query = (S.modelsQuery || "").trim().toLowerCase();
+  const query = String(S.modelsQuery || "").trim().toLowerCase();
   const filtered = query
-    ? models.filter((m) => String(m.id || "").toLowerCase().includes(query))
+    ? models.filter((m) => {
+        // Ids and display names are both searchable; the list stays deduped
+        // upstream in modelsLoad.
+        const haystack = `${m.id || ""} ${m.displayName || m.display_name || ""}`.toLowerCase();
+        return haystack.includes(query);
+      })
     : models;
   const metric = (label, value) => `
     <tr><td>${esc(label)}</td><td>${value === null || value === undefined ? "—" : esc(typeof value === "number" ? value.toFixed(4) : value)}</td></tr>`;
@@ -963,6 +1105,7 @@ function providersPage() {
           ${metric(t("keyLimit"), p.limit)}
           ${metric(t("keySpend"), p.usage)}
         </table>` : `<div class="footnote">${t("loading")}</div>`}
+        ${historyStrip("openrouter")}
       </div>
     </div>
 
@@ -983,6 +1126,8 @@ function providersPage() {
   ${claudeCard(settings)}
 
   ${antigravityCard()}
+
+  ${diagnosticsCard()}
 
   <div class="card">
     <h2>${t("models")} <span class="hint">${filtered.length} ${t("modelsCount")}</span></h2>
@@ -1080,6 +1225,7 @@ function settingsPage() {
           <span>${t("notifications")}</span>
         </label>
       </div>
+      <div class="footnote" style="margin-top:0">${t("notificationsHint")}</div>
       <div class="row">
         <label class="field" style="flex:1">${t("fleetHome")}
           <input type="text" id="set-fleet-home" value="${esc(settings.fleetHome || "")}" placeholder="%USERPROFILE%\\.melon-fleet">
@@ -1266,6 +1412,20 @@ const A = {
     render();
   },
 
+  onboardingGo(section) {
+    markOnboardingSeen();
+    const modal = document.getElementById("onboarding-modal");
+    if (modal) modal.hidden = true;
+    S.section = section;
+    render();
+  },
+
+  onboardingDone() {
+    markOnboardingSeen();
+    const modal = document.getElementById("onboarding-modal");
+    if (modal) modal.hidden = true;
+  },
+
   async copy(text) {
     try {
       await navigator.clipboard.writeText(text);
@@ -1298,12 +1458,25 @@ const A = {
     S.accounts = await inv("vault_list");
   },
 
+  async historyLoad() {
+    try {
+      const raw = await inv("quota_history");
+      const samples = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw && raw.samples) ? raw.samples : [];
+      S.history = samples.filter((sample) => sample && typeof sample.key === "string");
+    } catch {
+      // History is decorative: keep the previous samples on a failed read.
+    }
+  },
+
   async loadAll() {
     try {
       S.info = await inv("app_info");
       S.settings = await inv("settings_get");
       S.lang = (S.settings && S.settings.lang) === "en" ? "en" : "ru";
       S.accounts = await inv("vault_list");
+      await A.historyLoad();
       S.status = await inv("gateway_status");
       S.route = await inv("codex_route_status");
       S.bridge = await inv("bridge_status");
@@ -1346,6 +1519,131 @@ const A = {
     });
   },
 
+  // Read-only connectivity/auth/model check. Every probe is independent, so a
+  // stopped gateway or one failing provider does not hide the other results.
+  diagRun() {
+    return run("diag", async () => {
+      const checks = [
+        ["settings", "settings_get", () => inv("settings_get")],
+        ["accounts", "vault_list", () => inv("vault_list")],
+        ["gatewayStatus", "gateway_status", () => inv("gateway_status")],
+        ["gatewayCheck", "gateway_check", () => inv("gateway_check")],
+        ["gatewayModels", "gateway_models", () => inv("gateway_models")],
+        ["claudeCredentials", "claude_credentials", () => inv("claude_credentials")],
+        ["claudeModels", "claude_models", () => inv("claude_models")],
+        ["claudeUsage", "claude_usage", () => inv("claude_usage")],
+        ["antigravityCredentials", "antigravity_credentials", () => inv("antigravity_credentials")],
+        ["antigravityModels", "antigravity_models", () => inv("antigravity_models")],
+        ["antigravityMetrics", "antigravity_metrics", () => inv("antigravity_metrics")],
+      ];
+      const settled = await Promise.allSettled(checks.map(([, , call]) => call()));
+      const data = {};
+      const errors = [];
+      checks.forEach(([key, command], index) => {
+        const result = settled[index];
+        if (result.status === "fulfilled") data[key] = result.value;
+        else errors.push({ command, message: errorText(result.reason) });
+      });
+
+      const has = (key) => Object.prototype.hasOwnProperty.call(data, key);
+      const settings = data.settings || {};
+      const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+      const gateway = data.gatewayStatus || null;
+      const running = !!(gateway && gateway.running);
+      const port = (gateway && gateway.port) || settings.port || "—";
+
+      const gatewayIds = [];
+      const seenIds = new Set();
+      for (const model of Array.isArray(data.gatewayModels) ? data.gatewayModels : []) {
+        const id = String((model && model.id) || "");
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+        gatewayIds.push(id);
+      }
+      const countPrefix = (prefix) => gatewayIds.filter((id) => id.startsWith(prefix)).length;
+
+      const claudeModels = data.claudeModels && Array.isArray(data.claudeModels.models)
+        ? data.claudeModels.models
+        : null;
+      const antigravityModels = data.antigravityModels && Array.isArray(data.antigravityModels.models)
+        ? data.antigravityModels.models
+        : null;
+      const claudeCredentials = data.claudeCredentials && Array.isArray(data.claudeCredentials.credentials)
+        ? data.claudeCredentials.credentials.length
+        : null;
+      const antigravityCredentials = data.antigravityCredentials && Array.isArray(data.antigravityCredentials.credentials)
+        ? data.antigravityCredentials.credentials.length
+        : null;
+
+      const keyAuth = (value) => value && String(value).trim()
+        ? { text: t("diagKeySet"), cls: "ok" }
+        : { text: t("diagKeyMissing"), cls: "warn" };
+      const countCell = (count) => ({
+        text: count === null || count === undefined ? "—" : String(count),
+        cls: count === null || count === undefined ? "" : count > 0 ? "ok" : "warn",
+      });
+      const quotaCell = (iso) => {
+        const ts = Date.parse(iso || "");
+        return Number.isNaN(ts) ? { text: "—", cls: "" } : { text: claudeAgeText(iso), cls: "ok" };
+      };
+
+      const reach = {
+        text: running
+          ? `${t("running")} · :${port}${has("gatewayCheck") ? " · " + t("diagApiOk") : ""}`
+          : t("stopped"),
+        cls: running ? "ok" : "danger",
+      };
+      const viaGateway = {
+        text: running ? t("diagUp") : t("diagDown"),
+        cls: running ? "ok" : "danger",
+      };
+      const codexQuota = accounts.reduce((latest, account) => Math.max(latest, Number(account.quotaUpdatedAt) || 0), 0);
+
+      const rows = [
+        {
+          name: t("gateway"), reach,
+          auth: { text: "—", cls: "" },
+          models: countCell(has("gatewayModels") ? gatewayIds.length : null),
+          quota: { text: "—", cls: "" },
+        },
+        {
+          name: t("diagCodex"), reach: viaGateway,
+          auth: { text: `${accounts.length} ${t("accountsCount")}`, cls: accounts.length ? "ok" : "warn" },
+          models: countCell(has("gatewayModels")
+            ? gatewayIds.filter((id) => !id.startsWith("opencode/") && !id.startsWith("openrouter/")).length
+            : null),
+          quota: codexQuota ? { text: ageText(codexQuota), cls: "ok" } : { text: "—", cls: "" },
+        },
+        {
+          name: t("openrouter"), reach: viaGateway,
+          auth: keyAuth(settings.openrouterKey),
+          models: countCell(has("gatewayModels") ? countPrefix("openrouter/") : null),
+          quota: { text: "—", cls: "" },
+        },
+        {
+          name: t("opencode"), reach: viaGateway,
+          auth: keyAuth(settings.opencodeKey),
+          models: countCell(has("gatewayModels") ? countPrefix("opencode/") : null),
+          quota: { text: "—", cls: "" },
+        },
+        {
+          name: t("claude"), reach: viaGateway,
+          auth: countCell(claudeCredentials),
+          models: countCell(claudeModels ? claudeModels.length : null),
+          quota: has("claudeUsage") ? quotaCell(data.claudeUsage && data.claudeUsage.updatedAt) : { text: "—", cls: "" },
+        },
+        {
+          name: t("antigravity"), reach: viaGateway,
+          auth: countCell(antigravityCredentials),
+          models: countCell(antigravityModels ? antigravityModels.length : null),
+          quota: has("antigravityMetrics") ? quotaCell(data.antigravityMetrics && data.antigravityMetrics.updatedAt) : { text: "—", cls: "" },
+        },
+      ];
+
+      S.diag = { at: Date.now(), rows, errors };
+    });
+  },
+
   codexRouteApply() {
     run("route", async () => {
       const result = await inv("codex_route_apply");
@@ -1375,6 +1673,7 @@ const A = {
     run("quotas", async () => {
       const result = await inv("quota_refresh");
       S.accounts = result.accounts;
+      await A.historyLoad();
       if (result.errors && result.errors.length) toast(result.errors.join("\n"), true);
       else toast(`${t("refreshQuotas")}: ${t("done")}`);
     });
@@ -1384,6 +1683,7 @@ const A = {
     run("quotas", async () => {
       const result = await inv("quota_refresh", { id });
       S.accounts = result.accounts;
+      await A.historyLoad();
       if (result.errors && result.errors.length) toast(result.errors.join("\n"), true);
     });
   },
@@ -1446,13 +1746,15 @@ const A = {
   openrouterRefresh() {
     run("openrouter", async () => {
       S.providers = await inv("openrouter_refresh");
+      await A.historyLoad();
     });
   },
 
   claudeUsageLoad() {
     S.lastClaudeUsageAt = Date.now();
-    return inv("claude_usage").then((usage) => {
+    return inv("claude_usage").then(async (usage) => {
       S.claude = usage;
+      await A.historyLoad();
     });
   },
 
@@ -1713,14 +2015,27 @@ const A = {
 
   modelsLoad() {
     run("models", async () => {
-      const models = (await inv("gateway_models")) || [];
+      const rawModels = (await inv("gateway_models")) || [];
+      // Dedupe the gateway list by id first; the provider lists below reuse the
+      // same set so a model served by two sources renders once.
+      const models = [];
+      const seen = new Set();
+      for (const model of rawModels) {
+        const id = String((model && model.id) || "");
+        if (seen.has(id)) continue;
+        seen.add(id);
+        models.push(model);
+      }
       // Claude ids are served by the gateway too, but a direct fetch keeps the
       // list fresh right after a login, before the next gateway sync.
       try {
         const claude = await inv("claude_models");
-        const seen = new Set(models.map((m) => String(m.id)));
         for (const model of (claude && claude.models) || []) {
-          if (!seen.has(String(model.id))) models.push({ id: model.id, owned_by: "claude" });
+          const id = String(model.id);
+          if (!seen.has(id)) {
+            seen.add(id);
+            models.push({ id: model.id, owned_by: "claude", displayName: model.displayName });
+          }
         }
       } catch (error) {
         // Gateway down or no Claude account — the base list stays valid.
@@ -1729,12 +2044,14 @@ const A = {
       // it overlaps the claude-*/gemini-*/gpt-oss id space.
       try {
         const ag = await inv("antigravity_models");
-        const seenAg = new Set(models.map((m) => String(m.id)));
         const ids = new Set();
         for (const model of (ag && ag.models) || []) {
           const id = String(model.id);
           ids.add(id);
-          if (!seenAg.has(id)) models.push({ id, owned_by: "antigravity" });
+          if (!seen.has(id)) {
+            seen.add(id);
+            models.push({ id, owned_by: "antigravity", displayName: model.displayName });
+          }
         }
         S.antigravityIds = ids;
       } catch (error) {
@@ -1956,10 +2273,72 @@ document.addEventListener("focusout", (event) => {
   S._renderResumeTimer = setTimeout(() => A.refreshStatus(), 350);
 }, true);
 
+// MARK: - Onboarding
+
+// The modal is injected here instead of index.html so the web UI stays one
+// script plus one stylesheet. The flag is written on any dismissal, so the
+// tour is shown exactly once per webview profile.
+const ONBOARDING_KEY = "onboardingDone";
+
+function onboardingSeen() {
+  try {
+    return window.localStorage.getItem(ONBOARDING_KEY) === "1";
+  } catch {
+    // Storage unavailable (hardened webview): never block the app on a tour.
+    return true;
+  }
+}
+
+function markOnboardingSeen() {
+  try {
+    window.localStorage.setItem(ONBOARDING_KEY, "1");
+  } catch {
+    // Same as above — the UI keeps working when storage is unavailable.
+  }
+}
+
+function showOnboarding() {
+  if (onboardingSeen()) return;
+  let modal = document.getElementById("onboarding-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "onboarding-modal";
+    modal.className = "modal";
+    document.body.appendChild(modal);
+  }
+  const steps = [
+    ["1", "onboardingStep1"],
+    ["2", "onboardingStep2"],
+    ["3", "onboardingStep3"],
+  ];
+  modal.innerHTML = `
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+      <div class="kicker">melon tools</div>
+      <h2 id="onboarding-title">${esc(t("onboardingTitle"))}</h2>
+      <div class="subtitle">${esc(t("onboardingWelcome"))}</div>
+      <div class="stack" style="margin:14px 0">
+        ${steps.map(([number, key]) => `<div class="row" style="align-items:flex-start;gap:10px">
+          <span class="pill gold">${number}</span>
+          <span>${esc(t(key))}</span>
+        </div>`).join("")}
+      </div>
+      <div class="footnote" style="color:var(--warn);border-top:1px solid var(--border);padding-top:10px">
+        ${esc(t("onboardingDisclaimer"))}
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:16px">
+        <button class="ghost small" onclick="A.onboardingGo('accounts')">${esc(t("onboardingAccounts"))}</button>
+        <button class="ghost small" onclick="A.onboardingGo('providers')">${esc(t("onboardingProviders"))}</button>
+        <button class="btn small" onclick="A.onboardingDone()">${esc(t("onboardingDone"))}</button>
+      </div>
+    </div>`;
+  modal.hidden = false;
+}
+
 // MARK: - Boot
 
 (async function boot() {
   await A.loadAll();
+  showOnboarding();
   // Daily update check: lights the badge only; the window opens on click.
   if (IS_TAURI) {
     inv("update_check", { force: false })

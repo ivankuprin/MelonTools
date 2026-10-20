@@ -9,9 +9,11 @@ mod bridge;
 mod claude;
 mod codex_route;
 mod device_login;
+mod dpapi;
 mod engine;
 mod fleet;
 mod gateway;
+mod history;
 mod instances;
 mod paths;
 mod providers;
@@ -31,8 +33,6 @@ pub struct AppState {
     pub gw: gateway::Gateway,
     pub bridge: bridge::BridgeState,
     pub settings: Mutex<settings::Settings>,
-    /// Low-quota notification cooldowns: "<account>:<window>" → unix seconds.
-    pub notified: Mutex<HashMap<String, i64>>,
     /// Engine watchdog bookkeeping.
     pub watchdog: Mutex<Watchdog>,
     /// Last validated `update_check` result. `update_apply` uses only this
@@ -204,6 +204,25 @@ async fn vault_list() -> Result<Vec<Value>, String> {
     Ok(vault::list_views())
 }
 
+/// Last quota reading before a refresh, used to detect a crossing.
+type PreviousQuota = HashMap<String, (Option<f64>, Option<f64>)>;
+
+fn quota_snapshot() -> PreviousQuota {
+    vault::accounts()
+        .into_iter()
+        .filter_map(|account| {
+            let quota = account.quota?;
+            Some((
+                account.id,
+                (
+                    quota.hourly_remaining_percent,
+                    quota.weekly_remaining_percent,
+                ),
+            ))
+        })
+        .collect()
+}
+
 #[tauri::command]
 async fn quota_refresh(
     app: tauri::AppHandle,
@@ -211,6 +230,7 @@ async fn quota_refresh(
     id: Option<String>,
 ) -> Result<Value, String> {
     let client = quota::client()?;
+    let previous = quota_snapshot();
     let errors = quota::refresh_all(&client, id.as_deref()).await;
     let settings = state.settings();
     let synced = if gateway::health(settings.port, &settings.api_key).await {
@@ -218,7 +238,7 @@ async fn quota_refresh(
     } else {
         0
     };
-    check_low_quota(&app, &state);
+    check_low_quota(&app, &state, &previous);
     Ok(json!({
         "accounts": vault::list_views(),
         "errors": errors,
@@ -226,46 +246,94 @@ async fn quota_refresh(
     }))
 }
 
-fn check_low_quota(app: &tauri::AppHandle, state: &AppState) {
+/// Read-only quota history for the sparkline strips.
+#[tauri::command]
+fn quota_history() -> Vec<Value> {
+    history::ipc_samples()
+}
+
+/// Toast when a refreshed window crosses below its account reserve (10 % when
+/// the reserve is unset). `history::claim_notification` persists the reset
+/// window id, so each window notifies at most once across restarts.
+fn check_low_quota(app: &tauri::AppHandle, state: &AppState, previous: &PreviousQuota) {
     let settings = state.settings();
     if !settings.notify_low_quota {
         return;
     }
     let now = chrono::Utc::now().timestamp();
-    let Ok(mut cache) = state.notified.lock() else {
-        return;
-    };
+    let english = settings.lang == "en";
     for account in vault::accounts() {
         let Some(quota) = account.quota.clone() else {
             continue;
         };
+        let before = previous.get(&account.id).copied().unwrap_or((None, None));
         let checks = [
-            ("5h", quota.hourly_remaining_percent, 3600i64, "5-часовое окно"),
-            ("week", quota.weekly_remaining_percent, 21600i64, "недельное окно"),
+            (
+                "5h",
+                quota.hourly_remaining_percent,
+                quota.hourly_reset_at,
+                account.hourly_reserve_percent,
+                before.0,
+                3600i64,
+                if english { "5-hour window" } else { "5-часовое окно" },
+            ),
+            (
+                "week",
+                quota.weekly_remaining_percent,
+                quota.weekly_reset_at,
+                account.weekly_reserve_percent,
+                before.1,
+                21600i64,
+                if english { "weekly window" } else { "недельное окно" },
+            ),
         ];
-        for (kind, remaining, cooldown, label) in checks {
+        for (kind, remaining, reset_at, reserve, before_value, cooldown, label) in checks {
             let Some(remaining) = remaining else {
                 continue;
             };
-            if remaining > 10.0 {
-                continue;
-            }
+            let threshold = reserve
+                .filter(|value| *value > 0)
+                .map(|value| value as f64)
+                .unwrap_or(10.0);
             let key = format!("{}:{}", account.id, kind);
-            let last = cache.get(&key).copied().unwrap_or(0);
-            if now - last < cooldown {
+            let claimed = history::claim_notification(
+                &key,
+                before_value,
+                Some(remaining),
+                threshold,
+                reset_at,
+                now,
+                cooldown,
+            )
+            .unwrap_or(false);
+            if !claimed {
                 continue;
             }
-            cache.insert(key, now);
-            let body = format!(
-                "{}: осталось {}% ({})",
-                account.display_name(),
-                remaining.round() as i64,
-                label
-            );
+            let body = if english {
+                format!(
+                    "{}: {}% left ≤ {}% threshold ({})",
+                    account.display_name(),
+                    remaining.round() as i64,
+                    threshold.round() as i64,
+                    label
+                )
+            } else {
+                format!(
+                    "{}: осталось {}% ≤ порога {}% ({})",
+                    account.display_name(),
+                    remaining.round() as i64,
+                    threshold.round() as i64,
+                    label
+                )
+            };
             let _ = app
                 .notification()
                 .builder()
-                .title("Melon Tools · низкая квота")
+                .title(if english {
+                    "Melon Tools · low quota"
+                } else {
+                    "Melon Tools · низкая квота"
+                })
                 .body(body)
                 .show();
         }
@@ -940,7 +1008,6 @@ fn main() {
             gw: gateway::Gateway::new(),
             bridge: bridge::BridgeState::new(),
             settings: Mutex::new(initial_settings),
-            notified: Mutex::new(HashMap::new()),
             watchdog: Mutex::new(Watchdog::default()),
             update: Mutex::new(None),
         })
@@ -1028,6 +1095,7 @@ fn main() {
             gateway_models,
             vault_list,
             quota_refresh,
+            quota_history,
             switch_account,
             import_current_auth,
             account_refresh_tokens,

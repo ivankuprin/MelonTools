@@ -226,6 +226,14 @@ final class ProviderUsageStore: ObservableObject {
             }
             stats.updatedAt = Date()
             openRouter = stats
+            // Credits are the meaningful balance for this provider; the key
+            // limit is the fallback for free-tier keys.
+            if let balance = stats.creditsRemaining ?? stats.keyRemaining {
+                QuotaHistoryStore.shared.record(
+                    QuotaHistorySample(at: Date(), balance: balance),
+                    for: "openrouter"
+                )
+            }
         } catch {
             var failed = openRouter ?? stats
             failed.error = error.localizedDescription
@@ -295,6 +303,12 @@ final class ProviderUsageStore: ObservableObject {
             stats.updatedAt = Date()
         }
         claude = stats
+        if stats.updatedAt != nil, stats.fiveHourPercent != nil || stats.weeklyPercent != nil {
+            QuotaHistoryStore.shared.record(
+                QuotaHistorySample(at: Date(), hourly: stats.fiveHourPercent, weekly: stats.weeklyPercent),
+                for: "claude"
+            )
+        }
     }
 
     // MARK: - Antigravity

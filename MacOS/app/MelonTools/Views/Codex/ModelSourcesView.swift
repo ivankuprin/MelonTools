@@ -10,8 +10,10 @@ struct CodexProvidersView: View {
     @ObservedObject private var sources = ModelSourcesStore.shared
     @ObservedObject private var store = CodexStore.shared
     @ObservedObject private var usage = ProviderUsageStore.shared
+    @ObservedObject private var quotaHistory = QuotaHistoryStore.shared
     @ObservedObject private var claudeAuth = ClaudeAuthService.shared
     @ObservedObject private var antigravityAuth = AntigravityAuthService.shared
+    @ObservedObject private var diagnostics = ProviderDiagnosticsStore.shared
     @Binding var selection: MTSection
 
     @State private var route: ProviderRoute?
@@ -54,6 +56,7 @@ struct CodexProvidersView: View {
                     settingsPage(route)
                 } else {
                     MTPageHeader(kicker: "codex", title: L("Providers"), subtitle: L("Providers subtitle"))
+                    diagnosticsCard
                     HStack(alignment: .top, spacing: MTTheme.s4) {
                         poolCard
                         openCodeCard
@@ -79,6 +82,140 @@ struct CodexProvidersView: View {
                 await sources.refreshOpenCodeGoAccess()
                 await usage.refresh()
                 await usage.refreshSession(threadUUID: ComposerBridge.shared.activeThreadID)
+            }
+        }
+    }
+
+    // MARK: - Connection check
+
+    /// Compact, read-only health summary: gateway `/v1/models`, auth files or
+    /// keys, model counts and the last quota poll. The probe never writes.
+    private var diagnosticsCard: some View {
+        MTCard(title: L("Connection check"), systemImage: "checklist") {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                HStack(alignment: .top, spacing: MTTheme.s3) {
+                    if let evidence = diagnostics.evidence {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: MTTheme.s2) {
+                                MTStatusPill(
+                                    text: gatewayPill(evidence),
+                                    status: diagnostics.gatewayOK ? .ok : .error
+                                )
+                                if let finished = diagnostics.finishedAt {
+                                    Text(L("Updated") + " " + Self.timeFormatter.string(from: finished))
+                                        .font(MTTheme.mono(9))
+                                        .foregroundStyle(MTTheme.textTertiary)
+                                }
+                            }
+                            Text(diagnosticsCaption(evidence))
+                                .font(MTTheme.mono(9))
+                                .foregroundStyle(evidence.gatewayError == nil && evidence.modelsError == nil ? MTTheme.textSecondary : MTTheme.danger)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        Text(L("Read-only check of the service, auth files, model list and quota updates."))
+                            .font(MTTheme.mono(10))
+                            .foregroundStyle(MTTheme.textSecondary)
+                    }
+                    Spacer(minLength: MTTheme.s2)
+                    MTSecondaryButton(title: L("Check"), systemImage: "arrow.clockwise", isLoading: diagnostics.isRunning) {
+                        Task { await diagnostics.run() }
+                    }
+                }
+                if !diagnostics.rows.isEmpty {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(diagnostics.rows) { row in
+                            diagnosticRow(row)
+                        }
+                    }
+                } else {
+                    Text(L("Not checked yet."))
+                        .font(MTTheme.mono(9))
+                        .foregroundStyle(MTTheme.textTertiary)
+                }
+            }
+        }
+    }
+
+    private func gatewayPill(_ evidence: ProviderDiagnostics.Evidence) -> String {
+        if let code = evidence.gatewayStatusCode { return "HTTP \(code)" }
+        return L("Unreachable")
+    }
+
+    private func diagnosticsCaption(_ evidence: ProviderDiagnostics.Evidence) -> String {
+        if let error = evidence.gatewayError { return error }
+        if let error = evidence.modelsError { return error }
+        return String(format: L("Gateway model list: %d"), evidence.models.count)
+    }
+
+    private func diagnosticRow(_ row: ProviderDiagnostics.Row) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: MTTheme.s2) {
+                MTStatusDot(status: rowStatus(row.status), size: 6)
+                Text(L(row.title))
+                    .font(MTTheme.body(11, weight: .medium))
+                    .foregroundStyle(MTTheme.textPrimary)
+                    .frame(width: 96, alignment: .leading)
+                Text(authDetail(row))
+                    .font(MTTheme.mono(9))
+                    .foregroundStyle(row.authPresent ? MTTheme.textSecondary : MTTheme.warn)
+                Spacer(minLength: MTTheme.s2)
+                Text(row.modelCount.map { String(format: L("Models: %d"), $0) } ?? L("No model list"))
+                    .font(MTTheme.mono(9))
+                    .foregroundStyle(MTTheme.textSecondary)
+                Text("·")
+                    .font(MTTheme.mono(9))
+                    .foregroundStyle(MTTheme.textTertiary)
+                Text(row.quotaUpdatedAt.map { L("Quota updated") + " " + Self.timeFormatter.string(from: $0) } ?? L("No quota data"))
+                    .font(MTTheme.mono(9))
+                    .foregroundStyle(MTTheme.textSecondary)
+                diagnosticHistory(row.id)
+            }
+            if let error = row.error {
+                Text(error)
+                    .font(MTTheme.mono(9))
+                    .foregroundStyle(MTTheme.danger)
+                    .textSelection(.enabled)
+                    .padding(.leading, 16)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func authDetail(_ row: ProviderDiagnostics.Row) -> String {
+        if row.authFileCount > 0 {
+            return String(format: L("Auth files: %d"), row.authFileCount)
+        }
+        return row.hasKey ? L("Key configured") : L("No credentials")
+    }
+
+    private func rowStatus(_ status: ProviderDiagnostics.Status) -> MTStatus {
+        switch status {
+        case .ok: return .ok
+        case .warning: return .warn
+        case .failed: return .error
+        case .idle: return .idle
+        }
+    }
+
+    /// Read-only history line for diagnostics rows that have a series. Only
+    /// the provider-wide keys exist here; per-account history stays in the
+    /// account cards.
+    @ViewBuilder
+    private func diagnosticHistory(_ id: String) -> some View {
+        if id == "claude" {
+            let samples = quotaHistory.samples(for: id)
+            if samples.count >= 2 {
+                HStack(spacing: 2) {
+                    QuotaSparkline(samples: samples, field: .hourly, width: 36, height: 11)
+                    QuotaSparkline(samples: samples, field: .weekly, tint: MTTheme.info, width: 36, height: 11)
+                }
+            }
+        } else if id == "openrouter" {
+            let samples = quotaHistory.samples(for: id)
+            if samples.count >= 2 {
+                QuotaSparkline(samples: samples, field: .balance, tint: MTTheme.ok, width: 48, height: 11)
             }
         }
     }
@@ -306,6 +443,11 @@ struct CodexProvidersView: View {
                             caption: L("Selected for Codex")
                         )
                     }
+                    QuotaHistorySparklineStrip(
+                        samples: quotaHistory.samples(for: "claude"),
+                        hourlyTitle: L("5 h"),
+                        weeklyTitle: L("Week")
+                    )
                     if let error = stats.error {
                         Text(error)
                             .font(MTTheme.mono(9))

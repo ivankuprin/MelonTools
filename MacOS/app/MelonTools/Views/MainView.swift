@@ -62,6 +62,8 @@ struct MainView: View {
     @EnvironmentObject private var app: AppState
     @ObservedObject private var updater = UpdaterStore.shared
     @State private var selection: MTSection = .dashboard
+    /// First-run guide: shown once, then never again on this account.
+    @AppStorage("onboardingDone") private var onboardingDone = false
 
     private static let sidebarWidth: CGFloat = 228
 
@@ -82,6 +84,9 @@ struct MainView: View {
         .sheet(isPresented: $updater.sheetPresented) {
             UpdateSheet()
         }
+        .sheet(isPresented: onboardingPresented) {
+            OnboardingView(selection: $selection)
+        }
         .overlay {
             // Cmd-1…9 jump to the first nine sidebar sections (the display
             // order of MTSection).
@@ -94,6 +99,17 @@ struct MainView: View {
                     .accessibilityHidden(true)
             }
         }
+    }
+
+    /// The sheet is visible only while the defaults key is unset; dismissing
+    /// it (or picking a destination) writes the key once.
+    private var onboardingPresented: Binding<Bool> {
+        Binding(
+            get: { !onboardingDone },
+            set: { presented in
+                if !presented { onboardingDone = true }
+            }
+        )
     }
 
     /// Fleet polling runs only while a page that shows fleet data is on

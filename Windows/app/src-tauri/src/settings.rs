@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::paths;
+use crate::{dpapi, paths};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default)]
@@ -30,7 +30,8 @@ pub struct Settings {
     pub routing_strategy: String,
     /// Manual order of account ids (for the custom strategy).
     pub priority_order: Vec<String>,
-    /// Toast when a window drops below 10% or a pause happens.
+    /// Toast when an hourly/weekly window crosses below its account reserve
+    /// (10 % when no reserve is configured).
     pub notify_low_quota: bool,
     /// Fleet CLI home (snapshots, results, config).
     pub fleet_home: String,
@@ -66,6 +67,7 @@ pub fn load() -> Settings {
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default();
+    unprotect_secrets(&mut s);
     if s.port == 0 {
         s.port = 18317;
     }
@@ -90,13 +92,46 @@ pub fn load() -> Settings {
 }
 
 pub fn save(s: &Settings) -> Result<(), String> {
+    // Secrets are encrypted on disk only; the in-memory Settings stays
+    // plaintext for the engine config and management calls.
+    let mut stored = s.clone();
+    protect_secrets(&mut stored)?;
     let dir = paths::appdata_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let data = serde_json::to_string_pretty(s).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;
     let path = paths::settings_path();
     let tmp = paths::tmp_path(&path);
     std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+/// The secrets stored in `settings.json`. Vault tokens use the same helpers.
+fn secret_fields(s: &mut Settings) -> [&mut String; 5] {
+    [
+        &mut s.api_key,
+        &mut s.openrouter_key,
+        &mut s.opencode_key,
+        &mut s.claude_api_key,
+        &mut s.management_secret,
+    ]
+}
+
+fn protect_secrets(s: &mut Settings) -> Result<(), String> {
+    for field in secret_fields(s) {
+        let protected = dpapi::protect(field.as_str())?;
+        *field = protected;
+    }
+    Ok(())
+}
+
+/// Legacy plaintext values pass through unchanged and are encrypted by the
+/// next save. An undecryptable value becomes an empty string (treated as
+/// unset), never ciphertext that could be used as a key.
+fn unprotect_secrets(s: &mut Settings) {
+    for field in secret_fields(s) {
+        let plaintext = dpapi::unprotect(field.as_str()).unwrap_or_default();
+        *field = plaintext;
+    }
 }
 
 fn generate_api_key() -> String {
@@ -111,4 +146,97 @@ fn generate_management_secret() -> String {
     let bytes: [u8; 16] = rand::random();
     let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
     format!("melon-mgmt-{}", hex)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{protect_secrets, secret_fields, unprotect_secrets, Settings};
+
+    fn legacy_settings() -> Settings {
+        let mut s = Settings::default();
+        s.api_key = "sk-legacy-api".to_string();
+        s.openrouter_key = "sk-or-legacy".to_string();
+        s.opencode_key = "sk-oc-legacy".to_string();
+        s.claude_api_key = "sk-ant-legacy".to_string();
+        s.management_secret = "melon-mgmt-legacy".to_string();
+        s
+    }
+
+    #[test]
+    fn legacy_plaintext_settings_are_read_unchanged() {
+        let mut s = legacy_settings();
+        unprotect_secrets(&mut s);
+        assert_eq!(s.api_key, "sk-legacy-api");
+        assert_eq!(s.openrouter_key, "sk-or-legacy");
+        assert_eq!(s.opencode_key, "sk-oc-legacy");
+        assert_eq!(s.claude_api_key, "sk-ant-legacy");
+        assert_eq!(s.management_secret, "melon-mgmt-legacy");
+    }
+
+    #[test]
+    fn save_roundtrip_preserves_every_secret() {
+        let original = legacy_settings();
+        let mut stored = original.clone();
+        protect_secrets(&mut stored).unwrap();
+
+        #[cfg(windows)]
+        for field in secret_fields(&mut stored) {
+            assert!(
+                crate::dpapi::is_protected(field),
+                "secret was not protected: {}",
+                field.as_str()
+            );
+        }
+        #[cfg(not(windows))]
+        for field in secret_fields(&mut stored) {
+            assert!(!crate::dpapi::is_protected(field));
+        }
+
+        unprotect_secrets(&mut stored);
+        assert_eq!(stored.api_key, original.api_key);
+        assert_eq!(stored.openrouter_key, original.openrouter_key);
+        assert_eq!(stored.opencode_key, original.opencode_key);
+        assert_eq!(stored.claude_api_key, original.claude_api_key);
+        assert_eq!(stored.management_secret, original.management_secret);
+    }
+
+    #[test]
+    fn empty_secrets_stay_empty() {
+        let mut s = Settings::default();
+        protect_secrets(&mut s).unwrap();
+        for field in secret_fields(&mut s) {
+            assert!(field.is_empty());
+        }
+        unprotect_secrets(&mut s);
+        for field in secret_fields(&mut s) {
+            assert!(field.is_empty());
+        }
+    }
+
+    #[test]
+    fn undecryptable_secrets_become_empty() {
+        let mut s = Settings::default();
+        s.api_key = "dpapi2:AAAA".to_string();
+        s.openrouter_key = "dpapi:AAAA".to_string();
+        s.opencode_key = "dpapi:not-base64!!!".to_string();
+        s.claude_api_key = "dpapi2:".to_string();
+        s.management_secret = "dpapi:not-base64!!!".to_string();
+        unprotect_secrets(&mut s);
+        for field in secret_fields(&mut s) {
+            assert!(field.is_empty(), "ciphertext leaked: {}", field.as_str());
+        }
+    }
+
+    #[test]
+    fn reserved_prefix_secrets_roundtrip() {
+        for value in ["dpapi:literal", "dpapi2:literal", "plain:literal"] {
+            let mut s = Settings::default();
+            s.api_key = value.to_string();
+            protect_secrets(&mut s).unwrap();
+            #[cfg(not(windows))]
+            assert!(s.api_key.starts_with(crate::dpapi::PREFIX_PLAIN));
+            unprotect_secrets(&mut s);
+            assert_eq!(s.api_key, value);
+        }
+    }
 }

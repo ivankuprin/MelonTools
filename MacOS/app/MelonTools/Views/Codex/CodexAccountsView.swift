@@ -7,6 +7,7 @@ struct CodexAccountsView: View {
     private enum LoginMode { case browser, device }
 
     @ObservedObject private var store = CodexStore.shared
+    @ObservedObject private var quotaHistory = QuotaHistoryStore.shared
     @Binding var selection: MTSection
     @State private var showImportSheet = false
     @State private var importText = ""
@@ -243,6 +244,11 @@ struct CodexAccountsView: View {
                         title: L("weekly"),
                         percent: account.quota?.weeklyRemainingPercent,
                         reset: account.quota?.weeklyResetAt
+                    )
+                    QuotaHistorySparklineStrip(
+                        samples: quotaHistory.samples(for: account.id),
+                        hourlyTitle: L("hourly"),
+                        weeklyTitle: L("weekly")
                     )
                     HStack(spacing: MTTheme.s3) {
                         if let credits = account.quota?.resetCreditsAvailable {

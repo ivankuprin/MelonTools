@@ -1,14 +1,16 @@
 //! The account vault. The file format matches the macOS app
 //! (`%APPDATA%\MelonTools\codex\accounts.json`) so vaults can be copied
-//! between platforms. Writes go through `serde_json::Value` edits to keep
-//! every unknown field of the original file intact.
+//! between platforms. Windows stores token strings DPAPI-protected
+//! (`dpapi2:<base64>`, see `dpapi.rs`); other readers see them as opaque
+//! values. Writes go through `serde_json::Value` edits to keep every unknown
+//! field of the original file intact.
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-use crate::paths;
+use crate::{dpapi, paths};
 
 /// Apple reference date (2001-01-01) offset: file dates are stored the way
 /// Swift's JSONEncoder writes `Date` values.
@@ -77,6 +79,9 @@ pub struct Account {
     pub weekly_reserve_percent: Option<i64>,
     pub preferred_first: Option<bool>,
     pub is_backup: Option<bool>,
+    /// Set when a stored token could not be decrypted; the account must be
+    /// re-added (the tokens are cleared instead of passed through).
+    pub needs_relogin: Option<bool>,
 }
 
 impl Account {
@@ -140,19 +145,86 @@ pub fn vault_file() -> PathBuf {
     paths::vault_path()
 }
 
+/// The token fields encrypted at rest in `codex/accounts.json`.
+const SECRET_TOKEN_KEYS: [&str; 3] = ["id_token", "access_token", "refresh_token"];
+
+/// Encrypt every account token in the raw JSON before writing the file.
+/// Missing keys, nulls and empty strings are left untouched.
+pub fn protect_tokens(value: &mut Value) -> Result<(), String> {
+    let Some(accounts) = value.get_mut("accounts").and_then(|a| a.as_array_mut()) else {
+        return Ok(());
+    };
+    for account in accounts {
+        let Some(tokens) = account.get_mut("tokens").and_then(|t| t.as_object_mut()) else {
+            continue;
+        };
+        for key in SECRET_TOKEN_KEYS {
+            let Some(Value::String(secret)) = tokens.get_mut(key) else {
+                continue;
+            };
+            *secret = dpapi::protect(secret.as_str())?;
+        }
+    }
+    Ok(())
+}
+
+/// Decrypt every account token after reading the file. Legacy plaintext
+/// passes through. A token that cannot be decoded/decrypted is cleared (never
+/// used as ciphertext) and the account is marked for re-login.
+pub fn unprotect_tokens(value: &mut Value) {
+    let Some(accounts) = value.get_mut("accounts").and_then(|a| a.as_array_mut()) else {
+        return;
+    };
+    for account in accounts {
+        let mut needs_relogin = false;
+        {
+            if let Some(tokens) = account.get_mut("tokens").and_then(|t| t.as_object_mut()) {
+                for key in SECRET_TOKEN_KEYS {
+                    let failed = match tokens.get_mut(key) {
+                        Some(Value::String(secret)) => match dpapi::unprotect(secret.as_str()) {
+                            Ok(plaintext) => {
+                                *secret = plaintext;
+                                false
+                            }
+                            Err(_) => true,
+                        },
+                        _ => false,
+                    };
+                    if failed {
+                        tokens.insert(key.to_string(), Value::Null);
+                        needs_relogin = true;
+                    }
+                }
+            }
+        }
+        if needs_relogin {
+            if let Some(object) = account.as_object_mut() {
+                object.insert("needsRelogin".to_string(), json!(true));
+                object.insert("quotaError".to_string(), json!("Re-login required"));
+            }
+        }
+    }
+}
+
 pub fn load_raw() -> Value {
-    std::fs::read_to_string(vault_file())
+    let mut value = std::fs::read_to_string(vault_file())
         .ok()
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .unwrap_or_else(|| json!({"accounts": [], "currentAccountId": Value::Null}))
+        .unwrap_or_else(|| json!({"accounts": [], "currentAccountId": Value::Null}));
+    unprotect_tokens(&mut value);
+    value
 }
 
 pub fn save_raw(value: &Value) -> Result<(), String> {
+    // Vault tokens are encrypted on disk only; callers keep plaintext values
+    // in memory (the gateway config and Codex auth files need them).
+    let mut stored = value.clone();
+    protect_tokens(&mut stored)?;
     let path = vault_file();
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    let data = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;
     let tmp = paths::tmp_path(&path);
     std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
@@ -219,6 +291,7 @@ pub fn list_views() -> Vec<Value> {
             "weeklyReservePercent": account.weekly_reserve_percent,
             "preferredFirst": account.preferred_first.unwrap_or(false),
             "isBackup": account.is_backup.unwrap_or(false),
+            "needsRelogin": account.needs_relogin.unwrap_or(false),
             "hasTokens": account.tokens.access_token.as_deref().map(|t| !t.is_empty()).unwrap_or(false),
             "resetCreditsAvailable": reset_available,
             "resetCreditsNextExpiry": reset_expiry,
@@ -246,7 +319,19 @@ pub fn update_tokens(id: &str, tokens: &Tokens, last_refresh: &str) -> Result<()
     set_account_field(id, move |item| {
         item["tokens"] = tokens_value;
         item["lastRefresh"] = json!(last_refresh);
+        clear_relogin(item);
     })
+}
+
+/// A successful token write means the account no longer needs a re-login.
+fn clear_relogin(item: &mut Value) {
+    let Some(object) = item.as_object_mut() else {
+        return;
+    };
+    object.remove("needsRelogin");
+    if object.get("quotaError").and_then(|v| v.as_str()) == Some("Re-login required") {
+        object.insert("quotaError".to_string(), Value::Null);
+    }
 }
 
 pub fn update_quota(id: &str, quota: &Quota, raw_json: &str, extra: Value) -> Result<(), String> {
@@ -298,9 +383,21 @@ pub fn update_subscription(id: &str, plan: Option<&str>, until: Option<&str>) ->
 }
 
 pub fn set_quota_error(id: &str, error: &str) -> Result<(), String> {
-    set_account_field(id, move |item| {
-        item["quotaError"] = json!(error);
-    })
+    set_account_field(id, move |item| apply_quota_error(item, error))
+}
+
+/// A re-login requirement is the actionable reason: quota polling must not
+/// overwrite it while `needsRelogin` is set.
+fn apply_quota_error(item: &mut Value, error: &str) {
+    let needs_relogin = item
+        .get("needsRelogin")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    item["quotaError"] = json!(if needs_relogin {
+        "Re-login required"
+    } else {
+        error
+    });
 }
 
 pub fn delete_account(id: &str) -> Result<(), String> {
@@ -346,6 +443,7 @@ pub fn upsert_from_tokens(tokens: &Tokens) -> Result<String, String> {
             if let Some(value) = &account_id {
                 item["accountId"] = json!(value);
             }
+            clear_relogin(item);
         }
         save_raw(&raw)?;
         return Ok("updated".to_string());
@@ -487,4 +585,188 @@ fn uuid_like() -> String {
         &hex[16..20],
         &hex[20..32]
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{protect_tokens, unprotect_tokens};
+    use serde_json::{json, Value};
+
+    fn vault_with_tokens() -> Value {
+        json!({
+            "accounts": [{
+                "id": "acc-1",
+                "email": "user@example.com",
+                "tokens": {
+                    "id_token": "id-secret",
+                    "access_token": "access-secret",
+                    "refresh_token": "refresh-secret",
+                    "account_id": "chatgpt-account",
+                },
+                "quota": {"hourlyRemainingPercent": 42.0},
+            }],
+            "currentAccountId": "acc-1",
+        })
+    }
+
+    #[test]
+    fn token_protection_roundtrip_preserves_secrets() {
+        let mut raw = vault_with_tokens();
+        protect_tokens(&mut raw).unwrap();
+
+        #[cfg(windows)]
+        {
+            let tokens = &raw["accounts"][0]["tokens"];
+            for key in super::SECRET_TOKEN_KEYS {
+                let stored = tokens[key].as_str().expect("token stays a string");
+                assert!(crate::dpapi::is_protected(stored), "{key} not protected");
+            }
+            assert_eq!(tokens["account_id"], "chatgpt-account");
+        }
+        #[cfg(not(windows))]
+        {
+            // Host fallback keeps plaintext, exactly like the first save on a
+            // platform without DPAPI.
+            assert_eq!(raw["accounts"][0]["tokens"]["access_token"], "access-secret");
+        }
+
+        unprotect_tokens(&mut raw);
+        let tokens = &raw["accounts"][0]["tokens"];
+        assert_eq!(tokens["id_token"], "id-secret");
+        assert_eq!(tokens["access_token"], "access-secret");
+        assert_eq!(tokens["refresh_token"], "refresh-secret");
+        assert_eq!(tokens["account_id"], "chatgpt-account");
+        assert_eq!(raw["accounts"][0]["email"], "user@example.com");
+        assert_eq!(raw["accounts"][0]["quota"]["hourlyRemainingPercent"], 42.0);
+        assert_eq!(raw["currentAccountId"], "acc-1");
+    }
+
+    #[test]
+    fn legacy_plaintext_vault_is_read_unchanged() {
+        let mut raw = vault_with_tokens();
+        unprotect_tokens(&mut raw);
+        assert_eq!(raw["accounts"][0]["tokens"]["access_token"], "access-secret");
+        assert_eq!(raw["accounts"][0]["tokens"]["refresh_token"], "refresh-secret");
+        assert!(raw["accounts"][0].get("needsRelogin").is_none());
+    }
+
+    #[test]
+    fn undecryptable_tokens_are_cleared_and_account_marked() {
+        let mut raw = json!({
+            "accounts": [{
+                "id": "acc-1",
+                "tokens": {
+                    "id_token": "dpapi2:AAAA",
+                    "access_token": "access-legacy",
+                    "refresh_token": "dpapi:not-base64!!!",
+                }
+            }]
+        });
+        unprotect_tokens(&mut raw);
+        let account = &raw["accounts"][0];
+        assert!(account["tokens"]["id_token"].is_null());
+        assert!(account["tokens"]["refresh_token"].is_null());
+        assert_eq!(account["tokens"]["access_token"], "access-legacy");
+        assert_eq!(account["needsRelogin"], true);
+        assert_eq!(account["quotaError"], "Re-login required");
+    }
+
+    #[test]
+    fn relogin_marker_survives_the_next_save() {
+        let mut raw = json!({
+            "accounts": [{
+                "id": "acc-1",
+                "tokens": {"access_token": "dpapi2:AAAA"}
+            }]
+        });
+        unprotect_tokens(&mut raw);
+        protect_tokens(&mut raw).unwrap();
+        let account = &raw["accounts"][0];
+        assert!(account["tokens"]["access_token"].is_null());
+        assert_eq!(account["needsRelogin"], true);
+        assert_eq!(account["quotaError"], "Re-login required");
+    }
+
+    #[test]
+    fn reserved_token_prefixes_roundtrip() {
+        let mut raw = json!({
+            "accounts": [{
+                "id": "acc-1",
+                "tokens": {
+                    "access_token": "dpapi:literal",
+                    "refresh_token": "plain:literal",
+                }
+            }]
+        });
+        protect_tokens(&mut raw).unwrap();
+        let stored = raw["accounts"][0]["tokens"]["access_token"]
+            .as_str()
+            .unwrap();
+        assert!(
+            stored.starts_with(crate::dpapi::PREFIX_PLAIN)
+                || stored.starts_with(crate::dpapi::PREFIX_V2),
+            "reserved token was stored raw: {stored}"
+        );
+        unprotect_tokens(&mut raw);
+        assert_eq!(raw["accounts"][0]["tokens"]["access_token"], "dpapi:literal");
+        assert_eq!(raw["accounts"][0]["tokens"]["refresh_token"], "plain:literal");
+        assert!(raw["accounts"][0].get("needsRelogin").is_none());
+    }
+
+    #[test]
+    fn empty_and_missing_token_fields_are_untouched() {
+        let mut raw = json!({
+            "accounts": [
+                {"id": "a", "tokens": {"access_token": "", "refresh_token": null}},
+                {"id": "b"},
+                {"id": "c", "tokens": {}},
+            ],
+            "currentAccountId": Value::Null,
+        });
+        let before = raw.clone();
+        protect_tokens(&mut raw).unwrap();
+        assert_eq!(raw, before);
+        unprotect_tokens(&mut raw);
+        assert_eq!(raw, before);
+    }
+
+    #[test]
+    fn non_account_shapes_are_ignored() {
+        for mut raw in [json!({}), json!({"accounts": "nope"}), json!({"accounts": []})] {
+            let before = raw.clone();
+            protect_tokens(&mut raw).unwrap();
+            unprotect_tokens(&mut raw);
+            assert_eq!(raw, before);
+        }
+    }
+
+    #[test]
+    fn successful_token_write_clears_the_relogin_marker() {
+        let mut item = json!({
+            "tokens": {},
+            "needsRelogin": true,
+            "quotaError": "Re-login required",
+        });
+        super::clear_relogin(&mut item);
+        assert!(item.get("needsRelogin").is_none());
+        assert!(item["quotaError"].is_null());
+
+        let mut unrelated = json!({"quotaError": "quota fetch failed"});
+        super::clear_relogin(&mut unrelated);
+        assert_eq!(unrelated["quotaError"], "quota fetch failed");
+    }
+
+    #[test]
+    fn quota_errors_do_not_hide_the_relogin_reason() {
+        let mut marked = json!({
+            "needsRelogin": true,
+            "quotaError": "Re-login required",
+        });
+        super::apply_quota_error(&mut marked, "HTTP 401");
+        assert_eq!(marked["quotaError"], "Re-login required");
+
+        let mut normal = json!({"needsRelogin": false});
+        super::apply_quota_error(&mut normal, "HTTP 500");
+        assert_eq!(normal["quotaError"], "HTTP 500");
+    }
 }

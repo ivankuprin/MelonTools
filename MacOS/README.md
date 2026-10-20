@@ -17,6 +17,13 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## What's new in 1.7.0 «Hardening and distribution»
+
+- **Windows secrets.** Settings keys and vault tokens are encrypted at rest with DPAPI v2 (per-user/per-machine, app entropy, zeroized buffers, legacy migration).
+- **Reliability.** Updates are re-checked every six hours while running; macOS rolls back to the previous bundle if a new build fails to launch.
+- **UX.** First-run onboarding with a provider-terms/ban-risk disclaimer, read-only provider diagnostics, quota history sparklines, and reserve-aware low-quota notifications.
+- **Distribution.** CI, release automation, CodeQL, cargo audit, Dependabot, Homebrew Cask and winget manifests, FAQ and security model docs.
+
 ## What's new in 1.6.3 «Security and data safety»
 
 - **Hardened updater and secrets.** The Windows updater applies only the release it checked, the URL opener avoids cmd.exe, the management secret stays in the backend, helper processes are stopped by PID with identity checks, the engine binary is SHA-256 verified after extraction, and a restrictive CSP is set.

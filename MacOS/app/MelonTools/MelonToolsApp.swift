@@ -35,6 +35,10 @@ struct MelonToolsApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Re-checks for updates while the app runs. The launch check stays in
+    /// MainView; this timer only wakes the same throttled code path.
+    private var updateTimer: Timer?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             ModelSourcesStore.shared.syncCatalogIfNeeded()
@@ -42,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CodexStore.shared.startQuotaScheduler()
             FleetStore.shared.start()
             ComposerBridge.shared.start()
+            startUpdateTimer()
             let autoStart = UserDefaults.standard.object(forKey: "gatewayAutoStart") as? Bool ?? true
             Task { @MainActor in
                 // The Go split must be known before the gateway writes its
@@ -54,8 +59,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Fires every six hours; `check(manual: false)` is a no-op until 24 hours
+    /// have passed since the last successful check, so the effective cadence
+    /// stays daily. Invalidated with the application lifetime.
+    private func startUpdateTimer() {
+        updateTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: UpdaterStore.periodicCheckInterval, repeats: true) { _ in
+            Task { @MainActor in
+                await UpdaterStore.shared.check(manual: false)
+            }
+        }
+        timer.tolerance = 60
+        updateTimer = timer
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated {
+            updateTimer?.invalidate()
+            updateTimer = nil
             ComposerBridge.shared.shutdownForQuit()
             if UserDefaults.standard.bool(forKey: "gatewayStopOnQuit") {
                 CodexGatewayService.shared.stopSync()

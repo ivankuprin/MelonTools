@@ -565,6 +565,36 @@ final class L10n: ObservableObject {
         "Start the service to load the Antigravity model list.": "Запустите сервис, чтобы загрузить список моделей Antigravity.",
         "No Antigravity models — connect an account first.": "Моделей Antigravity нет — сначала подключите аккаунт.",
         "Antigravity: %d models": "Antigravity: %d моделей",
+
+        // MARK: Onboarding
+        "welcome": "добро пожаловать",
+        "Welcome to Melon Tools": "Добро пожаловать в Melon Tools",
+        "A quick setup: accounts, providers, and the local service.": "Быстрая настройка: аккаунты, провайдеры и локальный сервис.",
+        "Add a Codex account": "Добавьте аккаунт Codex",
+        "Sign in through the browser, by device code, or import a saved CLI login. The pool switches accounts when quota runs low.": "Войдите через браузер, по коду или импортируйте сохранённый вход CLI. Пул переключает аккаунты, когда квота заканчивается.",
+        "Connect providers": "Подключите провайдеров",
+        "Claude, Antigravity, OpenRouter and OpenCode models appear in the Codex picker after you select them.": "Модели Claude, Antigravity, OpenRouter и OpenCode появятся в пикере Codex после того, как вы их выберете.",
+        "Start the API service": "Запустите API-сервис",
+        "Start the local service, apply the model list, and launch Codex from Melon Tools.": "Запустите локальный сервис, примените список моделей и откройте Codex из Melon Tools.",
+        "Use your own accounts only. Third-party clients can conflict with provider terms; accounts may be limited or banned.": "Используйте только свои аккаунты. Сторонние клиенты могут конфликтовать с условиями провайдеров — аккаунты могут ограничить или заблокировать.",
+        "Open Providers": "Перейти к провайдерам",
+        "Open Accounts": "Перейти к аккаунтам",
+        "This guide appears only once.": "Эта подсказка показывается один раз.",
+
+        // MARK: Provider diagnostics
+        "Connection check": "Проверка подключения",
+        "Check": "Проверить",
+        "Read-only check of the service, auth files, model list and quota updates.": "Проверка без изменений: сервис, файлы входа, список моделей и обновление квот.",
+        "Not checked yet.": "Проверка ещё не запускалась.",
+        "Unreachable": "Нет ответа",
+        "Gateway model list: %d": "Список моделей сервиса: %d",
+        "Auth files: %d": "Файлы входа: %d",
+        "No credentials": "Нет данных входа",
+        "Models: %d": "Модели: %d",
+        "No model list": "Нет списка моделей",
+        "Quota updated": "Квота обновлена",
+        "No quota data": "Нет данных о квоте",
+        "The service returned an empty model list.": "Сервис вернул пустой список моделей.",
     ]
 }
 

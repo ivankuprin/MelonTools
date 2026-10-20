@@ -233,6 +233,37 @@ label.field { display: flex; flex-direction: column; gap: var(--s1); font-size: 
 .quota .top .val { color: var(--text); font-weight: 600; }
 .quota .bottom { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9px; color: var(--text2); }
 
+/* ---------- Quota history ---------- */
+
+.spark-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.spark-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+}
+.spark {
+  display: inline-flex;
+  width: 92px;
+  height: 22px;
+  padding: 3px 5px;
+  border-radius: 6px;
+  background: rgba(64, 64, 68, 0.35);
+}
+.spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.spark polyline {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.spark-name { font-family: var(--mono); font-size: 9px; color: var(--text2); }
+.spark-empty { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+
 /* ---------- Account cards ---------- */
 
 .accounts { display: flex; flex-direction: column; gap: var(--s3); }
@@ -246,6 +277,26 @@ table.kv { width: 100%; border-collapse: collapse; font-size: 12px; }
 table.kv td { padding: 3px 0; vertical-align: top; }
 table.kv td:first-child { color: var(--text2); width: 42%; }
 table.kv td:last-child { font-family: var(--mono); font-size: 11px; word-break: break-all; }
+
+/* Diagnostics: five compact columns; pills stay readable on narrow rows. */
+table.diag { width: 100%; border-collapse: collapse; margin-top: var(--s3); }
+table.diag th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+  padding: 0 var(--s2) var(--s1) 0;
+  white-space: nowrap;
+}
+table.diag td {
+  padding: 5px var(--s2) 5px 0;
+  border-top: 1px solid rgba(64, 64, 68, 0.55);
+  vertical-align: top;
+}
+table.diag td:first-child { font-weight: 600; white-space: nowrap; }
 
 /* ---------- Toast ---------- */
 

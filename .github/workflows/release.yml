@@ -1,0 +1,244 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS DMG
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      signed: ${{ steps.sign.outputs.signed }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve and verify the version
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(awk -F'"' '/CFBundleShortVersionString:/{print $2; exit}' MacOS/app/project.yml)"
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" != "$TAG" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match the project version '$VERSION'." >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          # The pinned CLIProxyAPI source declares `go 1.26.0`.
+          go-version: "1.26"
+          cache: false
+
+      - name: Fetch the pinned gateway source
+        run: ./MacOS/scripts/fetch-sources.sh
+
+      - name: Build the app and DMG
+        working-directory: MacOS
+        run: ./build.sh
+
+      # Signing is optional. The job must not fail when the repository has no
+      # Apple secrets yet: it then publishes the usual ad-hoc signed DMG.
+      - name: Import the Apple signing certificate
+        if: ${{ secrets.APPLE_CERT_P12 != '' && secrets.APPLE_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT="$RUNNER_TEMP/apple-cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/melontools-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$APPLE_CERT_P12" | base64 --decode > "$CERT"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -k "$KEYCHAIN" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+          rm -f "$CERT"
+
+      - name: Sign and notarize the DMG
+        id: sign
+        if: ${{ secrets.APPLE_CERT_P12 != '' && secrets.APPLE_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          APP="$HOME/Library/Developer/MelonTools/Build/Products/Release/MelonTools.app"
+          DMG="MacOS/build/MelonTools-${{ steps.version.outputs.version }}.dmg"
+          ./packaging/sign-macos.sh "$APP" "$DMG"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the SHA-256 checksum
+        working-directory: MacOS
+        run: |
+          set -euo pipefail
+          DMG="build/MelonTools-${{ steps.version.outputs.version }}.dmg"
+          test -f "$DMG"
+          shasum -a 256 "$DMG" > "$DMG.sha256"
+          cat "$DMG.sha256"
+
+      - name: Upload the DMG artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-dmg
+          path: |
+            MacOS/build/MelonTools-*.dmg
+            MacOS/build/MelonTools-*.dmg.sha256
+          if-no-files-found: error
+
+  windows:
+    name: Windows executable
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      signed: ${{ steps.sign.outputs.signed }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve and verify the version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -m1 '^version = ' Windows/app/src-tauri/Cargo.toml | sed -E 's/.*"([0-9.]+)".*/\1/')
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" != "$TAG" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match the crate version '$VERSION'." >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.99.1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: Windows/app/src-tauri -> target
+
+      # Windows/build-windows.sh is a macOS cross-compile helper (cargo-xwin).
+      # On windows-latest the same sources build natively with cargo; the
+      # checked-in compressed gateway engine is embedded into the executable.
+      - name: Build the executable
+        working-directory: Windows/app/src-tauri
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch src/main.rs
+          cargo build --release --locked
+          mkdir -p ../dist
+          cp target/release/melontools.exe \
+            "../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
+
+      - name: Sign the executable
+        id: sign
+        if: ${{ secrets.WINDOWS_CERT_PFX != '' && secrets.WINDOWS_CERT_PASSWORD != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ runner.temp }}\melontools-cert.pfx
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          try {
+            $bytes = [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64)
+            [IO.File]::WriteAllBytes($env:WINDOWS_CERT_PFX, $bytes)
+            $exe = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
+            ./packaging/sign-windows.ps1 -File $exe -Require
+            if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed" }
+            "signed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } finally {
+            Remove-Item $env:WINDOWS_CERT_PFX -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Generate the SHA-256 checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $file = Get-ChildItem "Windows/dist/MelonTools-*-win-x64.exe" |
+            Select-Object -First 1
+          if (-not $file) { throw "No Windows executable found to hash." }
+          $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
+          "$hash  $($file.Name)" |
+            Set-Content -Path "$($file.FullName).sha256" -Encoding ascii -NoNewline
+          Get-Content "$($file.FullName).sha256"
+
+      - name: Upload the executable artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-exe
+          path: |
+            Windows/dist/MelonTools-*-win-x64.exe
+            Windows/dist/MelonTools-*-win-x64.exe.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish the GitHub release
+    permissions:
+      contents: write
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List the release assets
+        run: ls -l release-assets
+
+      - name: Compose the release notes
+        run: |
+          set -euo pipefail
+          {
+            echo "## Melon Tools ${{ needs.macos.outputs.version }}"
+            echo ""
+            echo "Artifacts for macOS (universal DMG) and Windows (x64 executable)."
+            echo "Verify each download against its \`.sha256\` file before running it."
+            echo ""
+            if [ "${{ needs.macos.outputs.signed }}" != "true" ]; then
+              echo "> **macOS build note:** ad-hoc signed and not notarized."
+              echo "> Signing and notarization are BLOCKED until the Apple secrets are"
+              echo "> configured; see \`packaging/README.md\`. On first launch use"
+              echo "> right-click → Open when Gatekeeper blocks the app."
+              echo ""
+            fi
+            if [ "${{ needs.windows.outputs.signed }}" != "true" ]; then
+              echo "> **Windows build note:** not Authenticode-signed, so SmartScreen"
+              echo "> may warn. Signing is BLOCKED until a code-signing certificate is"
+              echo "> configured; see \`packaging/README.md\`."
+              echo ""
+            fi
+            echo "Full changelog: [MacOS/RELEASE_NOTES.md](https://github.com/ivankuprin/MelonTools/blob/main/MacOS/RELEASE_NOTES.md)."
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Create or update the release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Melon Tools ${{ needs.macos.outputs.version }}
+          body_path: release-notes.md
+          files: release-assets/*
+          fail_on_unmatched_files: true

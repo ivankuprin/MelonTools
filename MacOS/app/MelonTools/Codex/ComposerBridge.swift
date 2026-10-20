@@ -14,8 +14,10 @@ import Foundation
 ///   - the chips refresh button calls the `__melonSend` CDP binding, which the
 ///     bridge receives as `Runtime.bindingCalled` and answers with fresh data.
 ///
-/// The chips are intentionally left in place when Melon Tools quits — they dim
-/// to an “offline” state and reconnect when the app is back.
+/// Trust model: the Codex app is relaunched with `--remote-debugging-address=
+/// 127.0.0.1`, and only while composer chips are enabled. CDP has no
+/// authentication, so the listener must never leave loopback; any process that
+/// can read the port from `ps` can drive the Codex renderer.
 @MainActor
 final class ComposerBridge: ObservableObject {
     static let shared = ComposerBridge()
@@ -85,7 +87,12 @@ final class ComposerBridge: ObservableObject {
 
     /// Starts the discovery/injection loop (no-op when disabled).
     func start() {
-        guard enabled else { return }
+        guard enabled else {
+            // A disabled feature must not inherit a debug port left by an
+            // earlier session.
+            closeDebugPortIfNeeded()
+            return
+        }
         if status == .off { status = .connecting }
         tickTimer?.invalidate()
         tickTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -99,7 +106,8 @@ final class ComposerBridge: ObservableObject {
         }
     }
 
-    /// Quit path: dim the chips (they keep the last values) and release sockets.
+    /// Quit path: dim the chips, release sockets, then remove the loopback CDP
+    /// listener (it is a Codex launch flag, so only a restart closes it).
     func shutdownForQuit() {
         tickTimer?.invalidate()
         tickTimer = nil
@@ -111,6 +119,7 @@ final class ComposerBridge: ObservableObject {
         }
         for session in sessions.values { session.close() }
         sessions.removeAll()
+        removeDebugPortOnQuit()
     }
 
     /// Disable path: optionally remove the chips from the Codex app and stop everything.
@@ -131,6 +140,67 @@ final class ComposerBridge: ObservableObject {
         status = .off
         if disposeChips {
             log(L("Chips removed from the Codex app."))
+            closeDebugPortIfNeeded()
+        }
+    }
+
+    /// The CDP listener belongs to the Codex process: closing websockets does
+    /// not close it. Restart Codex without the flag when chips are turned off.
+    private func closeDebugPortIfNeeded() {
+        Task { @MainActor in
+            guard !busy,
+                  let process = await Self.findCodexProcess(),
+                  process.debugPort != nil else { return }
+            busy = true
+            defer { busy = false }
+            log(L("Composer chips are off — restarting Codex without a debug port."))
+            await relaunchCodex(openDebugPort: false)
+        }
+    }
+
+    /// Best-effort quit cleanup: a detached helper waits for this process to
+    /// exit, restarts Codex without the CDP flag, then deletes itself. Skipped
+    /// during an update so the updater's relaunch is not raced.
+    private func removeDebugPortOnQuit() {
+        guard enabled,
+              let cached = cachedCodexProcess?.process,
+              cached.debugPort != nil else { return }
+        if case .working = UpdaterStore.shared.phase { return }
+        guard let codexURL = Self.codexAppURL() else { return }
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("melontools-cdp-\(UUID().uuidString).sh")
+        let script = """
+        #!/bin/bash
+        trap 'rm -f -- "$0"' EXIT
+        PID=\(ProcessInfo.processInfo.processIdentifier)
+        for _ in $(seq 1 40); do
+          kill -0 "$PID" 2>/dev/null || break
+          sleep 0.25
+        done
+        /usr/bin/pgrep -f "ChatGPT.app/Contents/MacOS/ChatGPT" >/dev/null 2>&1 || exit 0
+        /usr/bin/pkill -TERM -f "ChatGPT.app/Contents/MacOS/ChatGPT" 2>/dev/null
+        for _ in $(seq 1 20); do
+          /usr/bin/pgrep -f "ChatGPT.app/Contents/MacOS/ChatGPT" >/dev/null 2>&1 || break
+          sleep 0.25
+        done
+        if /usr/bin/pgrep -f "ChatGPT.app/Contents/MacOS/ChatGPT" >/dev/null 2>&1; then
+          /usr/bin/pkill -KILL -f "ChatGPT.app/Contents/MacOS/ChatGPT" 2>/dev/null
+          sleep 0.5
+        fi
+        /usr/bin/open "\(codexURL.path)"
+        """
+        do {
+            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = [scriptURL.path]
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+        } catch {
+            try? FileManager.default.removeItem(at: scriptURL)
         }
     }
 
@@ -553,59 +623,77 @@ final class ComposerBridge: ObservableObject {
 
     // MARK: - Relaunch with a debug port
 
-    /// Quits the Codex app (if needed) and relaunches it with a local debug port.
+    /// Quits the Codex app (if needed) and relaunches it. The loopback CDP
+    /// port is opened only when composer chips are enabled; with the feature
+    /// off the same relaunch path starts Codex without any debug flags.
     func relaunchCodexWithDebugPort() {
+        let openDebugPort = enabled
         busy = true
         Task { @MainActor in
             defer { busy = false }
-            let running = Self.runningCodexApps()
-            if !running.isEmpty {
-                log(L("Quitting the Codex app…"))
-                for app in running { app.terminate() }
-                var attempts = 0
-                while attempts < 20 && !Self.runningCodexApps().isEmpty {
+            await relaunchCodex(openDebugPort: openDebugPort)
+        }
+    }
+
+    private func relaunchCodex(openDebugPort: Bool) async {
+        let running = Self.runningCodexApps()
+        if !running.isEmpty {
+            log(L("Quitting the Codex app…"))
+            for app in running { app.terminate() }
+            var attempts = 0
+            while attempts < 20 && !Self.runningCodexApps().isEmpty {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                attempts += 1
+            }
+            if !Self.runningCodexApps().isEmpty {
+                log(L("The Codex app did not quit — forcing it to close."))
+                for app in Self.runningCodexApps() { app.forceTerminate() }
+                var forced = 0
+                while forced < 10 && !Self.runningCodexApps().isEmpty {
                     try? await Task.sleep(nanoseconds: 500_000_000)
-                    attempts += 1
-                }
-                if !Self.runningCodexApps().isEmpty {
-                    log(L("The Codex app did not quit — forcing it to close."))
-                    for app in Self.runningCodexApps() { app.forceTerminate() }
-                    var forced = 0
-                    while forced < 10 && !Self.runningCodexApps().isEmpty {
-                        try? await Task.sleep(nanoseconds: 500_000_000)
-                        forced += 1
-                    }
-                }
-                if !Self.runningCodexApps().isEmpty {
-                    log(L("The Codex app did not quit — quit it manually and try again."))
-                    return
+                    forced += 1
                 }
             }
-            guard let appURL = Self.codexAppURL() else {
-                log(L("ChatGPT.app was not found."))
+            if !Self.runningCodexApps().isEmpty {
+                log(L("The Codex app did not quit — quit it manually and try again."))
                 return
             }
-            let configuration = NSWorkspace.OpenConfiguration()
-            // The CDP endpoint has no authentication: an ephemeral port is a
-            // smaller target than a predictable fixed one. Discovery reads the
-            // port back from the process command line.
+        }
+        guard let appURL = Self.codexAppURL() else {
+            log(L("ChatGPT.app was not found."))
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        // Re-read `enabled` after the quit wait: a toggle during the restart
+        // must not leave a freshly opened port behind.
+        let shouldOpenPort = openDebugPort && enabled
+        if shouldOpenPort {
+            // Trust model: CDP has no authentication and grants full control of
+            // the Codex renderer. The listener is loopback-only and exists only
+            // while chips are on. The ephemeral port is not a secret: any local
+            // process can read it from `ps`.
             let debugPort = Self.freeDebugPort() ?? 55522
             configuration.arguments = ["--remote-debugging-address=127.0.0.1", "--remote-debugging-port=\(debugPort)"]
-            configuration.activates = true
             log("Codex debug port: \(debugPort)")
-            NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { [weak self] _, error in
-                Task { @MainActor in
-                    guard let self else { return }
-                    if let error {
-                        self.log(L("Launch failed:") + " \(error.localizedDescription)")
-                    } else {
-                        self.log(L("Launched the Codex app with a debug port."))
-                    }
+        } else {
+            configuration.arguments = []
+            log(L("Composer chips are off — launching the Codex app without a debug port."))
+        }
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { [weak self] _, error in
+            Task { @MainActor in
+                guard let self else { return }
+                if let error {
+                    self.log(L("Launch failed:") + " \(error.localizedDescription)")
+                } else if shouldOpenPort {
+                    self.log(L("Launched the Codex app with a debug port."))
+                } else {
+                    self.log(L("Launched the Codex app without a debug port."))
                 }
             }
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            await tick()
         }
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        if shouldOpenPort { await tick() }
     }
 
     private static func runningCodexApps() -> [NSRunningApplication] {

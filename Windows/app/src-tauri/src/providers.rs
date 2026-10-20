@@ -46,11 +46,27 @@ pub async fn openrouter(key: &str) -> Result<Value, String> {
     let usage = credits
         .pointer("/data/total_usage")
         .and_then(|v| v.as_f64());
+    let remaining = match (total, usage) {
+        (Some(t), Some(u)) => Some(t - u),
+        _ => None,
+    };
+
+    // OpenRouter reports money, not window percentages. Store the remaining
+    // share of the purchased credit so the same sparkline scale works; skip
+    // the sample when there is nothing to normalize against.
+    if let Some(percent) = match (total, remaining) {
+        (Some(total), Some(remaining)) if total > 0.0 => {
+            Some((remaining / total * 100.0).clamp(0.0, 100.0))
+        }
+        _ => None,
+    } {
+        crate::history::record("openrouter", "openrouter", Some(percent), None);
+    }
 
     Ok(json!({
         "totalCredits": total,
         "totalUsage": usage,
-        "remaining": match (total, usage) { (Some(t), Some(u)) => Some(t - u), _ => None },
+        "remaining": remaining,
         "label": key_info.as_ref().and_then(|k| k.pointer("/data/label")).and_then(|v| v.as_str()),
         "usage": key_info.as_ref().and_then(|k| k.pointer("/data/usage")).and_then(|v| v.as_f64()),
         "limit": key_info.as_ref().and_then(|k| k.pointer("/data/limit")).and_then(|v| v.as_f64()),
@@ -74,6 +90,14 @@ pub async fn claude(settings: &Settings) -> Result<Value, String> {
         return Ok(claude_metrics(false, None, None, model_count, None));
     };
     let usage = claude::usage_snapshot(settings).await;
+    if let Some(snapshot) = usage.as_ref() {
+        crate::history::record(
+            "claude",
+            "claude",
+            snapshot.five_hour_percent,
+            snapshot.weekly_percent,
+        );
+    }
     Ok(claude_metrics(
         true,
         file.email.clone(),

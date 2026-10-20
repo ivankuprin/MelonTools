@@ -177,6 +177,15 @@ pub async fn refresh_one(client: &Client, account: &Account) -> Result<(), Strin
             }
             vault::update_quota(&account.id, &quota, &raw, Value::Object(extra))?;
 
+            // Sparkline sample. A history write failure must not fail the
+            // quota refresh.
+            crate::history::record(
+                &account.id,
+                "codex",
+                quota.hourly_remaining_percent,
+                quota.weekly_remaining_percent,
+            );
+
             // Subscription dates refresh at most every 30 minutes (or when
             // missing), like the macOS app.
             let subscription_age = account

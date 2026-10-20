@@ -47,6 +47,13 @@ final class UpdaterStore: ObservableObject {
     private var assetDigest: String?
     private var busy = false
 
+    /// How often the running app wakes up to ask for updates. The throttle
+    /// below still owns the real cadence: a non-manual check within 24 hours
+    /// of the last successful one is a no-op.
+    nonisolated static let periodicCheckInterval: TimeInterval = 6 * 3600
+    /// Only a successful non-manual check counts toward this throttle.
+    nonisolated static let automaticCheckThrottle: TimeInterval = 24 * 3600
+
     var currentVersion: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0"
     }
@@ -70,6 +77,12 @@ final class UpdaterStore: ObservableObject {
             }
             return false
         }
+    }
+
+    /// Whether a non-manual check may hit the network. Pure so the periodic
+    /// timer cadence (6 h) and the daily throttle stay independently testable.
+    nonisolated static func shouldCheckAutomatically(lastCheck: Date, now: Date) -> Bool {
+        now.timeIntervalSince(lastCheck) > automaticCheckThrottle
     }
 
     nonisolated static func isAllowed(_ url: URL) -> Bool {
@@ -104,7 +117,7 @@ final class UpdaterStore: ObservableObject {
         guard !busy else { return }
         if !manual {
             let last = UserDefaults.standard.object(forKey: "updaterLastCheck") as? Date ?? .distantPast
-            guard Date().timeIntervalSince(last) > 24 * 3600 else { return }
+            guard Self.shouldCheckAutomatically(lastCheck: last, now: Date()) else { return }
         }
         busy = true
         if manual { phase = .checking }
@@ -219,8 +232,26 @@ final class UpdaterStore: ObservableObject {
     private static func launchInstaller(dmg: URL) throws {
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("melontools-update-\(UUID().uuidString).sh")
-        let appPath = "/Applications/Melon Tools.app"
-        let script = """
+        let script = installerScript(
+            appPath: "/Applications/Melon Tools.app",
+            dmgPath: dmg.path,
+            pid: ProcessInfo.processInfo.processIdentifier
+        )
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [scriptURL.path]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+    }
+
+    /// The detached swap script. Pure so tests can assert the rollback
+    /// contract without running an installer.
+    nonisolated static func installerScript(appPath: String, dmgPath: String, pid: Int32) -> String {
+        """
         #!/bin/bash
         # Melon Tools self-update: replace the running bundle after it exits.
         # The log lives in the user's Logs folder (0600): the update script runs
@@ -233,8 +264,8 @@ final class UpdaterStore: ObservableObject {
         chmod 0600 "$LOG" 2>/dev/null || true
         exec >> "$LOG" 2>&1
         APP="\(appPath)"
-        DMG="\(dmg.path)"
-        PID=\(ProcessInfo.processInfo.processIdentifier)
+        DMG="\(dmgPath)"
+        PID=\(pid)
         MNT="$(mktemp -d /tmp/melontools-dmg.XXXXXX)"
         for _ in $(seq 1 15); do
           kill -0 "$PID" 2>/dev/null || break
@@ -250,21 +281,38 @@ final class UpdaterStore: ObservableObject {
         if [ ! -d "$SRC" ]; then hdiutil detach "$MNT" >/dev/null 2>&1; exit 1; fi
         rm -rf "$APP.melon-old"
         mv "$APP" "$APP.melon-old" || exit 1
-        if ! ditto "$SRC" "$APP"; then mv "$APP.melon-old" "$APP"; exit 1; fi
+        if ! ditto "$SRC" "$APP"; then
+          rm -rf "$APP"
+          if mv "$APP.melon-old" "$APP"; then open "$APP"; fi
+          hdiutil detach "$MNT" >/dev/null 2>&1 || true
+          rm -rf "$MNT" "$DMG"
+          exit 1
+        fi
         xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
         hdiutil detach "$MNT" >/dev/null 2>&1 || true
-        rm -rf "$APP.melon-old" "$MNT" "$DMG"
         open "$APP"
+        # A broken update must not leave the user without a working app. Keep
+        # the old bundle until the new process is actually visible, then roll
+        # back if it never starts (bad build, quarantine, missing dylib).
+        LAUNCHED=0
+        for _ in $(seq 1 15); do
+          if /usr/bin/pgrep -f "$APP/Contents/MacOS/MelonTools" >/dev/null 2>&1; then
+            LAUNCHED=1
+            break
+          fi
+          sleep 1
+        done
+        if [ "$LAUNCHED" -ne 1 ]; then
+          echo "The new bundle did not start; restoring the previous one."
+          rm -rf "$APP.melon-failed"
+          if mv "$APP" "$APP.melon-failed" 2>/dev/null; then :; else rm -rf "$APP"; fi
+          if mv "$APP.melon-old" "$APP"; then open "$APP"; fi
+          rm -rf "$APP.melon-failed" "$MNT" "$DMG"
+          rm -- "$0"
+          exit 1
+        fi
+        rm -rf "$APP.melon-old" "$MNT" "$DMG"
         rm -- "$0"
         """
-        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [scriptURL.path]
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
     }
 }
