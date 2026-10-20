@@ -3,7 +3,7 @@
 ; Build from the Windows directory:
 ;   makensis -DVERSION=2.0.0 -DSOURCE_EXE=dist/MelonTools-2.0.0-win-x64.exe installer/MelonTools.nsi
 ;
-; SOURCE_EXE is relative to the Windows directory (no spaces needed in the
+; SOURCE_EXE is relative to the installer directory (no spaces needed in the
 ; define). VERSION is passed by build-windows.sh from app/src-tauri/Cargo.toml.
 ; The installer is per-user: RequestExecutionLevel user, HKCU registry only.
 
@@ -16,9 +16,9 @@ Unicode true
 !endif
 
 !ifndef SOURCE_EXE
-  !define SOURCE_EXE "dist/MelonTools-${VERSION}-win-x64.exe"
+  !define SOURCE_EXE "../dist/MelonTools-${VERSION}-win-x64-portable.exe"
 !endif
-!define SOURCE_EXE_FULL "../${SOURCE_EXE}"
+!define SOURCE_EXE_FULL "${SOURCE_EXE}"
 
 !define PRODUCT_NAME "Melon Tools"
 !define PRODUCT_PUBLISHER "Melon Tools"

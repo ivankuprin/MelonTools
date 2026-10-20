@@ -116,7 +116,7 @@ if command -v makensis >/dev/null 2>&1; then
   rm -f "$INSTALLER"
   makensis -V2 \
     -DVERSION="$VERSION" \
-    -DSOURCE_EXE="$PORTABLE_EXE" \
+    -DSOURCE_EXE="../$PORTABLE_EXE" \
     installer/MelonTools.nsi
   if [ ! -f "$INSTALLER" ]; then
     echo "makensis did not produce $INSTALLER" >&2
