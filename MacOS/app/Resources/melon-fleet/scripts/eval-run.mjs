@@ -2,7 +2,7 @@
 /**
  * melon-fleet :: scripts/eval-run.mjs
  * The evals runner: one suite, one or more arms, every call through the real
- * unit path (plan docs/superpowers/plans/2026-10-16-evals-mvp.md, Task 1).
+ * unit path (plan the evals plan notes, Task 1).
  *
  *   node scripts/eval-run.mjs --suite R|V --arm <unit>:<model>[:<effort>] [--arm …]
  *        [--runs N] [--batch] [--dir D] [--snapshot PATH] [--dry-run]

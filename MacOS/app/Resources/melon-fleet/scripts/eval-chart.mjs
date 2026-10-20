@@ -2,7 +2,7 @@
 /**
  * melon-fleet :: scripts/eval-chart.mjs
  * The public charts, drawn from one date's aggregate (plan
- * docs/superpowers/plans/2026-10-16-evals-mvp.md, Task 3).
+ * the evals plan notes, Task 3).
  *
  *   node scripts/eval-chart.mjs --date YYYY-MM-DD [--dir D] [--out DIR]
  *

@@ -109,9 +109,9 @@ The `agents` block is the other top-level one, and it configures something diffe
 | `agents.coder.model` | one printable line | `"claude-opus-5-5"` | The `model:` line of `melon-coder.md` |
 | `agents.coder.effort` | `low` \| `medium` \| `high` \| `xhigh` \| `max` | `"xhigh"` | Its `effort:` line — the only place a sub-agent's effort can be set |
 | `agents.coderMedium.model` | one printable line | `"claude-opus-5-5"` | The `model:` line of `melon-coder-medium.md` — the coder's own template, rendered under a second name |
-| `agents.coderMedium.effort` | `low` \| `medium` \| `high` \| `xhigh` \| `max` | `"medium"` | Its `effort:` line. Medium because on a plan-driven task medium built the same behaviour as xhigh, which took 2.5× the cache reads and 3.6× the wall clock ([MEASUREMENTS](MEASUREMENTS.md#coder-effort-medium-high-xhigh-on-one-task), N = 1) |
+| `agents.coderMedium.effort` | `low` \| `medium` \| `high` \| `xhigh` \| `max` | `"medium"` | Its `effort:` line. Medium because on a plan-driven task medium built the same behaviour as xhigh, which took 2.5× the cache reads and 3.6× the wall clock |
 | `agents.tester.model` | one printable line | `"claude-sonnet-5-5"` | The `model:` line of `melon-tester.md` |
-| `agents.tester.effort` | `low` \| `medium` \| `high` \| `xhigh` \| `max` | `"high"` | Its `effort:` line — `high` plus the second pass the template carries, measured against one `xhigh` pass ([MEASUREMENTS](MEASUREMENTS.md#the-testers-effort-a-second-pass-and-an-advisor)) |
+| `agents.tester.effort` | `low` \| `medium` \| `high` \| `xhigh` \| `max` | `"high"` | Its `effort:` line — `high` plus the second pass the template carries, measured against one `xhigh` pass |
 | `agents.tester.maxTurns` | positive int | `80` | Its `maxTurns:` line — how many turns the tester gets before the harness stops it. It is honoured: the agent stops at the limit and the orchestrator is told it can continue it (measured 2026-09-06) |
 | `agents.reviewer.model` | one printable line | `"claude-opus-5-5"` | The `model:` line of `melon-reviewer.md` |
 | `agents.reviewer.effort` | `low` \| `medium` \| `high` \| `xhigh` \| `max` | `"xhigh"` | Its `effort:` line — review is judgement, the thing a release pays for |
@@ -215,7 +215,7 @@ What `melon-fleet rules --hooks` does for the ledger, event by event. The rules 
 | `PreCompact` | Appends `## Compaction <ISO> (trigger: …) — re-read this ledger before continuing` to every ledger, announced compaction or not | Regular files only: a symlink or a FIFO named like a ledger is skipped. Silent when no ledger exists (nothing stamped, nothing announced); `handoff.enabled=false` turns it off |
 | `SessionStart`, matcher `compact` | Prints each ledger's **last handoff block** into the context that opens after the compaction, so the re-read is a paste rather than a search | Only for the source `compact`; 40 lines / 4 KB per ledger, 12 KB in all; `handoff.enabled=false` turns it off |
 
-**What the hooks do not do.** They stamp and they print the block you wrote. Nothing measures the context and nothing holds a turn: over five compactions the nudge, the gate and the summary rescued nothing the session had not written itself ([MEASUREMENTS](MEASUREMENTS.md#the-handoff-hooks-over-five-compactions)); an operator whose `settings.json` still wires `PostToolUse`, `Stop` or `PostCompact` to the guard gets exit 0 and a `doctor` line naming the entries to remove.
+**What the hooks do not do.** They stamp and they print the block you wrote. Nothing measures the context and nothing holds a turn: over five compactions the nudge, the gate and the summary rescued nothing the session had not written itself; an operator whose `settings.json` still wires `PostToolUse`, `Stop` or `PostCompact` to the guard gets exit 0 and a `doctor` line naming the entries to remove.
 
 A changed value reaches a session only through a re-render — `melon-fleet set handoff.enabled=false && melon-fleet rules --hooks` — because the value is substituted into the script ([Handoff settings](#handoff-settings)).
 
@@ -398,7 +398,7 @@ The answer is cached in `<home>/update-check.json`, written atomically with mode
 {
   "checkedAt": 1756900000000,
   "latest": "0.3.1",
-  "url": "https://github.com/adxd-og/melon-fleet/releases/tag/v0.3.1"
+  "url": "https://github.com/ivankuprin/MelonTools/releases/tag/v0.3.1"
 }
 ```
 

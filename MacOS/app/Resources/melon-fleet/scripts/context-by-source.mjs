@@ -3,7 +3,7 @@
  * melon-fleet :: scripts/context-by-source.mjs
  * Where a sub-agent's context goes, read out of each sub-agent's own
  * transcript — the P0 measurement of the 1.2.0 spec
- * (docs/superpowers/specs/2026-09-20-1.2.0-context-design.md).
+ * (the context-budget design notes).
  *
  *   node scripts/context-by-source.mjs <session.jsonl> <subagents dir> [--agents] [--json]
  *

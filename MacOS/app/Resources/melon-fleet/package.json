@@ -1,13 +1,13 @@
 {
   "name": "melon-fleet",
   "version": "1.7.1",
-  "description": "Plug Gemini, Grok and Codex into Claude Code as read-only research and review units — on the subscriptions you already pay for, fail-closed by design.",
+  "description": "Plug Gemini, Grok and Codex into Claude Code as read-only research and review units \u2014 on the subscriptions you already pay for, fail-closed by design.",
   "type": "module",
   "license": "MIT",
-  "author": "adxd-og",
-  "homepage": "https://github.com/adxd-og/melon-fleet#readme",
+  "author": "Melon Tools",
+  "homepage": "https://github.com/ivankuprin/MelonTools#readme",
   "bugs": {
-    "url": "https://github.com/adxd-og/melon-fleet/issues"
+    "url": "https://github.com/ivankuprin/MelonTools/issues"
   },
   "bin": {
     "melon-fleet": "bin/melon-fleet.mjs"
@@ -24,7 +24,6 @@
     "units",
     "servers",
     "docs",
-    "!docs/superpowers",
     "examples",
     "rules",
     "agents",
@@ -39,7 +38,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/adxd-og/melon-fleet.git"
+    "url": "https://github.com/ivankuprin/MelonTools.git"
   },
   "keywords": [
     "mcp",

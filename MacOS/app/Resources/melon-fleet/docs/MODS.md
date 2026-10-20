@@ -154,4 +154,4 @@ Not in 1.7.0: anything that refuses, rewrites or blocks. The slices that follow,
 | Rules by event | Judgement rules handed to the model when they apply, and a smaller rules file. |
 | Cost per task and role | Ledger lines from the session's measure. |
 
-The full list is in the spec, [Out of scope and the road after](superpowers/specs/2026-10-04-1.7.0-fleet-pane-design.md#out-of-scope-and-the-road-after). The direction beyond 1.7.0, the fleet as one plugin, is in [the deterministic layer program](superpowers/plans/2026-10-04-deterministic-layer-program.md).
+The direction beyond 1.7.0 is the fleet as one plugin.

@@ -7,7 +7,7 @@
 <p align="center">Gemini, Grok and Codex as read-only units in Claude Code</p>
 
 <p align="center">
-  <a href="https://github.com/adxd-og/melon-fleet/actions/workflows/test.yml"><img src="https://github.com/adxd-og/melon-fleet/actions/workflows/test.yml/badge.svg" alt="test workflow status"></a>
+  <a href="https://github.com/ivankuprin/MelonTools/actions/workflows/test.yml"><img src="https://github.com/ivankuprin/MelonTools/actions/workflows/test.yml/badge.svg" alt="test workflow status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A5%2020-blue" alt="Node 20 or newer">
   <img src="https://img.shields.io/badge/dependencies-zero-blue" alt="Zero runtime dependencies">
@@ -32,7 +32,7 @@
 
 ## Documentation
 
-Read in this order the first time: ORCHESTRATION, CONFIG, SECURITY, STATUS-FEED, ARCHITECTURE, ADAPTERS, MEASUREMENTS — each opens with its own map of questions.
+Read in this order the first time: ORCHESTRATION, CONFIG, SECURITY, STATUS-FEED, ARCHITECTURE, ADAPTERS — each opens with its own map of questions.
 
 | If you want to know… | Read |
 |---|---|
@@ -55,7 +55,6 @@ Read in this order the first time: ORCHESTRATION, CONFIG, SECURITY, STATUS-FEED,
 | How to see the fleet at work in a pane, and what the pane reads | [docs/MODS.md](docs/MODS.md) |
 | How the pieces fit and what one call goes through | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | How to add a fourth unit | [docs/ADAPTERS.md](docs/ADAPTERS.md) |
-| What has been measured — planning cost, review yield, `check` before and after — and what has not | [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) |
 | What changed release to release | [CHANGELOG.md](CHANGELOG.md) |
 
 ## What you get
@@ -136,7 +135,7 @@ A partial fleet is normal and expected. `install` skips units whose CLI is not o
 Install the units once, from the clone:
 
 ```bash
-git clone https://github.com/adxd-og/melon-fleet.git
+git clone https://github.com/ivankuprin/MelonTools.git
 cd melon-fleet
 ./bin/melon-fleet.mjs install
 ```
@@ -342,7 +341,7 @@ Threat model, the per-unit enforcement matrix, and what is only best-effort: **[
 
 ## Status feed
 
-Every unit writes what it is doing to `$MELON_FLEET_HOME` (default `~/.melon-fleet`): a per-process snapshot `status-<unit>-<pid>.json` with the calls running right now and the last finished event, and a shared append-only `fleet-log.ndjson` with one compact JSON line per start and end. Writes are atomic, mode 0600, fail-soft (an fs error can never break a tool call), and the log self-trims. Any menu-bar app, HUD or `tail -f` can read it. One reader of this feed is [Melon Fleet usage-checker](https://github.com/adxd-og/usage-checker), a macOS menu-bar app; the feed is an open contract, so nothing here depends on it. Schema and field lists: **[docs/STATUS-FEED.md](docs/STATUS-FEED.md)**. An `end` event's `resultId` names the file the answer itself was spooled to; `melon-fleet results` prints that spool from a shell, and `<unit>_result` hands the answer back inside a session.
+Every unit writes what it is doing to `$MELON_FLEET_HOME` (default `~/.melon-fleet`): a per-process snapshot `status-<unit>-<pid>.json` with the calls running right now and the last finished event, and a shared append-only `fleet-log.ndjson` with one compact JSON line per start and end. Writes are atomic, mode 0600, fail-soft (an fs error can never break a tool call), and the log self-trims. Any menu-bar app, HUD or `tail -f` can read it. One reader of this feed is [Melon Fleet usage-checker](https://github.com/Melon Tools/usage-checker), a macOS menu-bar app; the feed is an open contract, so nothing here depends on it. Schema and field lists: **[docs/STATUS-FEED.md](docs/STATUS-FEED.md)**. An `end` event's `resultId` names the file the answer itself was spooled to; `melon-fleet results` prints that spool from a shell, and `<unit>_result` hands the answer back inside a session.
 
 ## Orchestration
 

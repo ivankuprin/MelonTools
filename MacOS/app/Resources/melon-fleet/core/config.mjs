@@ -229,8 +229,7 @@ export const AGENT_SETTINGS_SCHEMA = {
   },
   // The coder's own template under a second name (1.3.0): same instructions,
   // its own effort. Medium because on a plan-driven task it built what xhigh
-  // built for far less reading (docs/MEASUREMENTS.md, "Coder effort: medium,
-  // high, xhigh on one task"); `coder` keeps xhigh until a judgement-heavy
+  // built for far less reading; `coder` keeps xhigh until a judgement-heavy
   // repeat says otherwise.
   coderMedium: {
     model: { type: 'line', default: 'claude-opus-5-5' },
@@ -238,8 +237,7 @@ export const AGENT_SETTINGS_SCHEMA = {
   },
   // High, not xhigh (1.6.1): on one task's diff a directed second pass at high
   // found more than one xhigh pass at about half the cost, and the template
-  // carries that pass (docs/MEASUREMENTS.md, "The tester's effort, a second pass
-  // and an advisor"). 80 turns: a two-pass high run took 42.
+  // carries that pass. 80 turns: a two-pass high run took 42.
   tester: {
     model: { type: 'line', default: 'claude-sonnet-5-5' },
     effort: { type: 'enum', values: EFFORT_LEVELS, default: 'high' },

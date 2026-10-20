@@ -2,7 +2,7 @@
 /**
  * melon-fleet :: scripts/eval-blind.mjs
  * Blinding, the grader's rubric, and the aggregate the charts are drawn from
- * (plan docs/superpowers/plans/2026-10-16-evals-mvp.md, Task 2).
+ * (plan the evals plan notes, Task 2).
  *
  *   node scripts/eval-blind.mjs --date YYYY-MM-DD [--dir D] [--seed N]
  *   node scripts/eval-blind.mjs --date YYYY-MM-DD --aggregate [--dir D]

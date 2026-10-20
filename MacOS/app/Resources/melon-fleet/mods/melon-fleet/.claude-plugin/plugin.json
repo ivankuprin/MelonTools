@@ -2,7 +2,7 @@
   "name": "melon-fleet",
   "version": "1.7.1",
   "description": "A pane that draws the fleet (the orchestrator, its sub-agents and the units) and who is calling whom; it only reads",
-  "author": { "name": "adxd-og" },
+  "author": { "name": "Melon Tools" },
   "types": "./types/index.d.ts",
   "userConfig": {
     "autoOpen": {

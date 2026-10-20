@@ -1,27 +1,25 @@
-# Melon Tools 1.6.3
+# Melon Tools 1.6.4
 
-- **Security hardening.** The Windows updater applies only the release it just
-  checked (renderer-supplied URLs are ignored), the URL opener no longer goes
-  through cmd.exe, the management secret no longer leaves the backend, gateway
-  and Codex processes are stopped by PID with identity checks, and the engine
-  binary is verified by SHA256 after extraction. A restrictive CSP is set.
-- **Data safety.** Atomic permission-preserving writes for secrets, config and
-  auth files; bounded log tail with rotation; engine/auth backups normalized to
-  0600; updater log moved to ~/Library/Logs with 0600.
-- **UX fixes.** Claude disconnect now clears its selected models from the Codex
-  picker; macOS instance deletion asks for confirmation; Windows no longer wipes
-  unsaved inputs on background refreshes; translated time units; named instance
-  confirmations; updater Cancel disabled while applying; login polls time out.
+- **Clean distribution.** The bundled melon-fleet documentation no longer ships
+  measurement or testing plan/spec files; references to those documents were
+  removed from code comments, docs and the changelog.
+- **Naming cleanup.** Attribution and metadata names across the project now use
+  the Melon Tools name; links point to the project repository.
+- No behavioural changes; app code and tests are identical to 1.6.3.
 
 ## Downloads
 
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.3.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.3-win-x64.exe) — WebView2 Runtime required.
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.4.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.4-win-x64.exe) — WebView2 Runtime required.
 
 Both files include SHA-256 checksum assets on the release page.
 
 ## Earlier fixes
 
+- **1.6.3:** Security and data-safety hardening (updater trust, URL opener,
+  secret redaction, PID-based process control, engine SHA256 provenance, atomic
+  writes, CSP) plus UX fixes (Claude disconnect cleanup, instance confirmation,
+  Windows input preservation, i18n).
 - **1.6.2:** Antigravity card aligned with the Claude card (Refresh + Settings;
   connect/disconnect in Settings).
 - **1.6.1:** Fixed the in-app installer hang (sheet dismissal, hard-exit

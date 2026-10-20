@@ -5,7 +5,7 @@ Thanks for looking. This is a small package with a narrow promise, and most of t
 ## Running the tests
 
 ```bash
-git clone https://github.com/adxd-og/melon-fleet.git
+git clone https://github.com/ivankuprin/MelonTools.git
 cd melon-fleet
 npm test
 ```

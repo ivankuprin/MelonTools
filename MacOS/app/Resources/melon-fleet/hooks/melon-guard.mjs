@@ -38,7 +38,7 @@
  * this script also measured the context and nudged, held one turn until a
  * handoff was written, and appended each compaction's summary to the ledger;
  * over five compactions none of it rescued anything the session had not
- * written itself (docs/MEASUREMENTS.md). A settings.json that still calls the
+ * written itself. A settings.json that still calls the
  * guard on one of them gets what any other event gets: no opinion, exit 0,
  * nothing said and nothing written. `doctor` names such an entry so the
  * operator can remove it.

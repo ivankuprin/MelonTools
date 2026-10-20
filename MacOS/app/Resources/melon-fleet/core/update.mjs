@@ -31,8 +31,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fleetHome, fleetSettings } from './config.mjs';
 
-export const RELEASES_URL = 'https://api.github.com/repos/adxd-og/melon-fleet/releases/latest';
-export const RELEASES_PAGE = 'https://github.com/adxd-og/melon-fleet/releases/latest';
+export const RELEASES_URL = 'https://api.github.com/repos/ivankuprin/MelonTools/releases/latest';
+export const RELEASES_PAGE = 'https://github.com/ivankuprin/MelonTools/releases/latest';
 export const CHECK_FILE = 'update-check.json';
 export const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_TIMEOUT_MS = 2500;

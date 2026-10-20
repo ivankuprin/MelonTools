@@ -89,8 +89,7 @@ export const ALLOWED_ENV = [
  * before its id can be handed out again. The window left is accepted: a
  * same-group member dies after the leader while a process of ANOTHER group
  * still holds our pipes (so `close` has not come), and a stranger takes the
- * id in between. docs/MEASUREMENTS.md ("Unit processes after the server is
- * gone") found nothing left in a group after a normal run.
+ * id in between. A normal run leaves nothing behind in a group.
  */
 const LIVE = new Set();
 

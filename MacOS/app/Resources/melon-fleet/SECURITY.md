@@ -13,7 +13,7 @@ There is one release line. Fixes land on `main` and go out in the next 0.1.x.
 
 ## Reporting a vulnerability
 
-Use **GitHub private vulnerability reporting** on [adxd-og/melon-fleet](https://github.com/adxd-og/melon-fleet/security/advisories/new) — Security → Report a vulnerability. It keeps the report private until there is a fix.
+Use **GitHub private vulnerability reporting** on [ivankuprin/MelonTools](https://github.com/ivankuprin/MelonTools/security/advisories/new) — Security → Report a vulnerability. It keeps the report private until there is a fix.
 
 If private reporting is unavailable to you, open a regular issue with `security` in the title and **no details** — just say you have a report and wait to be contacted. Do not paste the reproduction into a public issue.
 

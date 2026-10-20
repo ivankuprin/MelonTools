@@ -19,7 +19,7 @@
  * protocol (no initialize, per-request _meta version, server/discover) and is
  * not claimed. Negotiation rule (2025-11-25 lifecycle): a listed version is
  * answered with itself, anything else with the newest listed. Measured
- * 2026-09-25: Claude Code 2.1.282 asks 2025-11-25 (docs/MEASUREMENTS.md).
+ * 2026-09-25: Claude Code 2.1.282 asks 2025-11-25.
  */
 export const SUPPORTED_PROTOCOLS = Object.freeze(['2025-11-25', '2025-06-18', '2024-11-05']);
 export const DEFAULT_PROTOCOL = SUPPORTED_PROTOCOLS[0];

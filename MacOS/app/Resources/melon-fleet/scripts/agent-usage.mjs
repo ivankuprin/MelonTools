@@ -2,7 +2,7 @@
 /**
  * melon-fleet :: scripts/agent-usage.mjs
  * What the sub-agents of one Claude Code session cost, read out of that
- * session's transcript — the numbers docs/MEASUREMENTS.md is built from.
+ * session's transcript — the numbers the measurement ledger is built from.
  *
  *   node scripts/agent-usage.mjs <transcript.jsonl> [--json]
  *

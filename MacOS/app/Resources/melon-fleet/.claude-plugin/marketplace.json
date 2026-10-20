@@ -1,6 +1,6 @@
 {
   "name": "melon-fleet",
-  "owner": { "name": "adxd-og" },
+  "owner": { "name": "Melon Tools" },
   "plugins": [
     {
       "name": "melon-fleet",
