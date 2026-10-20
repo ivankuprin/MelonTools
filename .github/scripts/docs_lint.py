@@ -168,7 +168,7 @@ if version:
     if not installer_text:
         ERRORS.append("winget installer manifest: missing")
     else:
-        if f"MelonTools-{version}-win-x64.exe" not in installer_text:
+        if (f"MelonTools-{version}-win-x64.exe" not in installer_text and f"MelonTools-{version}-setup.exe" not in installer_text):
             ERRORS.append("winget installer manifest: exe URL does not use the package version")
         if "https://github.com/ivankuprin/MelonTools/releases/download/" not in installer_text:
             ERRORS.append("winget installer manifest: InstallerUrl is not a GitHub release URL")

@@ -18,15 +18,16 @@ secrets below are absent. It never fails because a signing secret is missing.
 When the secrets exist, the signing steps run and a genuine signing failure
 does fail the release.
 
-## Release artifacts for 1.6.4
+## Release artifacts for 2.0.2
 
 | Artifact | File name | SHA-256 |
 |----------|-----------|---------|
-| macOS DMG | `MelonTools-1.6.4.dmg` | `24bf171292b77722a82d0cf98ecd5a1930225bdd86ae23aa0e6b23825a3febdc` |
-| Windows x64 | `MelonTools-1.6.4-win-x64.exe` | `c58a2fb6472ec78d50bceb948c6d60a29637717ab5658de9fe01c20b472b4385` |
+| macOS DMG | `MelonTools-2.0.2.dmg` | `007dcf48f0a52081afb11b8eb6fd2f0d43d3e45fe4dbbd6fa1c822ab98d07db8` |
+| Windows installer | `MelonTools-2.0.2-setup.exe` | `97a4e69250efc82420ffc84d9198a1f53f6f3a20438d24f637c6ef2791e52d9e` |
+| Windows portable | `MelonTools-2.0.2-win-x64.exe` | `38f30d39df9ef2db2efcb7d968e24a02a058726b2a6fb65373fefd1a34926621` |
 
-Both files and their `.sha256` siblings are attached to the GitHub release for
-tag `v1.6.4`. The in-app updater accepts only HTTPS GitHub hosts and verifies
+All files and their `.sha256` siblings are attached to the GitHub release for
+tag `v2.0.2`. The in-app updater accepts only HTTPS GitHub hosts and verifies
 the downloaded file against the release digest or the `.sha256` sibling.
 
 ## Required secrets
@@ -76,7 +77,7 @@ keychain, then calls:
 ```bash
 ./packaging/sign-macos.sh \
   "$HOME/Library/Developer/MelonTools/Build/Products/Release/Melon Tools.app" \
-  "MacOS/build/MelonTools-1.6.4.dmg"
+  "MacOS/build/MelonTools-2.0.2.dmg"
 ```
 
 The script:
@@ -100,7 +101,7 @@ and calls:
 
 ```powershell
 ./packaging/sign-windows.ps1 `
-  -File Windows/dist/MelonTools-1.6.4-win-x64.exe -Require
+  -File Windows/dist/MelonTools-2.0.2-setup.exe -Require
 ```
 
 The script locates `signtool.exe` from the Windows SDK, signs with SHA-256 and
@@ -112,7 +113,7 @@ that skip into an error.
 
 The manifest lives at
 [`homebrew/Casks/melon-tools.rb`](homebrew/Casks/melon-tools.rb). It points at
-the DMG for the matching GitHub release and carries the 1.6.4 SHA-256.
+the DMG for the matching GitHub release and carries the 2.0.2 SHA-256.
 
 Local validation and installation:
 
@@ -160,11 +161,11 @@ manifest loses its 64-character SHA-256.
 ## Checksums
 
 ```bash
-shasum -a 256 MacOS/build/MelonTools-1.6.4.dmg
+shasum -a 256 MacOS/build/MelonTools-2.0.2.dmg
 ```
 
 ```powershell
-Get-FileHash .\MelonTools-1.6.4-win-x64.exe -Algorithm SHA256
+Get-FileHash .\MelonTools-2.0.2-setup.exe -Algorithm SHA256
 ```
 
 The `.sha256` files published next to each artifact use the standard
