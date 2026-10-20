@@ -1,18 +1,29 @@
-# Melon Tools 1.6.2
+# Melon Tools 1.6.3
 
-- **Antigravity card matches the Claude card.** The Providers card now always
-  shows «Обновить» + «Настройки»; connecting, cancelling and disconnecting the
-  Google account live on the Antigravity settings page.
+- **Security hardening.** The Windows updater applies only the release it just
+  checked (renderer-supplied URLs are ignored), the URL opener no longer goes
+  through cmd.exe, the management secret no longer leaves the backend, gateway
+  and Codex processes are stopped by PID with identity checks, and the engine
+  binary is verified by SHA256 after extraction. A restrictive CSP is set.
+- **Data safety.** Atomic permission-preserving writes for secrets, config and
+  auth files; bounded log tail with rotation; engine/auth backups normalized to
+  0600; updater log moved to ~/Library/Logs with 0600.
+- **UX fixes.** Claude disconnect now clears its selected models from the Codex
+  picker; macOS instance deletion asks for confirmation; Windows no longer wipes
+  unsaved inputs on background refreshes; translated time units; named instance
+  confirmations; updater Cancel disabled while applying; login polls time out.
 
 ## Downloads
 
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.2.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.2-win-x64.exe) — WebView2 Runtime required.
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.3.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.6.3-win-x64.exe) — WebView2 Runtime required.
 
 Both files include SHA-256 checksum assets on the release page.
 
 ## Earlier fixes
 
+- **1.6.2:** Antigravity card aligned with the Claude card (Refresh + Settings;
+  connect/disconnect in Settings).
 - **1.6.1:** Fixed the in-app installer hang (sheet dismissal, hard-exit
   watchdog, script TERM/KILL fallback).
 - **1.6.0:** Antigravity provider (Google account OAuth) with ownership-aware

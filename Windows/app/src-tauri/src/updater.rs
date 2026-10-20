@@ -20,14 +20,107 @@ const ALLOWED_HOSTS: [&str; 4] = [
     "release-assets.githubusercontent.com",
 ];
 
+/// Hosts a release asset may come from. `api.github.com` is deliberately
+/// absent: the API serves the release JSON only, never the executable.
+const ASSET_HOSTS: [&str; 3] = [
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
+
+/// The only asset name the updater accepts: the Melon Tools Windows build.
+fn is_asset_name(name: &str) -> bool {
+    name.starts_with("MelonTools-") && name.ends_with("-win-x64.exe")
+}
+
+/// Bare host of an https URL, or `None` for any other scheme or a malformed
+/// authority. Userinfo and port are stripped so only the real host is checked.
+fn https_host(url: &str) -> Option<&str> {
+    let rest = url.strip_prefix("https://")?;
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..end];
+    let host = authority.rsplit('@').next()?.split(':').next()?;
+    (!host.is_empty()).then_some(host)
+}
+
 /// Only https GitHub endpoints are ever fetched.
 pub fn allowed(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("https://") else {
+    let Some(host) = https_host(url) else {
         return false;
     };
     ALLOWED_HOSTS
         .iter()
-        .any(|host| rest == *host || rest.starts_with(&format!("{}/", host)))
+        .any(|allowed| host.eq_ignore_ascii_case(allowed))
+}
+
+/// Release assets must come from the download hosts, not from the API host.
+pub fn asset_host_allowed(url: &str) -> bool {
+    let Some(host) = https_host(url) else {
+        return false;
+    };
+    ASSET_HOSTS
+        .iter()
+        .any(|allowed| host.eq_ignore_ascii_case(allowed))
+}
+
+/// Validated update information cached from the last `update_check`.
+///
+/// `update_apply` uses only this copy: the renderer arguments are ignored so a
+/// compromised renderer cannot redirect the updater to its own binary or drop
+/// the checksum.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct UpdateInfo {
+    pub version: String,
+    pub asset_name: String,
+    pub url: String,
+    pub digest: String,
+}
+
+fn normalize_digest(text: &str) -> Option<String> {
+    let hex = text
+        .trim()
+        .trim_start_matches("sha256:")
+        .trim()
+        .to_ascii_lowercase();
+    (hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(hex)
+}
+
+/// Re-validates cached info before it reaches the network: an https download
+/// host, the Windows asset name and a full SHA256 must all be present.
+pub fn validate_cached(info: &UpdateInfo) -> Result<(), String> {
+    if !asset_host_allowed(&info.url) {
+        return Err("недопустимый адрес обновления".to_string());
+    }
+    if !is_asset_name(&info.asset_name) {
+        return Err("неподходящее имя файла обновления".to_string());
+    }
+    if normalize_digest(&info.digest).is_none() {
+        return Err("нет контрольной суммы SHA256 — обновление отклонено".to_string());
+    }
+    Ok(())
+}
+
+/// Extracts the cacheable update from an `update_check` response. A missing or
+/// invalid field yields `None`: an unverifiable update is never cached.
+pub fn cached_from_check(result: &Value) -> Option<UpdateInfo> {
+    if result.get("skipped").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    if result.get("newer").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    let info = UpdateInfo {
+        version: result
+            .get("version")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        asset_name: result.get("assetName")?.as_str()?.to_string(),
+        url: result.get("assetURL")?.as_str()?.to_string(),
+        digest: normalize_digest(result.get("digest")?.as_str()?)?,
+    };
+    validate_cached(&info).ok()?;
+    Some(info)
 }
 
 /// Numeric per-segment comparison: 1.4.10 > 1.4.9; "1.4" <= "1.4.0".
@@ -321,5 +414,60 @@ mod tests {
         assert_eq!(parse_sha256("nope file.exe"), None);
         assert_eq!(parse_sha256(""), None);
         assert_eq!(parse_sha256(&"f".repeat(63)), None);
+    }
+
+    fn check_payload() -> Value {
+        json!({
+            "skipped": false,
+            "version": "1.6.3",
+            "newer": true,
+            "assetName": "MelonTools-1.6.3-win-x64.exe",
+            "assetURL": "https://github.com/ivankuprin/MelonTools/releases/download/v1.6.3/MelonTools-1.6.3-win-x64.exe",
+            "digest": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        })
+    }
+
+    #[test]
+    fn cached_update_accepts_a_valid_release() {
+        let info = cached_from_check(&check_payload()).expect("valid update cached");
+        assert_eq!(info.version, "1.6.3");
+        assert_eq!(info.asset_name, "MelonTools-1.6.3-win-x64.exe");
+        assert_eq!(info.digest, "a".repeat(64));
+        assert!(validate_cached(&info).is_ok());
+    }
+
+    #[test]
+    fn cached_update_rejects_untrusted_urls() {
+        for url in [
+            "http://github.com/ivankuprin/MelonTools/releases/download/v1.6.3/MelonTools-1.6.3-win-x64.exe",
+            "https://api.github.com/repos/ivankuprin/MelonTools/releases/assets/1",
+            "https://github.com.evil.example/MelonTools-1.6.3-win-x64.exe",
+            "https://evil.example/MelonTools-1.6.3-win-x64.exe",
+        ] {
+            let mut payload = check_payload();
+            payload["assetURL"] = json!(url);
+            assert!(cached_from_check(&payload).is_none(), "accepted {url}");
+        }
+        assert!(!asset_host_allowed("http://github.com/a"));
+        assert!(asset_host_allowed("https://objects.githubusercontent.com/a"));
+    }
+
+    #[test]
+    fn cached_update_requires_asset_name_and_digest() {
+        let mut payload = check_payload();
+        payload["assetName"] = json!("MelonTools-setup.msi");
+        assert!(cached_from_check(&payload).is_none());
+
+        let mut payload = check_payload();
+        payload["digest"] = json!("sha256:abcd");
+        assert!(cached_from_check(&payload).is_none());
+
+        let mut payload = check_payload();
+        payload["digest"] = Value::Null;
+        assert!(cached_from_check(&payload).is_none());
+
+        let mut payload = check_payload();
+        payload["newer"] = json!(false);
+        assert!(cached_from_check(&payload).is_none());
     }
 }

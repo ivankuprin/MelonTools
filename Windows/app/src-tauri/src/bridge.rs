@@ -807,6 +807,21 @@ fn free_local_port() -> Option<u16> {
     listener.local_addr().ok().map(|addr| addr.port())
 }
 
+/// Kills every running ChatGPT process by its resolved PID. The image identity
+/// is verified per PID first: an image-name taskkill could terminate an
+/// unrelated binary that happens to share the name.
+#[cfg(windows)]
+fn kill_chatgpt_processes(force: bool) {
+    for pid in crate::gateway::tasklist_pids("ChatGPT.exe") {
+        let verified = crate::gateway::tasklist_image_name(pid)
+            .map(|image| crate::gateway::image_starts_with(&image, "chatgpt"))
+            .unwrap_or(false);
+        if verified {
+            let _ = crate::gateway::taskkill_pid(pid, force);
+        }
+    }
+}
+
 /// Restarts the Codex app with the CDP flags (the chips need the debug port;
 /// an already running instance cannot gain the flags any other way).
 pub async fn launch_codex_with_debug_port() -> Result<String, String> {
@@ -815,13 +830,7 @@ pub async fn launch_codex_with_debug_port() -> Result<String, String> {
     })?;
     if codex_is_running() {
         #[cfg(windows)]
-        {
-            let mut command = std::process::Command::new("taskkill.exe");
-            command.args(["/IM", "ChatGPT.exe"]);
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000);
-            let _ = command.output();
-        }
+        kill_chatgpt_processes(false);
         for _ in 0..20 {
             tokio::time::sleep(Duration::from_millis(500)).await;
             if !codex_is_running() {
@@ -830,13 +839,7 @@ pub async fn launch_codex_with_debug_port() -> Result<String, String> {
         }
         if codex_is_running() {
             #[cfg(windows)]
-            {
-                let mut command = std::process::Command::new("taskkill.exe");
-                command.args(["/IM", "ChatGPT.exe", "/F"]);
-                use std::os::windows::process::CommandExt;
-                command.creation_flags(0x0800_0000);
-                let _ = command.output();
-            }
+            kill_chatgpt_processes(true);
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
     }

@@ -35,6 +35,18 @@ fn home_for(id: &str) -> PathBuf {
     paths::appdata_dir().join("instances").join(id)
 }
 
+/// Instance ids are generated as hex, but the value is read back from
+/// `instances.json`: reject anything that could escape the instances root
+/// before it is joined into a path.
+fn safe_id(id: &str) -> bool {
+    !id.is_empty()
+        && id != "."
+        && id != ".."
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
 pub fn list() -> Vec<Value> {
     load()
         .into_iter()
@@ -109,12 +121,18 @@ pub fn bind(id: &str, account_id: Option<String>) -> Result<Vec<Value>, String> 
 /// Codex home) and launches `codex` in a visible console with CODEX_HOME
 /// pointed at the instance directory.
 pub fn launch(id: &str) -> Result<String, String> {
+    if !safe_id(id) {
+        return Err("некорректный идентификатор инстанса".to_string());
+    }
     let items = load();
     let instance = items
         .iter()
         .find(|item| item.get("id").and_then(|v| v.as_str()) == Some(id))
         .ok_or_else(|| "инстанс не найден".to_string())?;
     let home = home_for(id);
+    if !home.starts_with(paths::appdata_dir().join("instances")) {
+        return Err("недопустимый путь инстанса".to_string());
+    }
     std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
 
     // Pick the account: bound first, else the vault's current login.
@@ -151,5 +169,24 @@ pub fn launch(id: &str) -> Result<String, String> {
     #[cfg(not(windows))]
     {
         Err("запуск инстансов поддерживается на Windows".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_id;
+
+    #[test]
+    fn instance_ids_reject_path_traversal() {
+        assert!(safe_id("0123456789abcdef"));
+        assert!(safe_id("a-b_c.1"));
+        assert!(!safe_id(""));
+        assert!(!safe_id("."));
+        assert!(!safe_id(".."));
+        assert!(!safe_id("../evil"));
+        assert!(!safe_id("..\\evil"));
+        assert!(!safe_id("a/b"));
+        assert!(!safe_id("a b"));
+        assert!(!safe_id("a:b"));
     }
 }

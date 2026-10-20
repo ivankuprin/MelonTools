@@ -151,6 +151,10 @@ const CLAUDE_MODELS: &[(&str, &str)] = &[
     ("claude-haiku-4-5-20251001", "Claude Haiku 4.5"),
 ];
 
+/// Version-carrying User-Agent for managed upstreams (D2): derived from the
+/// crate version so a release never advertises a stale build.
+pub(crate) const USER_AGENT: &str = concat!("MelonTools/", env!("CARGO_PKG_VERSION"));
+
 /// The single optional top-level `api-keys:` root. OpenCode and OpenRouter
 /// ride `openai-compatibility`; the Anthropic API-key fallback rides `claude`.
 /// Every section is emitted from this one builder — a second root would break
@@ -171,7 +175,7 @@ pub fn api_keys_yaml(settings: &Settings) -> String {
             yaml.push_str("    - name: \"opencode-go\"\n");
             yaml.push_str("      base-url: \"https://opencode.ai/inference/go/openai/v1\"\n");
             yaml.push_str("      headers:\n");
-            yaml.push_str("        user-agent: \"MelonTools/1.4\"\n");
+            yaml.push_str(&format!("        user-agent: \"{}\"\n", USER_AGENT));
             yaml.push_str("        x-opencode-session: \"melon-tools\"\n");
             yaml.push_str(&format!(
                 "      keys:\n        - api-key: \"{}\"\n",
@@ -314,11 +318,12 @@ pub fn sync_accounts(settings: &Settings) -> Result<usize, String> {
             payload["disabled"] = json!(true);
         }
         let file = dir.join(auth_file_name(account, index));
-        fs::write(
-            file,
-            serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
+        let payload = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+        // Temp + rename, like config.yaml: the engine must never hot-reload a
+        // half-written auth file.
+        let tmp = paths::tmp_path(&file);
+        fs::write(&tmp, payload).map_err(|e| e.to_string())?;
+        fs::rename(&tmp, &file).map_err(|e| e.to_string())?;
         written += 1;
     }
     Ok(written)
@@ -346,6 +351,7 @@ pub async fn health(port: u16, api_key: &str) -> bool {
 }
 
 pub async fn start(gateway: &Gateway, settings: &Settings) -> Result<String, String> {
+    rotate_log(&paths::log_path());
     if health(settings.port, &settings.api_key).await {
         write_config(settings)?;
         sync_accounts(settings)?;
@@ -406,19 +412,137 @@ pub fn stop(gateway: &Gateway) -> Result<String, String> {
             let _ = child.wait();
         }
     }
-    // Adopted or orphaned instances are killed by image name.
-    #[cfg(windows)]
-    {
-        for name in SIDECAR_NAMES {
-            let mut command = Command::new("taskkill");
-            command.args(["/IM", name, "/F"]);
-            create_no_window(&mut command);
-            let _ = command.output();
+    // An adopted or orphaned engine is killed by the PID we recorded when we
+    // started it, and only after tasklist confirms that PID is still our
+    // engine: an image-name taskkill could hit an unrelated cliproxyapi.
+    let recorded = fs::read_to_string(paths::pid_path()).ok();
+    match recorded.as_deref().and_then(parse_pid) {
+        Some(pid) => stop_recorded_pid(pid),
+        None => {
+            // No usable PID record (first run of an older build): keep the
+            // old image-name sweep as the only available cleanup.
+            #[cfg(windows)]
+            {
+                for name in SIDECAR_NAMES {
+                    let mut command = Command::new("taskkill");
+                    command.args(["/IM", name, "/F"]);
+                    create_no_window(&mut command);
+                    let _ = command.output();
+                }
+            }
         }
     }
     let _ = fs::remove_file(paths::pid_path());
     Ok("stopped".to_string())
 }
+
+/// PID file contents: one decimal process id (whitespace and a trailing
+/// newline are tolerated). Zero is never a valid target.
+pub(crate) fn parse_pid(text: &str) -> Option<u32> {
+    text.trim().parse::<u32>().ok().filter(|pid| *pid != 0)
+}
+
+/// First CSV field of `tasklist /FO CSV /NH` output. The "no tasks" notice is
+/// not CSV, so it yields `None` instead of a bogus image name.
+#[cfg(any(windows, test))]
+pub(crate) fn parse_tasklist_image(output: &str) -> Option<String> {
+    let line = output.lines().map(str::trim).find(|line| line.starts_with('"'))?;
+    let name = line.trim_start_matches('"').split('"').next()?.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// PID column of `tasklist /FO CSV /NH` rows. Non-CSV output is skipped.
+#[cfg(any(windows, test))]
+pub(crate) fn parse_tasklist_pids(output: &str) -> Vec<u32> {
+    let mut pids = Vec::new();
+    for line in output.lines().map(str::trim).filter(|line| line.starts_with('"')) {
+        let fields: Vec<&str> = line.split("\",\"").collect();
+        if let Some(pid) = fields
+            .get(1)
+            .and_then(|field| field.trim_end_matches('"').trim().parse::<u32>().ok())
+        {
+            pids.push(pid);
+        }
+    }
+    pids
+}
+
+/// Image-name identity check: tasklist may report a bare name or a path.
+#[cfg(any(windows, test))]
+pub(crate) fn image_starts_with(image: &str, prefix: &str) -> bool {
+    let base = image
+        .rsplit(|c| c == '\\' || c == '/')
+        .next()
+        .unwrap_or(image)
+        .trim();
+    base.to_ascii_lowercase()
+        .starts_with(&prefix.to_ascii_lowercase())
+}
+
+#[cfg(any(windows, test))]
+pub(crate) fn image_matches_engine(image: &str) -> bool {
+    image_starts_with(image, "cliproxyapi")
+}
+
+#[cfg(windows)]
+pub(crate) fn tasklist_image_name(pid: u32) -> Option<String> {
+    let mut command = Command::new("tasklist.exe");
+    command.args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"]);
+    create_no_window(&mut command);
+    let output = command.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_tasklist_image(&String::from_utf8_lossy(&output.stdout))
+}
+
+#[cfg(windows)]
+pub(crate) fn tasklist_pids(image: &str) -> Vec<u32> {
+    let mut command = Command::new("tasklist.exe");
+    command.args([
+        "/FI",
+        &format!("IMAGENAME eq {}", image),
+        "/FO",
+        "CSV",
+        "/NH",
+    ]);
+    create_no_window(&mut command);
+    match command.output() {
+        Ok(output) if output.status.success() => {
+            parse_tasklist_pids(&String::from_utf8_lossy(&output.stdout))
+        }
+        _ => Vec::new(),
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn taskkill_pid(pid: u32, force: bool) -> bool {
+    let pid = pid.to_string();
+    let mut command = Command::new("taskkill.exe");
+    if force {
+        command.args(["/PID", &pid, "/F"]);
+    } else {
+        command.args(["/PID", &pid]);
+    }
+    create_no_window(&mut command);
+    command
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn stop_recorded_pid(pid: u32) {
+    let Some(image) = tasklist_image_name(pid) else {
+        return;
+    };
+    if image_matches_engine(&image) {
+        let _ = taskkill_pid(pid, true);
+    }
+}
+
+#[cfg(not(windows))]
+fn stop_recorded_pid(_pid: u32) {}
 
 // MARK: - Live rate
 
@@ -449,20 +573,57 @@ fn parse_timestamp(line: &str) -> Option<chrono::NaiveDateTime> {
 
 // MARK: - Recent calls + models (dashboard / providers)
 
+/// The log is rotated on gateway start once it exceeds this size: the engine is
+/// restarted anyway, so the open-handle rename window is safe.
+const LOG_ROTATE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Keeps one backup (`gateway.log.1`). Rotation failure is ignored: the engine
+/// may still hold the handle, and the next fresh start retries.
+fn rotate_log(path: &std::path::Path) {
+    let Ok(metadata) = fs::metadata(path) else {
+        return;
+    };
+    if metadata.len() <= LOG_ROTATE_BYTES {
+        return;
+    }
+    let backup = path.with_extension("log.1");
+    let _ = fs::remove_file(&backup);
+    let _ = fs::rename(path, &backup);
+}
+
+/// Last `cap` bytes of the log, read with a seek. The file grows throughout a
+/// session, so a whole-file read here would stall every status poll.
 fn log_tail(cap: usize) -> String {
-    let Ok(data) = fs::read(paths::log_path()) else {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let path = paths::log_path();
+    let Ok(metadata) = fs::metadata(&path) else {
         return String::new();
     };
-    if data.len() <= cap {
-        return String::from_utf8_lossy(&data).to_string();
+    let len = metadata.len();
+    let start = len.saturating_sub(cap as u64);
+    let Ok(mut file) = fs::File::open(&path) else {
+        return String::new();
+    };
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return String::new();
     }
-    let slice = &data[data.len() - cap..];
-    let start = slice
-        .iter()
-        .position(|b| *b == b'\n')
-        .map(|offset| offset + 1)
-        .unwrap_or(0);
-    String::from_utf8_lossy(&slice[start..]).to_string()
+    let mut data = Vec::with_capacity((len - start) as usize);
+    if file.read_to_end(&mut data).is_err() {
+        return String::new();
+    }
+    String::from_utf8_lossy(tail_bytes(&data, start > 0)).to_string()
+}
+
+/// Drops the first, partially read line of a bounded tail.
+pub(crate) fn tail_bytes<'a>(bytes: &'a [u8], truncated: bool) -> &'a [u8] {
+    if !truncated {
+        return bytes;
+    }
+    match bytes.iter().position(|byte| *byte == b'\n') {
+        Some(offset) => &bytes[offset + 1..],
+        None => bytes,
+    }
 }
 
 /// The newest gateway requests (method, path, status, duration) for the
@@ -574,7 +735,10 @@ pub async fn check_api(port: u16, api_key: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{api_keys_yaml, base_config, yaml_escape};
+    use super::{
+        api_keys_yaml, base_config, image_matches_engine, image_starts_with, parse_pid,
+        parse_tasklist_image, parse_tasklist_pids, tail_bytes, yaml_escape, USER_AGENT,
+    };
     use crate::settings::Settings;
 
     fn settings() -> Settings {
@@ -643,5 +807,63 @@ mod tests {
         // A whitespace-only key never reaches the config.
         s.claude_api_key = "   ".to_string();
         assert_eq!(api_keys_yaml(&s), "");
+    }
+
+    #[test]
+    fn user_agent_derives_from_the_crate_version() {
+        assert_eq!(
+            USER_AGENT,
+            format!("MelonTools/{}", env!("CARGO_PKG_VERSION"))
+        );
+        let mut s = settings();
+        s.opencode_key = "oc-key".to_string();
+        assert!(api_keys_yaml(&s).contains(&format!("user-agent: \"{}\"", USER_AGENT)));
+    }
+
+    #[test]
+    fn pid_file_parsing_accepts_only_positive_ids() {
+        assert_eq!(parse_pid("1234"), Some(1234));
+        assert_eq!(parse_pid(" 1234\n"), Some(1234));
+        assert_eq!(parse_pid("0"), None);
+        assert_eq!(parse_pid(""), None);
+        assert_eq!(parse_pid("12 34"), None);
+        assert_eq!(parse_pid("pid=1234"), None);
+    }
+
+    #[test]
+    fn tasklist_csv_parsing() {
+        let output = "\"cliproxyapi.exe\",\"4321\",\"Console\",\"1\",\"12,345 K\"\r\n";
+        assert_eq!(parse_tasklist_image(output).as_deref(), Some("cliproxyapi.exe"));
+        assert_eq!(parse_tasklist_pids(output), vec![4321]);
+        assert_eq!(
+            parse_tasklist_image("INFO: No tasks are running which match the specified criteria."),
+            None
+        );
+        assert!(parse_tasklist_pids("INFO: No tasks are running").is_empty());
+        let two = "\"ChatGPT.exe\",\"10\",\"Console\",\"1\",\"1 K\"\r\n\"ChatGPT.exe\",\"11\",\"Console\",\"1\",\"1 K\"\r\n";
+        assert_eq!(parse_tasklist_pids(two), vec![10, 11]);
+    }
+
+    #[test]
+    fn pid_identity_matches_only_the_engine() {
+        assert!(image_matches_engine("cliproxyapi.exe"));
+        assert!(image_matches_engine("CLIProxyAPI-x86_64-pc-windows-msvc.exe"));
+        assert!(image_matches_engine("C:\\Tools\\cliproxyapi.exe"));
+        assert!(!image_matches_engine("chatgpt.exe"));
+        assert!(!image_matches_engine("notcliproxyapi.exe"));
+        assert!(image_starts_with("ChatGPT.exe", "chatgpt"));
+        assert!(!image_starts_with("ChatGPT-helper.exe", "chatgpt.exe"));
+    }
+
+    #[test]
+    fn bounded_tail_drops_the_partial_first_line() {
+        let data = b"partial line\nfull line one\nfull line two\n";
+        assert_eq!(
+            tail_bytes(data, true),
+            b"full line one\nfull line two\n".as_slice()
+        );
+        assert_eq!(tail_bytes(data, false), data.as_slice());
+        // A single over-long line is kept (bounded by the read cap).
+        assert_eq!(tail_bytes(b"one huge line", true), b"one huge line");
     }
 }

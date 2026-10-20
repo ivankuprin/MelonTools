@@ -416,6 +416,54 @@ struct SessionSpend: Equatable {
     func stats(for provider: String) -> ProviderStats? { providers[provider] }
 }
 
+/// A small least-recently-used cache. Reads and inserts refresh recency, and
+/// an insert drops only the oldest entries once `limit` is exceeded.
+///
+/// The rollout parse cache used to be emptied completely when it grew past its
+/// cap, so every tick after an eviction re-parsed files it had just parsed.
+struct LRUCache<Key: Hashable, Value> {
+    let limit: Int
+    private var entries: [Key: Value] = [:]
+    /// Keys from least to most recently used.
+    private var order: [Key] = []
+
+    init(limit: Int) {
+        self.limit = max(1, limit)
+    }
+
+    var count: Int { entries.count }
+
+    /// Keys from least to most recently used (oldest first).
+    var keys: [Key] { order }
+
+    mutating func value(for key: Key) -> Value? {
+        guard let value = entries[key] else { return nil }
+        touch(key)
+        return value
+    }
+
+    mutating func insert(_ value: Value, for key: Key) {
+        entries[key] = value
+        touch(key)
+        while order.count > limit {
+            let oldest = order.removeFirst()
+            entries.removeValue(forKey: oldest)
+        }
+    }
+
+    mutating func removeAll() {
+        entries.removeAll()
+        order.removeAll()
+    }
+
+    private mutating func touch(_ key: Key) {
+        if let index = order.firstIndex(of: key) {
+            order.remove(at: index)
+        }
+        order.append(key)
+    }
+}
+
 /// Reads token accounting from the Codex CLI rollouts. The Codex app appends a
 /// `token_count` event after every model turn, so the newest event describes
 /// the context the thread currently carries — even for gateway models, where
@@ -436,7 +484,7 @@ enum SessionUsageReader {
         let modified: TimeInterval
     }
     private static let cacheLock = NSLock()
-    private static var cache: [CacheKey: SessionUsageSnapshot] = [:]
+    private static var cache = LRUCache<CacheKey, SessionUsageSnapshot>(limit: 12)
 
     private static func cachedSnapshot(for url: URL) -> SessionUsageSnapshot? {
         let fm = FileManager.default
@@ -445,12 +493,8 @@ enum SessionUsageReader {
               let modified = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 else { return nil }
         let key = CacheKey(path: url.path, size: size, modified: modified)
         cacheLock.lock()
-        if let hit = cache[key] {
-            cacheLock.unlock()
-            return hit
-        }
-        cacheLock.unlock()
-        return nil
+        defer { cacheLock.unlock() }
+        return cache.value(for: key)
     }
 
     private static func storeCache(_ snapshot: SessionUsageSnapshot?, for url: URL) {
@@ -461,9 +505,9 @@ enum SessionUsageReader {
               let modified = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 else { return }
         let key = CacheKey(path: url.path, size: size, modified: modified)
         cacheLock.lock()
-        // Keep the cache bounded: rollouts rotate daily.
-        if cache.count > 12 { cache.removeAll(keepingCapacity: true) }
-        cache[key] = snapshot
+        // Keep the cache bounded: rollouts rotate daily. Eviction is
+        // least-recently-used, so the thread being watched stays cached.
+        cache.insert(snapshot, for: key)
         cacheLock.unlock()
     }
 

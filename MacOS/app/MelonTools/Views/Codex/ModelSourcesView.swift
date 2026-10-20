@@ -373,10 +373,10 @@ struct CodexProvidersView: View {
                         .foregroundStyle(MTTheme.textSecondary)
                 }
                 sessionLine(provider: "Antigravity")
-                Text(L("Google account login; no API key is needed."))
-                    .font(MTTheme.mono(9))
-                    .foregroundStyle(MTTheme.textTertiary)
                 HStack(spacing: MTTheme.s3) {
+                    Text(L("Google account login; no API key is needed."))
+                        .font(MTTheme.mono(9))
+                        .foregroundStyle(MTTheme.textTertiary)
                     Spacer(minLength: MTTheme.s2)
                     MTSecondaryButton(title: L("Refresh"), systemImage: "arrow.clockwise") {
                         Task {
@@ -406,6 +406,18 @@ struct CodexProvidersView: View {
         sources.setAllModels("antigravity", enabled: false)
         Task {
             await usage.refreshAntigravityNow()
+            await sources.apply()
+        }
+    }
+
+    /// Disconnect removes only the Claude auth files. The selected Claude
+    /// models are cleared and the catalog regenerated too, so the Codex picker
+    /// drops the entries instead of keeping models that can no longer run.
+    private func disconnectClaude() {
+        claudeAuth.disconnect()
+        sources.setAllModels("claude", enabled: false)
+        Task {
+            await usage.refreshClaudeNow()
             await sources.apply()
         }
     }
@@ -683,8 +695,7 @@ struct CodexProvidersView: View {
         }
         .confirmationDialog(L("Disconnect this Claude account?"), isPresented: $confirmClaudeDisconnect, titleVisibility: .visible) {
             Button(L("Disconnect"), role: .destructive) {
-                claudeAuth.disconnect()
-                Task { await usage.refreshClaudeNow() }
+                disconnectClaude()
             }
             Button(L("Cancel"), role: .cancel) {}
         } message: {

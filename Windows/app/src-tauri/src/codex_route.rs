@@ -4,7 +4,7 @@
 
 use serde_json::{json, Value};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::paths;
 
@@ -172,6 +172,20 @@ pub fn remove_top_level_key(in_text: &str, key: &str) -> String {
 
 // MARK: - High level
 
+/// Atomic replace: the sibling temp file is renamed over the target, so a
+/// crash mid-write cannot truncate config.toml. The file holds the gateway
+/// bearer token, hence 0600 on Unix hosts (Windows uses the user-profile ACL).
+fn write_atomic(path: &Path, data: &str) -> Result<(), String> {
+    let tmp = paths::tmp_path(path);
+    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
 /// Writes (or updates) the Melon route in config.toml, pointing Codex at the
 /// local gateway. A one-time backup of the previous file is kept.
 pub fn apply(port: u16, api_key: &str) -> Result<(), String> {
@@ -192,7 +206,7 @@ pub fn apply(port: u16, api_key: &str) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, updated).map_err(|e| e.to_string())
+    write_atomic(&path, &updated)
 }
 
 /// Removes the Melon route (and the catalog reference, which would otherwise
@@ -204,7 +218,7 @@ pub fn remove() -> Result<(), String> {
     };
     let mut updated = remove_route(&current);
     updated = remove_top_level_key(&updated, "model_catalog_json");
-    std::fs::write(&path, updated).map_err(|e| e.to_string())
+    write_atomic(&path, &updated)
 }
 
 /// What the route looks like right now, for the UI.

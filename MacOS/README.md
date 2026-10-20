@@ -17,6 +17,12 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## What's new in 1.6.3 «Security and data safety»
+
+- **Hardened updater and secrets.** The Windows updater applies only the release it checked, the URL opener avoids cmd.exe, the management secret stays in the backend, helper processes are stopped by PID with identity checks, the engine binary is SHA-256 verified after extraction, and a restrictive CSP is set.
+- **Data safety.** Atomic permission-preserving writes for secrets, config and auth files, bounded log rotation, backups and updater logs locked to 0600 under ~/Library/Logs.
+- **UX fixes.** Claude disconnect clears its picker models, instance deletion asks for confirmation, Windows keeps unsaved inputs on background refresh, and login polls time out.
+
 ## What's new in 1.6.2 «Antigravity settings»
 
 - **Consistent provider card.** The Antigravity card always shows «Обновить» and «Настройки»; connecting, cancelling and disconnecting live on the Antigravity settings page.

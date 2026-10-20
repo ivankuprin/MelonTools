@@ -128,4 +128,75 @@ final class ComposerBridgeTests: XCTestCase {
         XCTAssertGreaterThan(port, 1024)
         XCTAssertLessThan(port, 65536)
     }
+
+    func testJavaScriptEscapingKeepsTheLiteralOnOneLine() {
+        let json = "{\"model\":\"a\u{2028}b\u{2029}c\"}"
+        XCTAssertTrue(json.contains("\u{2028}"))
+        XCTAssertTrue(json.contains("\u{2029}"))
+
+        let escaped = ComposerBridge.escapedForJavaScript(json)
+
+        XCTAssertFalse(escaped.contains("\u{2028}"))
+        XCTAssertFalse(escaped.contains("\u{2029}"))
+        XCTAssertTrue(escaped.contains("\\u2028"))
+        XCTAssertTrue(escaped.contains("\\u2029"))
+        XCTAssertEqual(escaped.components(separatedBy: "\n").count, 1)
+    }
+
+    func testJavaScriptEscapingLeavesOrdinaryJSONAlone() {
+        let json = #"{"model":"gpt-5.1-codex","threadId":"0199"}"#
+        XCTAssertEqual(ComposerBridge.escapedForJavaScript(json), json)
+    }
+}
+
+/// The rollout parse cache must stay bounded without throwing away the whole
+/// parse history every time it fills up.
+final class LRUCacheTests: XCTestCase {
+    func testInsertEvictsOnlyTheOldestEntries() {
+        var cache = LRUCache<String, Int>(limit: 3)
+        cache.insert(1, for: "a")
+        cache.insert(2, for: "b")
+        cache.insert(3, for: "c")
+        cache.insert(4, for: "d")
+
+        XCTAssertEqual(cache.count, 3)
+        XCTAssertNil(cache.value(for: "a"), "the oldest entry is the only one dropped")
+        XCTAssertEqual(cache.value(for: "b"), 2)
+        XCTAssertEqual(cache.value(for: "c"), 3)
+        XCTAssertEqual(cache.value(for: "d"), 4)
+        XCTAssertEqual(cache.keys, ["b", "c", "d"])
+    }
+
+    func testReadRefreshesRecency() {
+        var cache = LRUCache<String, Int>(limit: 2)
+        cache.insert(1, for: "a")
+        cache.insert(2, for: "b")
+
+        XCTAssertEqual(cache.value(for: "a"), 1, "a read makes 'a' the newest entry")
+        cache.insert(3, for: "c")
+
+        XCTAssertEqual(cache.keys, ["a", "c"])
+        XCTAssertNil(cache.value(for: "b"))
+    }
+
+    func testReinsertingAKeyMovesItWithoutGrowing() {
+        var cache = LRUCache<String, Int>(limit: 2)
+        cache.insert(1, for: "a")
+        cache.insert(2, for: "b")
+        cache.insert(3, for: "a")
+
+        XCTAssertEqual(cache.count, 2)
+        XCTAssertEqual(cache.keys, ["b", "a"])
+        XCTAssertEqual(cache.value(for: "a"), 3)
+    }
+
+    func testEvictionKeepsTheMostRecentKeysWithinTheLimit() {
+        var cache = LRUCache<Int, Int>(limit: 12)
+        for index in 0..<40 {
+            cache.insert(index, for: index)
+        }
+
+        XCTAssertEqual(cache.count, 12)
+        XCTAssertEqual(cache.keys, Array(28..<40))
+    }
 }

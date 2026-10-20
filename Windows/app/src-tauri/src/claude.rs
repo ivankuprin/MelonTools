@@ -286,39 +286,6 @@ pub fn parse_credentials(root: &Value) -> Vec<Value> {
         .collect()
 }
 
-/// `claude-*` model ids served by the running gateway (`GET /v1/models`).
-pub async fn models(port: u16, api_key: &str) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let response = client
-        .get(format!("http://127.0.0.1:{}/v1/models", port))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let value: Value = response.json().await.map_err(|e| e.to_string())?;
-    let entries: Vec<Value> = value
-        .get("data")
-        .and_then(|d| d.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.get("id").and_then(|v| v.as_str()))
-                .filter(|id| is_claude_model_id(id))
-                .map(|id| {
-                    json!({
-                        "id": id,
-                        "displayName": crate::codex_route::prettify(id),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok(json!({ "models": entries.clone(), "count": entries.len() }))
-}
-
 // MARK: - Usage (quota)
 
 /// Quota snapshot. Percent values are the share of the window still

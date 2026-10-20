@@ -223,7 +223,15 @@ final class UpdaterStore: ObservableObject {
         let script = """
         #!/bin/bash
         # Melon Tools self-update: replace the running bundle after it exits.
-        exec >> /tmp/melontools-update.log 2>&1
+        # The log lives in the user's Logs folder (0600): the update script runs
+        # as the user, and /tmp is world-readable and periodically purged.
+        umask 077
+        LOG_DIR="$HOME/Library/Logs/MelonTools"
+        mkdir -p "$LOG_DIR"
+        LOG="$LOG_DIR/update.log"
+        : >> "$LOG"
+        chmod 0600 "$LOG" 2>/dev/null || true
+        exec >> "$LOG" 2>&1
         APP="\(appPath)"
         DMG="\(dmg.path)"
         PID=\(ProcessInfo.processInfo.processIdentifier)

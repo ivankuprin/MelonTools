@@ -8,6 +8,8 @@ struct CodexInstancesView: View {
     @State private var showCreate = false
     @State private var newName = ""
     @State private var newAccountId: String? = nil
+    /// Instance waiting for the delete confirmation (deleting removes its CODEX_HOME).
+    @State private var pendingDelete: CodexInstance?
 
     var body: some View {
         ScrollView {
@@ -63,6 +65,24 @@ struct CodexInstancesView: View {
         .sheet(isPresented: $showCreate) {
             createSheet
         }
+        .confirmationDialog(
+            pendingDelete.map { String(format: L("Delete instance '%@'?"), $0.name) }
+                ?? L("Delete this instance?"),
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { instance in
+            Button(L("Delete"), role: .destructive) {
+                instances.delete(instance)
+                pendingDelete = nil
+            }
+            Button(L("Cancel"), role: .cancel) { pendingDelete = nil }
+        } message: { instance in
+            Text(String(format: L("The instance '%@' and its Codex home (login, settings, history) will be removed."), instance.name))
+        }
     }
 
     private func instanceRow(_ instance: CodexInstance) -> some View {
@@ -85,7 +105,7 @@ struct CodexInstancesView: View {
                     NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: instance.homePath)
                 }
                 Button {
-                    instances.delete(instance)
+                    pendingDelete = instance
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 11))

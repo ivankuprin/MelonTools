@@ -305,6 +305,8 @@ final class CodexStore: ObservableObject {
             if fm.fileExists(atPath: codexAuthPath) {
                 try? fm.removeItem(atPath: backupPath)
                 try fm.copyItem(atPath: codexAuthPath, toPath: backupPath)
+                // The backup carries tokens — never leave it world-readable.
+                try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backupPath)
             }
             let auth = CodexAuthFile.make(from: account)
             let data = try auth.encoded()

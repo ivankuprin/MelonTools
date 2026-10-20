@@ -56,14 +56,17 @@ const DICT = {
     antigravityHint: "Вход через Google-аккаунт Antigravity (только OAuth). Квоты не отображаются — их API не предоставляет.",
     antigravityDisconnected: "Antigravity отключён",
     confirmAntigravityDisconnect: "Отключить Antigravity? Аккаунт будет удалён из шлюза.",
+    loginTimeout: "Вход не подтверждён за 10 минут — попробуйте снова",
     projectId: "Проект",
     settingsSub: "Язык, порт шлюза, интервал обновления квот.",
     language: "Язык", quotaInterval: "Обновлять квоты, сек", apply: "Применить", about: "О приложении", version: "Версия", platform: "Платформа",
+    codexHome: "Папка Codex",
     donateSub: "Поддержать Melon Tools — USDT (TRC20).",
     donateAddress: "Адрес кошелька", donateNote: "Сеть TRON (TRC20). Спасибо за поддержку! 🍉",
     warnNoAccounts: "Пул пуст — импортируйте текущий вход Codex или добавьте аккаунт в macOS-версии и скопируйте vault.",
     loading: "Загрузка…", error: "Ошибка", done: "Готово",
     confirmDelete: "Удалить аккаунт {name} из пула?",
+    confirmDeleteInstance: "Удалить инстанс {name}?",
     okPill: "готов", autoRefresh: "автообновление квот",
     addAccount: "Добавить аккаунт", addAccountHint: "Вход по коду: откроется страница OpenAI, введите код.",
     deviceCode: "Код", deviceWaiting: "Ждём подтверждение…", deviceOpen: "Открыть страницу входа",
@@ -136,14 +139,17 @@ const DICT = {
     antigravityHint: "Sign in with the Antigravity Google account (OAuth only). No quota display — the API provides none.",
     antigravityDisconnected: "Antigravity disconnected",
     confirmAntigravityDisconnect: "Disconnect Antigravity? The account is removed from the gateway.",
+    loginTimeout: "Sign-in was not confirmed within 10 minutes — try again",
     projectId: "Project",
     settingsSub: "Language, gateway port, quota refresh interval.",
     language: "Language", quotaInterval: "Refresh quotas, sec", apply: "Apply", about: "About", version: "Version", platform: "Platform",
+    codexHome: "Codex home",
     donateSub: "Support Melon Tools — USDT (TRC20).",
     donateAddress: "Wallet address", donateNote: "TRON network (TRC20). Thanks for the support! 🍉",
     warnNoAccounts: "The pool is empty — import the current Codex login or copy the vault from the macOS app.",
     loading: "Loading…", error: "Error", done: "Done",
     confirmDelete: "Remove {name} from the pool?",
+    confirmDeleteInstance: "Delete instance {name}?",
     okPill: "ready", autoRefresh: "quota auto-refresh",
     addAccount: "Add account", addAccountHint: "Device code: a page opens, enter the code.",
     deviceCode: "Code", deviceWaiting: "Waiting for confirmation…", deviceOpen: "Open the sign-in page",
@@ -198,6 +204,11 @@ const S = {
   deviceLogin: null,
   autostart: false,
   busy: {},
+  // M3 refresh guard: pending edits keep the full re-render deferred.
+  dirtyInput: false,
+  dirtyField: null,
+  renderDeferred: false,
+  _renderResumeTimer: null,
 };
 
 function t(key) {
@@ -208,8 +219,13 @@ function fmt(text, values) {
 }
 function esc(value) {
   return String(value === null || value === undefined ? "" : value)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    // Ids and paths land inside single-quoted onclick attributes.
+    .replace(/'/g, "&#39;");
 }
+
+// OAuth polls give up after 10 minutes instead of polling forever.
+const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 
 // MARK: - Backend
 
@@ -325,16 +341,21 @@ function round(value) {
   return value === null || value === undefined ? "—" : `${Math.round(value)}%`;
 }
 
-function resetText(unixTs, key) {
-  if (!unixTs) return t(key === "hourly" ? "onceReset" : "onceReset");
+// Time units follow the UI language (same pattern as claudeResetText).
+function unit(en, ru) {
+  return S.lang === "en" ? en : ru;
+}
+
+function resetText(unixTs) {
+  if (!unixTs) return t("onceReset");
   const secs = unixTs - nowRef();
   if (secs <= 0) return t("resetNow");
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${t("resetIn")} ${mins} мин`;
+  if (mins < 60) return `${t("resetIn")} ${mins} ${unit("min", "мин")}`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${t("resetIn")} ${hours} ч ${mins % 60} мин`;
+  if (hours < 24) return `${t("resetIn")} ${hours} ${unit("h", "ч")} ${mins % 60} ${unit("min", "мин")}`;
   const days = Math.floor(hours / 24);
-  return `${t("resetIn")} ${days} дн ${hours % 24} ч`;
+  return `${t("resetIn")} ${days} ${unit("d", "дн")} ${hours % 24} ${unit("h", "ч")}`;
 }
 
 // Claude usage resets arrive as RFC-3339; render them relative like the
@@ -346,11 +367,11 @@ function claudeResetText(iso) {
   const secs = (ts - Date.now()) / 1000;
   if (secs <= 0) return t("resetNow");
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${t("resetIn")} ${mins} ${S.lang === "en" ? "min" : "мин"}`;
+  if (mins < 60) return `${t("resetIn")} ${mins} ${unit("min", "мин")}`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${t("resetIn")} ${hours} ${S.lang === "en" ? "h" : "ч"} ${mins % 60} ${S.lang === "en" ? "min" : "мин"}`;
+  if (hours < 24) return `${t("resetIn")} ${hours} ${unit("h", "ч")} ${mins % 60} ${unit("min", "мин")}`;
   const days = Math.floor(hours / 24);
-  return `${t("resetIn")} ${days} ${S.lang === "en" ? "d" : "дн"} ${hours % 24} ${S.lang === "en" ? "h" : "ч"}`;
+  return `${t("resetIn")} ${days} ${unit("d", "дн")} ${hours % 24} ${unit("h", "ч")}`;
 }
 
 // RFC-3339 timestamp → "N с / N мин / N ч" since it (reuses ageText).
@@ -363,10 +384,10 @@ function claudeAgeText(iso) {
 function ageText(unixTs) {
   if (!unixTs) return t("never");
   const secs = nowRef() - unixTs;
-  if (secs < 60) return `${Math.max(0, Math.floor(secs))} с`;
+  if (secs < 60) return `${Math.max(0, Math.floor(secs))} ${unit("s", "с")}`;
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins} мин`;
-  return `${Math.floor(mins / 60)} ч ${mins % 60} мин`;
+  if (mins < 60) return `${mins} ${unit("min", "мин")}`;
+  return `${Math.floor(mins / 60)} ${unit("h", "ч")} ${mins % 60} ${unit("min", "мин")}`;
 }
 
 function quotaTint(percent) {
@@ -487,7 +508,11 @@ function renderFooter() {
   const updateLabel = document.getElementById("update-label");
   if (updateLabel) A.updateButton();
   const cancel = document.getElementById("update-cancel");
-  if (cancel) cancel.textContent = t("updateCancel");
+  if (cancel) {
+    cancel.textContent = t("updateCancel");
+    // C-F8: once the swap started the modal must stay put — keep Cancel off.
+    cancel.disabled = !!A._updateApplying;
+  }
   const apply = document.getElementById("update-apply");
   if (apply) apply.textContent = t("updateApply");
 }
@@ -1073,8 +1098,7 @@ function settingsPage() {
       <tr><td>${t("version")}</td><td>${esc(info.version || "—")}</td></tr>
       <tr><td>${t("platform")}</td><td>${esc(info.platform || "—")}</td></tr>
       <tr><td>${t("dataDir")}</td><td>${esc(info.dataDir || "—")}</td></tr>
-      <tr><td>Codex home</td><td>${esc(info.codexHome || "—")}</td></tr>
-      <tr><td>${t("fleetCli")}</td><td>${esc(info.fleetHome || "—")}</td></tr>
+      <tr><td>${t("codexHome")}</td><td>${esc(info.codexHome || "—")}</td></tr>
     </table>
   </div>`;
 }
@@ -1213,6 +1237,29 @@ function fleetPage() {
   return `${pageHead("melon tools", t("fleet"), t("fleetHome"))}${tabBar}${body}`;
 }
 
+// MARK: - Refresh guard (M3)
+
+const FORM_TAGS = ["INPUT", "TEXTAREA", "SELECT"];
+
+function isFormField(node) {
+  return !!node && FORM_TAGS.indexOf(node.tagName) >= 0;
+}
+
+// The 5 s status tick re-renders whole pages, which would wipe what the user
+// is typing. The full render runs only when no field is focused and no edit
+// is pending; the footer status update always runs.
+function editsInProgress() {
+  // The edited element can be removed by another render without a focusout
+  // event — then there is nothing left to protect and the flag must not
+  // stall future updates.
+  if (S.dirtyInput && S.dirtyField && !S.dirtyField.isConnected) {
+    S.dirtyInput = false;
+    S.dirtyField = null;
+  }
+  if (isFormField(document.activeElement)) return true;
+  return !!S.dirtyInput;
+}
+
 const A = {
   go(section) {
     S.section = section;
@@ -1233,7 +1280,15 @@ const A = {
       S.status = await inv("gateway_status");
       S.bridge = await inv("bridge_status");
       renderFooter();
-      if (S.section === "dashboard" || S.section === "api" || S.section === "accounts") render();
+      if (S.section !== "dashboard" && S.section !== "api" && S.section !== "accounts") return;
+      if (editsInProgress()) {
+        // Status-only update done; the full render resumes after the field
+        // loses focus (see the focusout hook in the boot section).
+        S.renderDeferred = true;
+        return;
+      }
+      S.renderDeferred = false;
+      render();
     } catch (error) {
       // Keep the previous status on transient failures.
     }
@@ -1411,13 +1466,21 @@ const A = {
     run("claudeConnect", async () => {
       const session = await inv("claude_login_start");
       if (!session || !session.url || !session.state) throw new Error(t("claudeLoginError"));
-      S.claudeLogin = { state: session.state, done: false };
+      S.claudeLogin = { state: session.state, startedAt: Date.now(), done: false };
       render();
       inv("open_url", { url: session.url }).catch(() => {});
       clearInterval(A._claudeTimer);
       A._claudeTimer = setInterval(async () => {
         if (!S.claudeLogin) {
           clearInterval(A._claudeTimer);
+          return;
+        }
+        // C-F9: the poll must not run forever — 10 minutes, then an honest error.
+        if (Date.now() - S.claudeLogin.startedAt >= LOGIN_TIMEOUT_MS) {
+          clearInterval(A._claudeTimer);
+          S.claudeLogin = null;
+          toast(t("loginTimeout"), true);
+          render();
           return;
         }
         try {
@@ -1495,13 +1558,21 @@ const A = {
     run("antigravityConnect", async () => {
       const session = await inv("antigravity_login_start");
       if (!session || !session.url || !session.state) throw new Error(t("antigravityLoginError"));
-      S.antigravityLogin = { state: session.state, done: false };
+      S.antigravityLogin = { state: session.state, startedAt: Date.now(), done: false };
       render();
       inv("open_url", { url: session.url }).catch(() => {});
       clearInterval(A._antigravityTimer);
       A._antigravityTimer = setInterval(async () => {
         if (!S.antigravityLogin) {
           clearInterval(A._antigravityTimer);
+          return;
+        }
+        // C-F9: the poll must not run forever — 10 minutes, then an honest error.
+        if (Date.now() - S.antigravityLogin.startedAt >= LOGIN_TIMEOUT_MS) {
+          clearInterval(A._antigravityTimer);
+          S.antigravityLogin = null;
+          toast(t("loginTimeout"), true);
+          render();
           return;
         }
         try {
@@ -1702,7 +1773,10 @@ const A = {
   },
 
   async instanceDelete(id) {
-    if (!window.confirm(t("instanceDelete") + "?")) return;
+    // The confirmation must name the instance, like account deletion.
+    const instance = (S.instancesData || []).find((item) => item.id === id);
+    const name = (instance && instance.name) || id;
+    if (!window.confirm(fmt(t("confirmDeleteInstance"), { name }))) return;
     run("instance-delete", async () => {
       S.instancesData = await inv("instance_delete", { id });
     });
@@ -1796,7 +1870,10 @@ const A = {
     const sub = document.getElementById("update-sub");
     const notes = document.getElementById("update-notes");
     const apply = document.getElementById("update-apply");
+    const cancel = document.getElementById("update-cancel");
     modal.hidden = false;
+    A._updateApplying = false;
+    if (cancel) cancel.disabled = false;
     title.textContent = t("updateChecking");
     sub.textContent = "";
     notes.textContent = "";
@@ -1822,6 +1899,8 @@ const A = {
   },
 
   updateClose() {
+    // While the swap runs the window must not be able to hide.
+    if (A._updateApplying) return;
     const modal = document.getElementById("update-modal");
     if (modal) modal.hidden = true;
   },
@@ -1830,6 +1909,11 @@ const A = {
     if (!S.update || !S.update.newer) return;
     const sub = document.getElementById("update-sub");
     const apply = document.getElementById("update-apply");
+    const cancel = document.getElementById("update-cancel");
+    // Cancel disappears as soon as applying starts; it comes back only if
+    // the swap fails and the window stays.
+    A._updateApplying = true;
+    if (cancel) cancel.disabled = true;
     apply.style.display = "none";
     sub.textContent = t("updateDownloading");
     try {
@@ -1837,12 +1921,40 @@ const A = {
       sub.textContent = t("updateInstalling");
     } catch (error) {
       sub.textContent = String(error && error.message ? error.message : error);
+      A._updateApplying = false;
+      if (cancel) cancel.disabled = false;
       apply.style.display = "";
     }
   },
 };
 
 window.A = A;
+
+// MARK: - Edit tracking (M3)
+
+// Typing marks the current field dirty so the periodic refreshStatus does
+// not re-render the page under the user's hands.
+function markFieldDirty(event) {
+  if (!isFormField(event.target)) return;
+  S.dirtyInput = true;
+  S.dirtyField = event.target;
+}
+document.addEventListener("input", markFieldDirty, true);
+document.addEventListener("change", markFieldDirty, true);
+
+// Focus left every field: the deferred full update runs now instead of
+// waiting for the next 5 s tick.
+document.addEventListener("focusout", (event) => {
+  if (isFormField(event.relatedTarget)) return; // moved to another field
+  S.dirtyInput = false;
+  S.dirtyField = null;
+  if (!S.renderDeferred) return;
+  S.renderDeferred = false;
+  clearTimeout(S._renderResumeTimer);
+  // Small delay so a click (mousedown → focusout → mouseup → click) lands on
+  // the current DOM before it is re-rendered.
+  S._renderResumeTimer = setTimeout(() => A.refreshStatus(), 350);
+}, true);
 
 // MARK: - Boot
 

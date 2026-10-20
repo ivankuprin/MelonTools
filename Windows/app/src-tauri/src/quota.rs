@@ -282,6 +282,16 @@ async fn fetch_reset_credits(
     Ok((available, next_expiry))
 }
 
+/// Subscription URL with the account id percent-encoded: the id is opaque and
+/// may carry `+`, `&`, `=` (the header variant stays unencoded).
+fn subscription_url(account_id: Option<&str>) -> String {
+    const BASE: &str = "https://chatgpt.com/backend-api/subscriptions";
+    match account_id.filter(|value| !value.is_empty()) {
+        Some(id) => format!("{}?account_id={}", BASE, crate::claude::url_query(id)),
+        None => BASE.to_string(),
+    }
+}
+
 /// Subscription plan + end date (the backend is authoritative).
 async fn fetch_subscription(
     client: &Client,
@@ -290,10 +300,7 @@ async fn fetch_subscription(
 ) -> Result<(Option<String>, Option<String>), String> {
     let access = tokens.access_token.clone().ok_or("нет access_token")?;
     let account_id = account.account_id.clone().or(tokens.account_id.clone());
-    let mut url = "https://chatgpt.com/backend-api/subscriptions".to_string();
-    if let Some(id) = account_id.clone().filter(|v| !v.is_empty()) {
-        url = format!("{}?account_id={}", url, id);
-    }
+    let url = subscription_url(account_id.as_deref());
     let mut request = client
         .get(url)
         .header("Authorization", format!("Bearer {}", access))
@@ -345,4 +352,29 @@ pub async fn refresh_all(client: &Client, only: Option<&str>) -> Vec<String> {
         }
     }
     errors
+}
+
+#[cfg(test)]
+mod tests {
+    use super::subscription_url;
+
+    #[test]
+    fn subscription_url_percent_encodes_account_id() {
+        assert_eq!(
+            subscription_url(None),
+            "https://chatgpt.com/backend-api/subscriptions"
+        );
+        assert_eq!(
+            subscription_url(Some("")),
+            "https://chatgpt.com/backend-api/subscriptions"
+        );
+        assert_eq!(
+            subscription_url(Some("user-123")),
+            "https://chatgpt.com/backend-api/subscriptions?account_id=user-123"
+        );
+        assert_eq!(
+            subscription_url(Some("a+b&c=d/e")),
+            "https://chatgpt.com/backend-api/subscriptions?account_id=a%2Bb%26c%3Dd%2Fe"
+        );
+    }
 }

@@ -245,9 +245,19 @@ final class ComposerBridge: ObservableObject {
         guard !sessions.isEmpty else { return }
         guard let data = try? JSONSerialization.data(withJSONObject: statusPayload()),
               let json = String(data: data, encoding: .utf8) else { return }
+        let literal = Self.escapedForJavaScript(json)
         for session in sessions.values where session.isAlive {
-            session.evaluate("window.__melonChipsSetStatus && window.__melonChipsSetStatus(\(json));")
+            session.evaluate("window.__melonChipsSetStatus && window.__melonChipsSetStatus(\(literal));")
         }
+    }
+
+    /// JSON allows U+2028/U+2029 raw inside strings, but JavaScript treats them
+    /// as line terminators: a model or account label carrying one would break
+    /// the injected expression. Escaping them keeps the literal valid.
+    nonisolated static func escapedForJavaScript(_ json: String) -> String {
+        json
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 
     // MARK: - Page context and provider data
@@ -744,7 +754,7 @@ final class ComposerBridge: ObservableObject {
         ]
         let configJSON = (try? JSONSerialization.data(withJSONObject: config))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        return "window.__MELON_COMPOSER_CONFIG__ = \(configJSON);\n\(scriptSource())"
+        return "window.__MELON_COMPOSER_CONFIG__ = \(Self.escapedForJavaScript(configJSON));\n\(scriptSource())"
     }
 
     private static var cachedScript: String?

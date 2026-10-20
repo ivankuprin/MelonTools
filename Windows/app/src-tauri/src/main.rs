@@ -35,6 +35,9 @@ pub struct AppState {
     pub notified: Mutex<HashMap<String, i64>>,
     /// Engine watchdog bookkeeping.
     pub watchdog: Mutex<Watchdog>,
+    /// Last validated `update_check` result. `update_apply` uses only this
+    /// copy and never trusts renderer-supplied URL/digest.
+    pub update: Mutex<Option<updater::UpdateInfo>>,
 }
 
 /// Keeps the local engine alive: after we started (or adopted) the gateway,
@@ -82,7 +85,18 @@ fn app_info() -> Value {
 
 #[tauri::command]
 async fn settings_get(state: State<'_, AppState>) -> Result<Value, String> {
-    serde_json::to_value(state.settings()).map_err(|e| e.to_string())
+    settings_view(&state.settings())
+}
+
+/// Renderer-facing settings. The management secret is app-internal (the engine
+/// config and management calls need the plaintext value) and must not cross the
+/// IPC boundary: it is redacted, the other fields pass through unchanged.
+fn settings_view(settings: &settings::Settings) -> Result<Value, String> {
+    let mut value = serde_json::to_value(settings).map_err(|e| e.to_string())?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert("managementSecret".to_string(), json!(""));
+    }
+    Ok(value)
 }
 
 #[tauri::command]
@@ -104,7 +118,7 @@ async fn settings_set(
     if let Ok(mut guard) = state.settings.lock() {
         *guard = merged.clone();
     }
-    serde_json::to_value(merged).map_err(|e| e.to_string())
+    settings_view(&merged)
 }
 
 // MARK: - Gateway
@@ -626,20 +640,41 @@ async fn update_check(state: State<'_, AppState>, force: bool) -> Result<Value, 
     if result.get("skipped").and_then(|v| v.as_bool()) != Some(true) {
         let now = chrono::Utc::now().timestamp();
         mutate_settings(&state, |s| s.last_update_check = Some(now))?;
+        // The latest check replaces the apply target: a release that is no
+        // longer newer/verifiable must not leave an older cache behind.
+        let cached = updater::cached_from_check(&result);
+        if let Ok(mut guard) = state.update.lock() {
+            *guard = cached;
+        }
     }
     Ok(result)
 }
 
 /// Downloads and verifies the new executable, then hands the swap to a
 /// detached script and exits so the file is not locked.
+///
+/// The `url`/`digest` arguments are kept for UI compatibility but ignored: the
+/// download target comes exclusively from the last validated `update_check`
+/// cached in app state.
 #[tauri::command]
 async fn update_apply(
     app: tauri::AppHandle,
+    state: State<'_, AppState>,
     url: String,
     digest: Option<String>,
 ) -> Result<Value, String> {
+    let _ = (url, digest);
+    let info = state
+        .update
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .ok_or_else(|| {
+            "нет проверенных данных об обновлении — проверьте обновления ещё раз".to_string()
+        })?;
+    updater::validate_cached(&info)?;
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
-    let new_exe = updater::fetch_update(&url, digest.as_deref()).await?;
+    let new_exe = updater::fetch_update(&info.url, Some(&info.digest)).await?;
     updater::spawn_swapper(&new_exe, &current, std::process::id())?;
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -713,8 +748,9 @@ async fn claude_refresh(state: State<'_, AppState>, name: Option<String>) -> Res
     management(&state)?.refresh(name.as_deref()).await
 }
 
-/// Disconnects the account: removes the engine-written `claude-*.json` auth
-/// files (the engine hot-reloads the auth dir) and reports what is left.
+/// Disconnects every Claude account: removes ALL engine-written
+/// `claude-*.json` auth files (the engine hot-reloads the auth dir) and
+/// reports what is left. There is no per-account selection here.
 #[tauri::command]
 async fn claude_disconnect() -> Result<Value, String> {
     let mut removed = 0usize;
@@ -797,23 +833,31 @@ async fn antigravity_disconnect() -> Result<Value, String> {
     Ok(json!({ "removed": removed, "remaining": remaining }))
 }
 
-/// Opens an http(s) URL in the default browser (device login page).
-#[tauri::command]
-async fn open_url(url: String) -> Result<(), String> {
+/// Launcher argv for an http(s) URL. The browser is opened through
+/// `rundll32 url.dll,FileProtocolHandler`: unlike `cmd /C start`, no shell
+/// re-parses the URL, so quotes, `&` or `^` cannot inject another command.
+fn launcher_argv(url: &str) -> Result<[String; 2], String> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err("разрешены только http(s)-ссылки".to_string());
     }
+    Ok(["url.dll,FileProtocolHandler".to_string(), url.to_string()])
+}
+
+/// Opens an http(s) URL in the default browser (device login page).
+#[tauri::command]
+async fn open_url(url: String) -> Result<(), String> {
     #[cfg(windows)]
     {
-        let mut command = std::process::Command::new("cmd");
-        command.args(["/C", "start", "", &url]);
+        let argv = launcher_argv(&url)?;
+        let mut command = std::process::Command::new("rundll32.exe");
+        command.args(argv);
         hidden_command(&mut command);
         command.spawn().map_err(|e| e.to_string())?;
         Ok(())
     }
     #[cfg(not(windows))]
     {
-        let _ = url;
+        launcher_argv(&url)?;
         Err("открытие ссылок поддерживается на Windows".to_string())
     }
 }
@@ -898,6 +942,7 @@ fn main() {
             settings: Mutex::new(initial_settings),
             notified: Mutex::new(HashMap::new()),
             watchdog: Mutex::new(Watchdog::default()),
+            update: Mutex::new(None),
         })
         .setup(|app| {
             // System tray: open window / quit.
@@ -1036,4 +1081,41 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("Melon Tools failed to start");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{launcher_argv, settings_view};
+
+    #[test]
+    fn launcher_accepts_only_http_schemes() {
+        assert_eq!(
+            launcher_argv("https://example.com/login?x=1&y=2").unwrap(),
+            [
+                "url.dll,FileProtocolHandler".to_string(),
+                "https://example.com/login?x=1&y=2".to_string()
+            ]
+        );
+        assert!(launcher_argv("http://127.0.0.1:18317/").is_ok());
+        for bad in [
+            "file:///C:/Windows/System32/cmd.exe",
+            "javascript:alert(1)",
+            "shell:startup",
+            "ms-settings:",
+            "cmd /C calc",
+        ] {
+            assert!(launcher_argv(bad).is_err(), "accepted {bad}");
+        }
+    }
+
+    #[test]
+    fn settings_view_redacts_the_management_secret() {
+        let mut settings = crate::settings::Settings::default();
+        settings.port = 19000;
+        settings.management_secret = "melon-mgmt-0123456789abcdef".to_string();
+        let value = settings_view(&settings).unwrap();
+        assert_eq!(value["managementSecret"], "");
+        assert_eq!(value["port"], 19000);
+        assert!(!value.to_string().contains("melon-mgmt-"));
+    }
 }
