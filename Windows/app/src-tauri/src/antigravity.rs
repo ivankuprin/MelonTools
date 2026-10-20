@@ -314,12 +314,14 @@ impl Management {
         serde_json::from_str(text).unwrap_or(Value::Null)
     }
 
-    /// `GET /v8/management/oauth/auth-url?provider=antigravity`.
+    /// `GET /v8/management/oauth/auth-url?provider=antigravity&is_webui=true`.
+    /// `is_webui=true` is required: it starts the engine callback forwarder
+    /// on port 51121 that receives the Google redirect.
     pub async fn login_start(&self) -> Result<Value, String> {
         let (status, text) = self
             .call(
                 reqwest::Method::GET,
-                "/v8/management/oauth/auth-url?provider=antigravity",
+                "/v8/management/oauth/auth-url?provider=antigravity&is_webui=true",
                 None,
             )
             .await

@@ -179,8 +179,8 @@ final class AntigravityAuthService: ObservableObject {
 
     /// Starts the OAuth flow: asks the engine for the authorization URL,
     /// opens it in the user's browser and polls until the login settles.
-    /// The engine listens on its fixed callback port (51121); no web-UI
-    /// forwarder is needed for the desktop app.
+    /// `is_webui=true` is required — it starts the engine callback forwarder
+    /// on port 51121, which the browser redirects to after Google sign-in.
     func startLogin() async {
         pollTask?.cancel()
         pollTask = nil
@@ -189,7 +189,7 @@ final class AntigravityAuthService: ObservableObject {
         let request = ClaudeAuthService.managementRequest(
             baseURL: baseURL,
             secret: CodexGatewayService.managementSecret,
-            path: "/v8/management/oauth/auth-url?provider=antigravity"
+            path: "/v8/management/oauth/auth-url?provider=antigravity&is_webui=true"
         )
         guard let response = await send(request), response.1.statusCode == 200,
               let payload = Self.parseAuthURLResponse(response.0) else {
