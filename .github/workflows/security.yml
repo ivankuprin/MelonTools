@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Swift and the Tauri Rust crate are not covered by CodeQL here; the
-      # JavaScript UI and the Fleet bridge are the scriptable attack surface.
+      # JavaScript UI and the Codex bridge are the scriptable attack surface.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:

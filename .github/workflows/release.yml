@@ -12,6 +12,12 @@ jobs:
   macos:
     name: macOS DMG
     runs-on: macos-latest
+    env:
+      APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     outputs:
       version: ${{ steps.version.outputs.version }}
       signed: ${{ steps.sign.outputs.signed }}
@@ -51,7 +57,7 @@ jobs:
       # Signing is optional. The job must not fail when the repository has no
       # Apple secrets yet: it then publishes the usual ad-hoc signed DMG.
       - name: Import the Apple signing certificate
-        if: ${{ secrets.APPLE_CERT_P12 != '' && secrets.APPLE_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+        if: env.APPLE_CERT_P12 != '' && env.APPLE_CERT_PASSWORD != '' && env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_PASSWORD != ''
         env:
           APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -72,7 +78,7 @@ jobs:
 
       - name: Sign and notarize the DMG
         id: sign
-        if: ${{ secrets.APPLE_CERT_P12 != '' && secrets.APPLE_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+        if: env.APPLE_CERT_P12 != '' && env.APPLE_CERT_PASSWORD != '' && env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_PASSWORD != ''
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -150,9 +156,28 @@ jobs:
           cp target/release/melontools.exe \
             "../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
 
+      - name: Build the Windows installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ steps.version.outputs.version }}"
+          $makensis = Join-Path ${env:ProgramFiles(x86)} "NSIS\makensis.exe"
+          if (-not (Test-Path $makensis)) {
+            choco install nsis -y --no-progress
+            $makensis = Join-Path ${env:ProgramFiles(x86)} "NSIS\makensis.exe"
+          }
+          if (-not (Test-Path $makensis)) { throw "makensis not found" }
+          Push-Location Windows
+          & $makensis /V2 "/DVERSION=$version" "/DSOURCE_EXE=dist/MelonTools-$version-win-x64.exe" "installer\MelonTools.nsi"
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
+          Pop-Location
+          $setup = "Windows/dist/MelonTools-$version-setup.exe"
+          if (-not (Test-Path $setup)) { throw "installer was not produced" }
+          Get-Item $setup | Format-List Name,Length
+
       - name: Sign the executable
         id: sign
-        if: ${{ secrets.WINDOWS_CERT_PFX != '' && secrets.WINDOWS_CERT_PASSWORD != '' }}
+        if: env.WINDOWS_CERT_PFX != '' && env.WINDOWS_CERT_PASSWORD != ''
         shell: pwsh
         env:
           WINDOWS_CERT_PFX: ${{ runner.temp }}\melontools-cert.pfx
@@ -166,6 +191,11 @@ jobs:
             $exe = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
             ./packaging/sign-windows.ps1 -File $exe -Require
             if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed" }
+            $setup = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-setup.exe"
+            if (Test-Path $setup) {
+              ./packaging/sign-windows.ps1 -File $setup -Require
+              if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed for installer" }
+            }
             "signed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } finally {
             Remove-Item $env:WINDOWS_CERT_PFX -Force -ErrorAction SilentlyContinue
@@ -175,13 +205,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $file = Get-ChildItem "Windows/dist/MelonTools-*-win-x64.exe" |
-            Select-Object -First 1
-          if (-not $file) { throw "No Windows executable found to hash." }
-          $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
-          "$hash  $($file.Name)" |
-            Set-Content -Path "$($file.FullName).sha256" -Encoding ascii -NoNewline
-          Get-Content "$($file.FullName).sha256"
+          $files = @(Get-ChildItem "Windows/dist/MelonTools-*-win-x64.exe") +
+                   @(Get-ChildItem "Windows/dist/MelonTools-*-setup.exe")
+          if (-not $files) { throw "No Windows artifacts found to hash." }
+          foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)" |
+              Set-Content -Path "$($file.FullName).sha256" -Encoding ascii -NoNewline
+            Get-Content "$($file.FullName).sha256"
+          }
 
       - name: Upload the executable artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -190,6 +222,8 @@ jobs:
           path: |
             Windows/dist/MelonTools-*-win-x64.exe
             Windows/dist/MelonTools-*-win-x64.exe.sha256
+            Windows/dist/MelonTools-*-setup.exe
+            Windows/dist/MelonTools-*-setup.exe.sha256
           if-no-files-found: error
 
   publish:
@@ -214,7 +248,7 @@ jobs:
           {
             echo "## Melon Tools ${{ needs.macos.outputs.version }}"
             echo ""
-            echo "Artifacts for macOS (universal DMG) and Windows (x64 executable)."
+            echo "Artifacts for macOS (universal DMG) and Windows (installer + portable executable)."
             echo "Verify each download against its \`.sha256\` file before running it."
             echo ""
             if [ "${{ needs.macos.outputs.signed }}" != "true" ]; then
