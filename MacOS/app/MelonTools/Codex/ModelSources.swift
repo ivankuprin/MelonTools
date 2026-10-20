@@ -929,14 +929,11 @@ final class ModelSourcesStore: ObservableObject {
 
     /// Keeps the Codex catalog in step with the store at launch. The picker
     /// reads `melon-model-catalog.json` at startup, so a stale file — written
-    /// before the provider bands or the `openrouter/` aliases existed — must be
-    /// regenerated before the next Codex launch.
+    /// before the provider bands, aliases or display-name disambiguation
+    /// existed — must be regenerated before the next Codex launch. Slug sets
+    /// alone are not enough: a fix that only changes display names would
+    /// otherwise leave the old catalog in place.
     func syncCatalogIfNeeded() {
-        let wanted = Set(sources.filter(\.enabled).flatMap { $0.selectedModels.map(\.alias) })
-        guard wanted != CodexModelCatalog.thirdPartySlugs() else {
-            try? CodexModelCatalog.ensureConfigReference()
-            return
-        }
         do {
             let count = try CodexModelCatalog.sync(sources: sources)
             lastApply = String(format: L("Applied: %d models for Codex."), count)
