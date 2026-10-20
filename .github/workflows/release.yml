@@ -32,8 +32,6 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.RELEASE_TAG }}
 
       - name: Resolve and verify the version
         id: version
@@ -128,8 +126,6 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.RELEASE_TAG }}
 
       - name: Resolve and verify the version
         id: version
