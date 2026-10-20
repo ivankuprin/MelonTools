@@ -989,6 +989,32 @@ struct CodexProvidersView: View {
             .foregroundStyle(isOn ? MTTheme.gold : MTTheme.textTertiary)
     }
 
+    /// Compact image-capability switch. A plain Button keeps the lazy list
+    /// free of one AppKit control per row (see `checkbox` above).
+    private func imagesToggle(sourceId: String, model: SourceModel) -> some View {
+        let on = model.supportsImages == true
+        return Button {
+            sources.setModelSupportsImages(sourceId, modelId: model.id, supportsImages: !on)
+        } label: {
+            HStack(spacing: 2) {
+                Image(systemName: "photo")
+                Text(L("Images"))
+            }
+            .font(MTTheme.mono(9, weight: on ? .semibold : .regular))
+            .foregroundStyle(on ? MTTheme.gold : MTTheme.textTertiary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(on ? MTTheme.gold.opacity(0.12) : MTTheme.cardSoft.opacity(0.6))
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(L("Images"))
+        .accessibilityLabel(L("Images"))
+        .accessibilityValue(on ? L("On") : L("Off"))
+    }
+
     private func modelRow(sourceId: String, model: SourceModel) -> some View {
         HStack(spacing: MTTheme.s2) {
             checkbox(model.enabled)
@@ -1011,6 +1037,7 @@ struct CodexProvidersView: View {
             if model.freeTier == true {
                 MTStatusPill(text: L("app only"), status: .warn)
             }
+            imagesToggle(sourceId: sourceId, model: model)
             if let context = model.contextLength, context > 0 {
                 Text(context >= 1000 ? "\(context / 1000)K" : "\(context)")
                     .font(MTTheme.mono(9))

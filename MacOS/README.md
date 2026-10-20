@@ -17,12 +17,13 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## What's new in 1.7.0 «Hardening and distribution»
+## What's new in 1.7.1 «Image input»
 
-- **Windows secrets.** Settings keys and vault tokens are encrypted at rest with DPAPI v2 (per-user/per-machine, app entropy, zeroized buffers, legacy migration).
-- **Reliability.** Updates are re-checked every six hours while running; macOS rolls back to the previous bundle if a new build fails to launch.
-- **UX.** First-run onboarding with a provider-terms/ban-risk disclaimer, read-only provider diagnostics, quota history sparklines, and reserve-aware low-quota notifications.
-- **Distribution.** CI, release automation, CodeQL, cargo audit, Dependabot, Homebrew Cask and winget manifests, FAQ and security model docs.
+- **Vision models in the Codex picker.** Generated model catalogs mark
+  vision-capable Claude, Antigravity and OpenRouter models with
+  `input_modalities: ["text", "image"]`. Saved models are backfilled on load,
+  and each model row has an «Images» toggle. Relaunch Codex after Apply so it
+  reloads the catalog.
 
 ## What's new in 1.6.3 «Security and data safety»
 

@@ -70,4 +70,213 @@ final class CodexModelCatalogTests: XCTestCase {
         XCTAssertTrue(CodexModelCatalog.isThirdPartySlug("claude-opus-4-6-thinking"))
         XCTAssertFalse(CodexModelCatalog.isThirdPartySlug("gpt-6.1-sol"))
     }
+
+    // MARK: - Image input
+
+    /// OpenRouter's `architecture.input_modalities` drives the store flag;
+    /// a missing block means unknown, not text-only.
+    func testOpenRouterInputModalitiesDecode() throws {
+        let json = """
+        {"data":[
+          {"id":"vision/model","name":"Vision","architecture":{"input_modalities":["text","image"]}},
+          {"id":"text/model","name":"Text","architecture":{"input_modalities":["text"]}},
+          {"id":"plain/model","name":"Plain"}
+        ]}
+        """
+        let list = try JSONDecoder().decode(
+            ModelSourcesStore.ModelList.self,
+            from: Data(json.utf8)
+        )
+        let byID = Dictionary(uniqueKeysWithValues: list.data.map { ($0.id, $0) })
+
+        XCTAssertEqual(
+            ModelSourcesStore.supportsImages(inputModalities: byID["vision/model"]?.architecture?.input_modalities),
+            true
+        )
+        XCTAssertEqual(
+            ModelSourcesStore.supportsImages(inputModalities: byID["text/model"]?.architecture?.input_modalities),
+            false
+        )
+        XCTAssertNil(
+            ModelSourcesStore.supportsImages(inputModalities: byID["plain/model"]?.architecture?.input_modalities)
+        )
+        XCTAssertNil(ModelSourcesStore.supportsImages(inputModalities: nil))
+    }
+
+    /// A cloned catalog entry carries the image modality only when the model
+    /// flag is true; false and unknown stay text-only.
+    func testCatalogCloneCarriesImageCapability() throws {
+        let template: [String: Any] = ["slug": "template", "context_window": 128_000]
+        let source = ModelSource(
+            id: "openrouter",
+            kind: .openRouter,
+            title: "OpenRouter",
+            baseURL: ModelSourcesStore.openRouterBaseURL,
+            apiKey: "key",
+            enabled: true,
+            models: []
+        )
+
+        func entry(supportsImages: Bool?) throws -> [String: Any] {
+            let model = SourceModel(
+                id: "vision-model",
+                display: "Vision Model",
+                contextLength: nil,
+                enabled: true,
+                alias: "openrouter/vision-model",
+                supportsImages: supportsImages
+            )
+            return try XCTUnwrap(CodexModelCatalog.makeEntry(from: template, model: model, source: source))
+        }
+
+        let vision = try entry(supportsImages: true)
+        XCTAssertEqual(vision["input_modalities"] as? [String], ["text", "image"])
+        XCTAssertEqual(vision["supports_image_detail_original"] as? Bool, false)
+
+        let textOnly = try entry(supportsImages: false)
+        XCTAssertEqual(textOnly["input_modalities"] as? [String], ["text"])
+
+        let unknown = try entry(supportsImages: nil)
+        XCTAssertEqual(unknown["input_modalities"] as? [String], ["text"])
+    }
+
+    /// Claude lists only `claude-*` vision models; Antigravity knows Gemini
+    /// and Claude are visual and `gpt-oss-120b-medium` is not.
+    func testProviderImageDefaults() {
+        XCTAssertEqual(ModelSourcesStore.claudeSupportsImages("claude-opus-4-6"), true)
+        XCTAssertNil(ModelSourcesStore.claudeSupportsImages("gpt-6.1-sol"))
+
+        XCTAssertEqual(ModelSourcesStore.antigravitySupportsImages("gemini-4-argon-high"), true)
+        XCTAssertEqual(ModelSourcesStore.antigravitySupportsImages("claude-opus-4-6-thinking"), true)
+        XCTAssertEqual(ModelSourcesStore.antigravitySupportsImages("gpt-oss-120b-medium"), false)
+        XCTAssertNil(ModelSourcesStore.antigravitySupportsImages("some-other-model"))
+    }
+
+    /// Old stores decode the missing flag as `nil`; a toggle writes `true`
+    /// or `false` through the store and survives a reload.
+    func testImagesTogglePersistsAndMissingFieldIsUnknown() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("melon-images-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("model-sources.json")
+
+        let fixture = ModelSourcesFixture(sources: [
+            ModelSource(
+                id: "openrouter",
+                kind: .openRouter,
+                title: "OpenRouter",
+                baseURL: ModelSourcesStore.openRouterBaseURL,
+                apiKey: "key",
+                enabled: true,
+                models: [SourceModel(
+                    id: "vision-model",
+                    display: "Vision Model",
+                    contextLength: nil,
+                    enabled: true,
+                    alias: "openrouter/vision-model"
+                )]
+            )
+        ])
+        try JSONEncoder().encode(fixture).write(to: storeURL)
+
+        let store = ModelSourcesStore(storeURL: storeURL)
+        XCTAssertNil(store.source(id: "openrouter")?.models.first?.supportsImages)
+
+        store.setModelSupportsImages("openrouter", modelId: "vision-model", supportsImages: true)
+        let reloaded = ModelSourcesStore(storeURL: storeURL)
+        XCTAssertEqual(reloaded.source(id: "openrouter")?.models.first?.supportsImages, true)
+
+        reloaded.setModelSupportsImages("openrouter", modelId: "vision-model", supportsImages: false)
+        let updated = ModelSourcesStore(storeURL: storeURL)
+        XCTAssertEqual(updated.source(id: "openrouter")?.models.first?.supportsImages, false)
+    }
+
+    /// A store written before the flag existed gets Claude/Antigravity
+    /// defaults on load, and the backfill is persisted for the catalog;
+    /// OpenRouter/OpenCode stay unknown.
+    func testOldStoreBackfillsProviderImageDefaults() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("melon-images-backfill-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("model-sources.json")
+
+        func model(_ id: String, alias: String? = nil) -> SourceModel {
+            SourceModel(
+                id: id,
+                display: id,
+                contextLength: nil,
+                enabled: true,
+                alias: alias ?? id
+            )
+        }
+
+        let fixture = ModelSourcesFixture(sources: [
+            ModelSource(
+                id: "claude",
+                kind: .claude,
+                title: "Claude",
+                baseURL: ModelSourcesStore.claudeBaseURL,
+                apiKey: "",
+                enabled: true,
+                models: [model("claude-opus-4-6")]
+            ),
+            ModelSource(
+                id: "antigravity",
+                kind: .antigravity,
+                title: "Antigravity",
+                baseURL: "",
+                apiKey: "",
+                enabled: true,
+                models: [
+                    model("gemini-4-argon-high"),
+                    model("claude-opus-4-6-thinking"),
+                    model("gpt-oss-120b-medium")
+                ]
+            ),
+            ModelSource(
+                id: "openrouter",
+                kind: .openRouter,
+                title: "OpenRouter",
+                baseURL: ModelSourcesStore.openRouterBaseURL,
+                apiKey: "key",
+                enabled: true,
+                models: [model("vision-model", alias: "openrouter/vision-model")]
+            ),
+            ModelSource(
+                id: "opencode",
+                kind: .openCode,
+                title: "OpenCode",
+                baseURL: ModelSourcesStore.openCodeBaseURL,
+                apiKey: "key",
+                enabled: true,
+                models: [model("vision-model", alias: "opencode/vision-model")]
+            )
+        ])
+        try JSONEncoder().encode(fixture).write(to: storeURL)
+
+        let store = ModelSourcesStore(storeURL: storeURL)
+        XCTAssertEqual(store.source(id: "claude")?.models.first?.supportsImages, true)
+        XCTAssertEqual(store.source(id: "antigravity")?.models[0].supportsImages, true)
+        XCTAssertEqual(store.source(id: "antigravity")?.models[1].supportsImages, true)
+        XCTAssertEqual(store.source(id: "antigravity")?.models[2].supportsImages, false)
+        XCTAssertNil(store.source(id: "openrouter")?.models.first?.supportsImages)
+        XCTAssertNil(store.source(id: "opencode")?.models.first?.supportsImages)
+
+        // The defaults were written back, not only patched in memory.
+        let persisted = try JSONDecoder().decode(
+            ModelSourcesFixture.self,
+            from: Data(contentsOf: storeURL)
+        )
+        XCTAssertEqual(persisted.sources.first { $0.id == "claude" }?.models.first?.supportsImages, true)
+        let antigravity = try XCTUnwrap(persisted.sources.first { $0.id == "antigravity" })
+        XCTAssertEqual(antigravity.models.map(\.supportsImages), [true, true, false] as [Bool?])
+        XCTAssertNil(persisted.sources.first { $0.id == "openrouter" }?.models.first?.supportsImages)
+        XCTAssertNil(persisted.sources.first { $0.id == "opencode" }?.models.first?.supportsImages)
+    }
+}
+
+private struct ModelSourcesFixture: Codable {
+    var sources: [ModelSource]
 }

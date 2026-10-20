@@ -1,30 +1,25 @@
-# Melon Tools 1.7.0
+# Melon Tools 1.7.1
 
-- **Security.** Windows secrets (settings keys + vault tokens) are encrypted at
-  rest with DPAPI v2 (per-user/per-machine, app entropy, zeroized buffers,
-  legacy migration, re-login state for undecryptable tokens); composer CDP is
-  gated by the chips setting and loopback-only; CSP adds object/base/frame
-  restrictions; CI/release workflows pin actions by SHA and grant write access
-  only to the publish job.
-- **Reliability.** The app re-checks for updates every 6 hours while running and
-  macOS rolls back to the previous bundle if the new build does not launch.
-- **UX.** First-run onboarding with a provider-terms/ban-risk disclaimer;
-  read-only provider diagnostics (gateway/auth/models/quota); quota history
-  sparklines; reserve-aware low-quota notifications (Windows toasts added).
-- **Distribution.** CI, release automation with optional signing, CodeQL,
-  cargo audit, Dependabot, Homebrew Cask and winget manifests, FAQ and security
-  model docs. Signing/notarization remain BLOCKED until certificates are
-  configured.
+- **Images work for provider models.** The generated Codex catalog now declares
+  `input_modalities: ["text","image"]` for vision-capable models: Claude and
+  Antigravity (Gemini/Claude families), OpenRouter models whose metadata lists
+  image input, and common vision families on Windows. Existing saved models are
+  backfilled on load, and the macOS model rows gained an «Images» toggle.
+- Codex must be relaunched after Apply so it reloads
+  `~/.codex/melon-model-catalog.json`.
 
 ## Downloads
 
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.7.0.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.7.0-win-x64.exe) — WebView2 Runtime required.
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.7.1.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.7.1-win-x64.exe) — WebView2 Runtime required.
 
 Both files include SHA-256 checksum assets on the release page.
 
 ## Earlier fixes
 
+- **1.7.0:** Security (DPAPI v2, CDP gating, CSP extras, SHA-pinned CI),
+  reliability (6h update checks, macOS rollback), UX (onboarding, diagnostics,
+  quota sparklines, low-quota notifications), packaging/docs.
 - **1.6.4:** Clean distribution (measurement/testing docs removed, naming
   unified, rebuilt artifacts).
 - **1.6.3:** Security and data-safety hardening (updater trust, URL opener,

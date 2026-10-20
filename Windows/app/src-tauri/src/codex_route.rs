@@ -278,6 +278,76 @@ fn capitalize(word: &str) -> String {
     }
 }
 
+/// Best-effort vision-capability heuristic for a gateway model id.
+///
+/// Codex decides whether the composer accepts pasted images from the catalog
+/// entry's `input_modalities`. Provider entries are cloned from a base entry,
+/// so the per-model answer has to come from the id. Routing prefixes
+/// (`openrouter/anthropic/...`) are ignored, and the heuristic is deliberately
+/// conservative: unknown ids stay text-only until the family is known here.
+pub fn vision_capable(model_id: &str, owned_by: Option<&str>) -> bool {
+    let id = model_id.to_ascii_lowercase();
+    let tail = id.rsplit('/').next().unwrap_or(&id);
+    let owner = owned_by.unwrap_or("").to_ascii_lowercase();
+
+    // Text-only and generation-only families first: they must not inherit
+    // vision from a broader prefix below.
+    if tail.starts_with("gpt-oss-") {
+        return false;
+    }
+    if ["dall-e", "flux", "stable-diffusion", "imagen", "gpt-image", "embed"]
+        .iter()
+        .any(|marker| tail.contains(marker))
+    {
+        return false;
+    }
+
+    // Claude and Gemini are multimodal on every gateway this app routes.
+    // `gemini-*-image` still accepts image input, so the whole family is true.
+    if tail.starts_with("claude-") || owner.contains("anthropic") {
+        return true;
+    }
+    if tail.starts_with("gemini-") || owner.contains("antigravity") {
+        return true;
+    }
+
+    // OpenAI GPT families with image input.
+    if tail.starts_with("gpt-4o")
+        || tail.starts_with("gpt-4.1")
+        || tail.starts_with("gpt-5")
+        || tail.starts_with("gpt-6")
+    {
+        return true;
+    }
+
+    // OpenRouter vision families.
+    if (tail.starts_with("qwen") && tail.contains("-vl"))
+        || (tail.starts_with("llama") && tail.contains("vision"))
+        || (tail.starts_with("mistral") && tail.contains("vision"))
+        || (tail.starts_with("gemma") && tail.contains("vision"))
+        || (tail.starts_with("grok-") && tail.contains("vision"))
+        || tail.contains("pixtral")
+        || tail.contains("internvl")
+        || tail.contains("llava")
+        || (tail.starts_with("glm-") && glm_vision_suffix(tail))
+    {
+        return true;
+    }
+
+    false
+}
+
+/// `glm-*-v` ids (`glm-4.5v`, `glm-4.6-v`) but not plain `glm-5.3`.
+fn glm_vision_suffix(tail: &str) -> bool {
+    tail.split('-').skip(1).any(|part| {
+        part == "v"
+            || (part.ends_with('v')
+                && part[..part.len() - 1]
+                    .chars()
+                    .any(|c| c.is_ascii_digit()))
+    })
+}
+
 /// Priority band and provider tag of a gateway model id. One band per provider
 /// keeps the Codex picker grouped (pool → OpenCode → OpenRouter → Claude →
 /// Antigravity); `None` for ids this app does not publish.
@@ -354,6 +424,30 @@ fn strip_private_catalog_metadata(value: &mut Value) {
         }
         _ => {}
     }
+}
+
+/// Builds one provider catalog entry from the bundled base template. Image
+/// input is written explicitly: a plain clone would keep the template's
+/// modalities for every provider model, which is what made Codex reject pasted
+/// images for vision ids (and would otherwise advertise them for text-only ids).
+fn custom_catalog_entry(
+    template: &Value,
+    id: &str,
+    owned_by: Option<&str>,
+    band: i32,
+    index: usize,
+) -> Value {
+    let mut entry = template.clone();
+    entry["slug"] = json!(id);
+    entry["display_name"] = json!(prettify(id));
+    entry["priority"] = json!(band + index as i32);
+    entry["input_modalities"] = if vision_capable(id, owned_by) {
+        json!(["text", "image"])
+    } else {
+        json!(["text"])
+    };
+    entry["supports_image_detail_original"] = json!(false);
+    entry
 }
 
 /// Regenerates `%~/.codex/melon-model-catalog.json`: the bundled base entries
@@ -445,11 +539,9 @@ pub async fn sync_catalog(
                 index
             }
         };
-        let mut entry = template.clone();
-        entry["slug"] = json!(id);
-        entry["display_name"] = json!(prettify(&id));
-        entry["priority"] = json!(band + index as i32);
-        models.push(entry);
+        let owned_by = entry.get("owned_by").and_then(|v| v.as_str());
+        let generated = custom_catalog_entry(&template, &id, owned_by, band, index);
+        models.push(generated);
         custom += 1;
     }
 
@@ -466,8 +558,8 @@ pub async fn sync_catalog(
 #[cfg(test)]
 mod tests {
     use super::{
-        prettify, provider_tag, strip_private_catalog_metadata, third_party_band,
-        third_party_band_for_model,
+        custom_catalog_entry, prettify, provider_tag, strip_private_catalog_metadata,
+        third_party_band, third_party_band_for_model, vision_capable,
     };
     use serde_json::json;
 
@@ -564,5 +656,63 @@ mod tests {
         assert!(value["nested"].get("policy").is_none());
         assert_eq!(value["nested"]["safe"], true);
         assert!(value["nested"]["items"][0].get("timeout_instructions").is_none());
+    }
+
+    #[test]
+    fn vision_heuristic_accepts_known_vision_models() {
+        assert!(vision_capable("claude-sonnet-4-6", Some("anthropic")));
+        assert!(vision_capable(
+            "openrouter/anthropic/claude-sonnet-4.6",
+            Some("openrouter")
+        ));
+        assert!(vision_capable("gemini-3-flash", Some("antigravity")));
+        assert!(vision_capable("gemini-2.5-flash-image", None));
+        assert!(vision_capable("qwen2.5-vl-72b-instruct", None));
+        assert!(vision_capable("gpt-4o-mini", None));
+        assert!(vision_capable("gpt-5.1", None));
+        assert!(vision_capable("openrouter/meta-llama/llama-3.2-11b-vision", None));
+        assert!(vision_capable("mistralai/pixtral-large", None));
+        assert!(vision_capable("glm-4.5v", None));
+    }
+
+    #[test]
+    fn vision_heuristic_rejects_text_and_generation_models() {
+        assert!(!vision_capable("gpt-oss-120b-medium", Some("openai")));
+        assert!(!vision_capable("dall-e-3", Some("openai")));
+        assert!(!vision_capable("flux-1.1-pro", None));
+        assert!(!vision_capable("stable-diffusion-3.5", None));
+        assert!(!vision_capable("imagen-3.0", None));
+        assert!(!vision_capable("gpt-image-1", Some("openai")));
+        assert!(!vision_capable("text-embedding-3-large", Some("openai")));
+        assert!(!vision_capable("glm-5.3", None));
+        assert!(!vision_capable("unknown-model", None));
+    }
+
+    #[test]
+    fn catalog_entry_writes_input_modalities_from_the_heuristic() {
+        let template = json!({
+            "slug": "gpt-6.1-sol",
+            "display_name": "GPT-6.1 Sol",
+            "context_window": 272000,
+            "input_modalities": ["text"],
+            "supports_image_detail_original": true
+        });
+
+        let vision = custom_catalog_entry(
+            &template,
+            "openrouter/qwen2.5-vl-72b",
+            Some("openrouter"),
+            200,
+            3,
+        );
+        assert_eq!(vision["input_modalities"], json!(["text", "image"]));
+        assert_eq!(vision["supports_image_detail_original"], json!(false));
+        assert_eq!(vision["slug"], json!("openrouter/qwen2.5-vl-72b"));
+        assert_eq!(vision["priority"], json!(203));
+
+        let text = custom_catalog_entry(&template, "gpt-oss-120b-medium", Some("openai"), 200, 4);
+        assert_eq!(text["input_modalities"], json!(["text"]));
+        assert_eq!(text["supports_image_detail_original"], json!(false));
+        assert_eq!(text["priority"], json!(204));
     }
 }

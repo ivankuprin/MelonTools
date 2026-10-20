@@ -46,6 +46,10 @@ struct SourceModel: Identifiable, Codable, Equatable {
     var cacheReadPerToken: Double?
     /// OpenCode: the model is served by the Go subscription endpoints.
     var goTier: Bool?
+    /// Whether the upstream model accepts image input. `nil` means unknown
+    /// (stores written before this field); the Codex catalog treats unknown
+    /// as text-only.
+    var supportsImages: Bool?
 }
 
 /// Registry ids served by Antigravity (CLIProxyAPI `models.json`). Used in two
@@ -100,7 +104,7 @@ final class ModelSourcesStore: ObservableObject {
     private var lastPriceHydration = Date.distantPast
     private var lastGoAccessRefresh = Date.distantPast
 
-    var storeURL: URL { CodexStore.supportDir.appendingPathComponent("model-sources.json") }
+    let storeURL: URL
 
     private struct Persisted: Codable {
         var openRouterKey: String?
@@ -116,7 +120,9 @@ final class ModelSourcesStore: ObservableObject {
         var claudeKey: String?
     }
 
-    private init() {
+    /// `storeURL` is injectable so tests can use an isolated store file.
+    init(storeURL: URL? = nil) {
+        self.storeURL = storeURL ?? CodexStore.supportDir.appendingPathComponent("model-sources.json")
         load()
     }
 
@@ -129,7 +135,11 @@ final class ModelSourcesStore: ObservableObject {
             openCodeKey = persisted.openCodeKey ?? ""
             claudeKey = persisted.claudeKey ?? persisted.sources?.first { $0.kind == .claude }?.apiKey ?? ""
             sources = persisted.sources ?? []
-            migrateOpenRouterAliases()
+            // Backfill known capabilities once for stores written before the
+            // flag existed; the catalog reads the saved file at startup.
+            let backfilled = backfillImageCapabilities()
+            let migrated = migrateOpenRouterAliases()
+            if backfilled || migrated { save() }
             return
         }
         if let keys = try? JSONDecoder().decode(PersistedKeys.self, from: data) {
@@ -167,8 +177,9 @@ final class ModelSourcesStore: ObservableObject {
     /// Stores written before 1.4.1 kept the raw OpenRouter id as the alias; the
     /// `openrouter/` prefix is what routes those models to the price sorting
     /// rule in the gateway config.
-    private func migrateOpenRouterAliases() {
-        guard let index = sources.firstIndex(where: { $0.kind == .openRouter }) else { return }
+    @discardableResult
+    private func migrateOpenRouterAliases() -> Bool {
+        guard let index = sources.firstIndex(where: { $0.kind == .openRouter }) else { return false }
         var source = sources[index]
         var changed = false
         for modelIndex in source.models.indices {
@@ -177,9 +188,37 @@ final class ModelSourcesStore: ObservableObject {
             source.models[modelIndex].alias = Self.openRouterAlias(model.id)
             changed = true
         }
-        guard changed else { return }
+        guard changed else { return false }
         sources[index] = source
-        save()
+        return true
+    }
+
+    /// Fills `supportsImages` for stores written before the flag existed.
+    /// Claude and Antigravity have deterministic defaults; OpenRouter/OpenCode
+    /// stay unknown until a model-list reload or the picker toggle sets them.
+    @discardableResult
+    private func backfillImageCapabilities() -> Bool {
+        var changed = false
+        for sourceIndex in sources.indices {
+            let kind = sources[sourceIndex].kind
+            for modelIndex in sources[sourceIndex].models.indices {
+                guard sources[sourceIndex].models[modelIndex].supportsImages == nil else { continue }
+                let id = sources[sourceIndex].models[modelIndex].id
+                let images: Bool?
+                switch kind {
+                case .claude:
+                    images = true
+                case .antigravity:
+                    images = Self.antigravitySupportsImages(id)
+                case .openRouter, .openCode:
+                    images = nil
+                }
+                guard let images else { continue }
+                sources[sourceIndex].models[modelIndex].supportsImages = images
+                changed = true
+            }
+        }
+        return changed
     }
 
     // MARK: - Queries
@@ -240,6 +279,16 @@ final class ModelSourcesStore: ObservableObject {
         guard let sIndex = sources.firstIndex(where: { $0.id == sourceId }),
               let mIndex = sources[sIndex].models.firstIndex(where: { $0.id == modelId }) else { return }
         sources[sIndex].models[mIndex].enabled = enabled
+        save()
+    }
+
+    /// Picker "Images" toggle: an explicit user choice (never `nil` after a
+    /// click) that survives a store reload and a model-list refresh.
+    func setModelSupportsImages(_ sourceId: String, modelId: String, supportsImages: Bool) {
+        guard let sIndex = sources.firstIndex(where: { $0.id == sourceId }),
+              let mIndex = sources[sIndex].models.firstIndex(where: { $0.id == modelId }) else { return }
+        guard sources[sIndex].models[mIndex].supportsImages != supportsImages else { return }
+        sources[sIndex].models[mIndex].supportsImages = supportsImages
         save()
     }
 
@@ -323,7 +372,10 @@ final class ModelSourcesStore: ObservableObject {
         if changed { save() }
     }
 
-    private struct ModelList: Decodable {
+    /// Decoded model list shared by OpenRouter and the engine endpoints.
+    /// Internal (not private) so the modality-mapping tests can decode the
+    /// exact wire shape.
+    struct ModelList: Decodable {
         /// Provider prices arrive as strings (`"0.000003"`) or numbers.
         struct FlexibleNumber: Decodable {
             let value: Double?
@@ -343,6 +395,11 @@ final class ModelSourcesStore: ObservableObject {
             let completion: FlexibleNumber?
             let input_cache_read: FlexibleNumber?
         }
+        /// OpenRouter publishes input modalities here; other providers may
+        /// omit the block entirely.
+        struct Architecture: Decodable {
+            let input_modalities: [String]?
+        }
         struct Entry: Decodable {
             let id: String
             let name: String?
@@ -351,6 +408,7 @@ final class ModelSourcesStore: ObservableObject {
             /// OpenRouter/OpenCode omit it, so it stays optional.
             let owned_by: String?
             let pricing: Pricing?
+            let architecture: Architecture?
         }
         let data: [Entry]
     }
@@ -367,6 +425,13 @@ final class ModelSourcesStore: ObservableObject {
             throw URLError(.userAuthenticationRequired)
         }
         return try JSONDecoder().decode(ModelList.self, from: data).data
+    }
+
+    /// Maps provider `architecture.input_modalities` to the picker flag.
+    /// Absent metadata means unknown (`nil`), not "text only".
+    nonisolated static func supportsImages(inputModalities: [String]?) -> Bool? {
+        guard let inputModalities else { return nil }
+        return inputModalities.contains("image")
     }
 
     // MARK: - OpenRouter (API key)
@@ -401,7 +466,11 @@ final class ModelSourcesStore: ObservableObject {
     private func mergeOpenRouter(entries: [ModelList.Entry], key: String) {
         let existing = openRouterSource
         var enabledById: [String: Bool] = [:]
-        for model in existing?.models ?? [] { enabledById[model.id] = model.enabled }
+        var imagesById: [String: Bool] = [:]
+        for model in existing?.models ?? [] {
+            enabledById[model.id] = model.enabled
+            if let images = model.supportsImages { imagesById[model.id] = images }
+        }
         let models = entries
             .map {
                 SourceModel(
@@ -413,7 +482,9 @@ final class ModelSourcesStore: ObservableObject {
                     freeTier: nil,
                     promptPerToken: $0.pricing?.prompt?.value,
                     completionPerToken: $0.pricing?.completion?.value,
-                    cacheReadPerToken: $0.pricing?.input_cache_read?.value
+                    cacheReadPerToken: $0.pricing?.input_cache_read?.value,
+                    supportsImages: imagesById[$0.id]
+                        ?? Self.supportsImages(inputModalities: $0.architecture?.input_modalities)
                 )
             }
             .sorted { $0.id.lowercased() < $1.id.lowercased() }
@@ -461,9 +532,11 @@ final class ModelSourcesStore: ObservableObject {
         let existing = openCodeSource
         var enabledById: [String: Bool] = [:]
         var goById: [String: Bool] = [:]
+        var imagesById: [String: Bool] = [:]
         for model in existing?.models ?? [] {
             enabledById[model.id] = model.enabled
             if let go = model.goTier { goById[model.id] = go }
+            if let images = model.supportsImages { imagesById[model.id] = images }
         }
         let models = entries
             .map { entry in
@@ -474,7 +547,9 @@ final class ModelSourcesStore: ObservableObject {
                     enabled: enabledById[entry.id] ?? false,
                     alias: "opencode/\(entry.id)",
                     freeTier: Self.isFreeTier(entry.id),
-                    goTier: goIds.map { $0.contains(entry.id) } ?? goById[entry.id]
+                    goTier: goIds.map { $0.contains(entry.id) } ?? goById[entry.id],
+                    supportsImages: imagesById[entry.id]
+                        ?? Self.supportsImages(inputModalities: entry.architecture?.input_modalities)
                 )
             }
             .sorted { $0.id.lowercased() < $1.id.lowercased() }
@@ -537,7 +612,11 @@ final class ModelSourcesStore: ObservableObject {
     private func mergeClaude(entries: [ModelList.Entry]) {
         let existing = claudeSource
         var enabledById: [String: Bool] = [:]
-        for model in existing?.models ?? [] { enabledById[model.id] = model.enabled }
+        var imagesById: [String: Bool] = [:]
+        for model in existing?.models ?? [] {
+            enabledById[model.id] = model.enabled
+            if let images = model.supportsImages { imagesById[model.id] = images }
+        }
         let models = entries
             .map { entry in
                 SourceModel(
@@ -545,7 +624,8 @@ final class ModelSourcesStore: ObservableObject {
                     display: entry.name ?? Self.prettyName(entry.id),
                     contextLength: entry.context_length,
                     enabled: enabledById[entry.id] ?? false,
-                    alias: entry.id
+                    alias: entry.id,
+                    supportsImages: imagesById[entry.id] ?? Self.claudeSupportsImages(entry.id)
                 )
             }
             .sorted { $0.id.lowercased() < $1.id.lowercased() }
@@ -573,11 +653,24 @@ final class ModelSourcesStore: ObservableObject {
         return AntigravityModelRegistry.ids.contains(id)
     }
 
+    /// Antigravity vision defaults: Gemini and Claude accept images;
+    /// `gpt-oss-120b-medium` does not; anything else stays unknown.
+    nonisolated static func antigravitySupportsImages(_ id: String) -> Bool? {
+        if id == "gpt-oss-120b-medium" { return false }
+        if id.hasPrefix("gemini-") || id.hasPrefix("claude-") { return true }
+        return nil
+    }
+
     /// The Claude source claims raw `claude-*` ids, but not the ones the
     /// engine serves through Antigravity.
     nonisolated static func isClaudeModel(id: String, owner: String?) -> Bool {
         guard id.hasPrefix("claude-") else { return false }
         return !isAntigravityModel(id: id, owner: owner)
+    }
+
+    /// Every model the Claude source lists is a `claude-*` vision model.
+    nonisolated static func claudeSupportsImages(_ id: String) -> Bool? {
+        id.hasPrefix("claude-") ? true : nil
     }
 
     /// Loads the Antigravity model list from the running engine
@@ -616,7 +709,11 @@ final class ModelSourcesStore: ObservableObject {
     private func mergeAntigravity(entries: [ModelList.Entry]) {
         let existing = antigravitySource
         var enabledById: [String: Bool] = [:]
-        for model in existing?.models ?? [] { enabledById[model.id] = model.enabled }
+        var imagesById: [String: Bool] = [:]
+        for model in existing?.models ?? [] {
+            enabledById[model.id] = model.enabled
+            if let images = model.supportsImages { imagesById[model.id] = images }
+        }
         let models = entries
             .map { entry in
                 SourceModel(
@@ -624,7 +721,8 @@ final class ModelSourcesStore: ObservableObject {
                     display: entry.name ?? Self.prettyName(entry.id),
                     contextLength: entry.context_length,
                     enabled: enabledById[entry.id] ?? false,
-                    alias: entry.id
+                    alias: entry.id,
+                    supportsImages: imagesById[entry.id] ?? Self.antigravitySupportsImages(entry.id)
                 )
             }
             .sorted { $0.id.lowercased() < $1.id.lowercased() }

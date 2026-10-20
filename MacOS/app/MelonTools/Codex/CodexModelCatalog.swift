@@ -228,7 +228,7 @@ enum CodexModelCatalog {
 
     // MARK: - Custom entries
 
-    private static func makeEntry(from template: [String: Any], model: SourceModel, source: ModelSource) -> [String: Any]? {
+    static func makeEntry(from template: [String: Any], model: SourceModel, source: ModelSource) -> [String: Any]? {
         guard !model.alias.isEmpty else { return nil }
         var entry = template
         let templateContext = template["context_window"] as? Int ?? 128_000
@@ -253,8 +253,12 @@ enum CodexModelCatalog {
         entry["prefer_websockets"] = false
         entry["use_responses_lite"] = false
         entry["supports_search_tool"] = false
+        // The template usually advertises text+image; a provider model must
+        // carry only the modalities its upstream actually accepts. Unknown
+        // (`nil`, old stores) stays text-only until the user toggles it.
+        let supportsImages = model.supportsImages ?? false
+        entry["input_modalities"] = supportsImages ? ["text", "image"] : ["text"]
         entry["supports_image_detail_original"] = false
-        entry["input_modalities"] = ["text"]
         return entry
     }
 }
