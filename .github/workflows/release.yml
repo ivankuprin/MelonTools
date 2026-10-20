@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to rebuild (for example v2.0.3)"
+        required: true
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: read
@@ -24,13 +32,15 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Resolve and verify the version
         id: version
         run: |
           set -euo pipefail
           VERSION="$(awk -F'"' '/CFBundleShortVersionString:/{print $2; exit}' MacOS/app/project.yml)"
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${RELEASE_TAG#v}"
           if [ -z "$VERSION" ] || [ "$VERSION" != "$TAG" ]; then
             echo "Tag $GITHUB_REF_NAME does not match the project version '$VERSION'." >&2
             exit 1
@@ -118,6 +128,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Resolve and verify the version
         id: version
@@ -125,7 +137,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(grep -m1 '^version = ' Windows/app/src-tauri/Cargo.toml | sed -E 's/.*"([0-9.]+)".*/\1/')
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${RELEASE_TAG#v}"
           if [ -z "$VERSION" ] || [ "$VERSION" != "$TAG" ]; then
             echo "Tag $GITHUB_REF_NAME does not match the crate version '$VERSION'." >&2
             exit 1
@@ -152,11 +164,11 @@ jobs:
           set -euo pipefail
           touch src/main.rs
           cargo build --release --locked
-          mkdir -p ../dist
+          mkdir -p ../../dist
           cp target/release/melontools.exe \
-            "../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe"
-          cp "../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe" \
-            "../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
+            "../../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe"
+          cp "../../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe" \
+            "../../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
 
       - name: Build the Windows installer
         shell: pwsh
@@ -281,7 +293,7 @@ jobs:
       - name: Create or update the release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
           name: Melon Tools ${{ needs.macos.outputs.version }}
           body_path: release-notes.md
           files: release-assets/*
