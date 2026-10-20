@@ -23,7 +23,6 @@ enum CodexModelCatalog {
         "node_repl_policy",
         "rejection_instructions",
         "timeout_instructions",
-        "experimental_supported_tools",
         "instructions_variables"
     ]
 
@@ -65,8 +64,29 @@ enum CodexModelCatalog {
     @discardableResult
     static func sync(sources: [ModelSource]) throws -> Int {
         guard let entries = loadBaseEntries() else { throw CatalogError.baseMissing }
-        guard let template = referenceEntry(in: entries) else { throw CatalogError.baseMissing }
+        let (result, custom) = generatedEntries(
+            base: entries,
+            sources: sources,
+            defaults: SchemaDefaults.load()
+        )
+        let payload: [String: Any] = ["models": result]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        try SecureFile.write(data, to: URL(fileURLWithPath: targetPath))
+        try ensureConfigReference()
+        return custom
+    }
 
+    /// Appends the selected source models to the sanitized base list and gives
+    /// every final entry the fields current Codex requires. Internal so tests
+    /// can drive generation with a fixture base and a fixture cache.
+    static func generatedEntries(
+        base entries: [[String: Any]],
+        sources: [ModelSource],
+        defaults: SchemaDefaults?
+    ) -> (entries: [[String: Any]], custom: Int) {
+        guard let template = referenceEntry(in: entries) else {
+            return (applyRequiredSchema(to: entries, defaults: defaults), 0)
+        }
         var result = entries
         let poolSlugs = Set(entries.compactMap { $0["slug"] as? String })
         var custom = 0
@@ -84,12 +104,92 @@ enum CodexModelCatalog {
                 }
             }
         }
+        return (applyRequiredSchema(to: result, defaults: defaults), custom)
+    }
 
-        let payload: [String: Any] = ["models": result]
-        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-        try SecureFile.write(data, to: URL(fileURLWithPath: targetPath))
-        try ensureConfigReference()
-        return custom
+    // MARK: - Required schema fields
+
+    /// Instructions and tool lists that current Codex requires in every
+    /// entry. They are read from Codex's local cache at generation time, so
+    /// prompt text never lives in this repository.
+    struct SchemaDefaults {
+        var bySlug: [String: [String: Any]]
+        var template: [String: Any]?
+
+        static func decode(_ data: Data) -> SchemaDefaults? {
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let models = root["models"] as? [[String: Any]], !models.isEmpty else { return nil }
+            var bySlug: [String: [String: Any]] = [:]
+            for entry in models {
+                guard let slug = entry["slug"] as? String else { continue }
+                bySlug[slug] = entry
+            }
+            return SchemaDefaults(bySlug: bySlug, template: bySlug["gpt-6.1-sol"] ?? models.first)
+        }
+
+        /// `~/.codex/models_cache.json` — written by Codex itself.
+        @MainActor
+        static func load() -> SchemaDefaults? {
+            let url = URL(fileURLWithPath: (directory as NSString).appendingPathComponent("models_cache.json"))
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            return decode(data)
+        }
+    }
+
+    static let fallbackInstructions = "You are Codex, a coding agent. Follow the user's instructions and use the available tools."
+    static let fallbackTools = ["send_user_message_async", "clock"]
+
+    /// Fills the fields Codex validates for every entry. The bundled base
+    /// catalog stores no prompt text, so both instructions and tools are
+    /// added here, after sanitization, from the local Codex cache.
+    static func applyRequiredSchema(
+        to entries: [[String: Any]],
+        defaults: SchemaDefaults?
+    ) -> [[String: Any]] {
+        entries.map { entry in
+            var output = entry
+            let slug = entry["slug"] as? String
+            if !hasInstructions(output) {
+                let candidates = [slug.flatMap { defaults?.bySlug[$0] }, defaults?.template].compactMap { $0 }
+                for source in candidates {
+                    if let payload = instructions(from: source) {
+                        output[payload.key] = payload.value
+                        break
+                    }
+                }
+            }
+            if !hasInstructions(output) {
+                output["base_instructions"] = fallbackInstructions
+            }
+            let currentTools = output["experimental_supported_tools"] as? [String]
+            if currentTools == nil || currentTools?.isEmpty == true {
+                let templateTools = defaults?.template?["experimental_supported_tools"] as? [String]
+                if let templateTools, !templateTools.isEmpty {
+                    output["experimental_supported_tools"] = templateTools
+                } else {
+                    output["experimental_supported_tools"] = fallbackTools
+                }
+            }
+            return output
+        }
+    }
+
+    private static func hasInstructions(_ entry: [String: Any]) -> Bool {
+        instructions(from: entry) != nil
+    }
+
+    /// `model_messages.instructions_template` is the preferred form; a plain
+    /// `base_instructions` string is the fallback. Empty values do not count.
+    private static func instructions(from entry: [String: Any]) -> (key: String, value: Any)? {
+        if let messages = entry["model_messages"] as? [String: Any],
+           let template = messages["instructions_template"] as? String,
+           !template.isEmpty {
+            return ("model_messages", messages)
+        }
+        if let base = entry["base_instructions"] as? String, !base.isEmpty {
+            return ("base_instructions", base)
+        }
+        return nil
     }
 
     /// Points `model_catalog_json` at our file (top-level key).

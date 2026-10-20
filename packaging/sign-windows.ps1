@@ -15,7 +15,7 @@
   Fail instead of skipping when the certificate variables are absent.
 
 .EXAMPLE
-  ./packaging/sign-windows.ps1 -File Windows/dist/MelonTools-1.7.1-win-x64.exe
+  ./packaging/sign-windows.ps1 -File Windows/dist/MelonTools-1.7.4-win-x64.exe
 #>
 param(
   [Parameter(Mandatory = $true)]

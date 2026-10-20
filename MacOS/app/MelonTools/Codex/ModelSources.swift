@@ -167,7 +167,12 @@ final class ModelSourcesStore: ObservableObject {
                 models: []
             ))
         }
-        let persisted = Persisted(openRouterKey: openRouterKey, openCodeKey: openCodeKey, claudeKey: claudeKey, sources: sources)
+        let persisted = Persisted(
+            openRouterKey: openRouterKey,
+            openCodeKey: openCodeKey,
+            claudeKey: claudeKey,
+            sources: sources
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(persisted) else { return }

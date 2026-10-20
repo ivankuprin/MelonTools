@@ -17,13 +17,15 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## What's new in 1.7.1 «Image input»
+## What's new in 1.7.4 «Codex catalog compatibility»
 
-- **Vision models in the Codex picker.** Generated model catalogs mark
-  vision-capable Claude, Antigravity and OpenRouter models with
-  `input_modalities: ["text", "image"]`. Saved models are backfilled on load,
-  and each model row has an «Images» toggle. Relaunch Codex after Apply so it
-  reloads the catalog.
+- **Codex catalog schema restored.** Generated catalogs now include the required
+  model instruction fields and `experimental_supported_tools`. The app reads
+  local model metadata from `~/.codex/models_cache.json` and falls back safely
+  when it is unavailable. Private prompt text is never bundled with the app.
+- **Manual Apply.** Catalog application is explicit again; Apply and
+  Apply-and-relaunch work with current Codex builds. Image-input support from
+  1.7.1 is retained.
 
 ## What's new in 1.6.3 «Security and data safety»
 

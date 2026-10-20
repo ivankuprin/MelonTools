@@ -3,7 +3,7 @@
 //! macOS app) plus the model catalog the Codex picker reads.
 
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::paths;
@@ -11,6 +11,10 @@ use crate::paths;
 pub const PROVIDER_ID: &str = "melon_local_access";
 const PROVIDER_NAME: &str = "Melon Tools API";
 pub const CATALOG_FILE: &str = "melon-model-catalog.json";
+const MODELS_CACHE_FILE: &str = "models_cache.json";
+const DEFAULT_CATALOG_TOOLS: &[&str] = &["send_user_message_async", "clock"];
+const FALLBACK_BASE_INSTRUCTIONS: &str =
+    "You are Codex, a coding agent. Follow the user's instructions and use the available tools when they help.";
 
 fn config_path() -> PathBuf {
     paths::codex_home().join("config.toml")
@@ -403,7 +407,6 @@ const PRIVATE_CATALOG_KEYS: &[&str] = &[
     "node_repl_policy",
     "rejection_instructions",
     "timeout_instructions",
-    "experimental_supported_tools",
     "instructions_variables",
 ];
 
@@ -423,6 +426,145 @@ fn strip_private_catalog_metadata(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+// MARK: - Schema injection from the Codex model cache
+
+/// The Codex app stores the model metadata it fetched from the service here.
+/// The catalog needs that metadata restored after the bundled template's
+/// private keys are stripped, otherwise Codex rejects the schema.
+fn models_cache_path() -> PathBuf {
+    paths::codex_home().join(MODELS_CACHE_FILE)
+}
+
+fn load_models_cache() -> Option<Value> {
+    let text = std::fs::read_to_string(models_cache_path()).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+struct ModelsCache {
+    by_slug: HashMap<String, Value>,
+    template: Value,
+}
+
+/// Parses the cache into a by-slug map plus a fallback entry for gateway ids
+/// the cache does not know. The cache file stores `models` as an array; a
+/// slug-keyed object is also accepted for older/newer layouts.
+fn models_cache_from_value(value: &Value) -> Option<ModelsCache> {
+    let raw = value.get("models").unwrap_or(value);
+    let mut entries: Vec<(String, Value)> = Vec::new();
+    match raw {
+        Value::Array(items) => {
+            for item in items {
+                if let Some(slug) = item.get("slug").and_then(Value::as_str) {
+                    let mut entry = item.clone();
+                    entry["slug"] = json!(slug);
+                    entries.push((slug.to_string(), entry));
+                }
+            }
+        }
+        Value::Object(map) => {
+            for (slug, item) in map {
+                if !item.is_object() {
+                    continue;
+                }
+                let mut entry = item.clone();
+                entry["slug"] = json!(slug);
+                entries.push((slug.clone(), entry));
+            }
+        }
+        _ => return None,
+    }
+    if entries.is_empty() {
+        return None;
+    }
+    let by_slug: HashMap<String, Value> = entries.iter().cloned().collect();
+    let template = by_slug
+        .get("gpt-6.1-sol")
+        .cloned()
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|(_, entry)| {
+                    instructions_template(entry).is_some() || base_instructions(entry).is_some()
+                })
+                .map(|(_, entry)| entry.clone())
+        })
+        .or_else(|| entries.first().map(|(_, entry)| entry.clone()))?;
+    Some(ModelsCache { by_slug, template })
+}
+
+fn instructions_template(entry: &Value) -> Option<&str> {
+    entry
+        .get("model_messages")
+        .and_then(|messages| messages.get("instructions_template"))
+        .and_then(Value::as_str)
+        .filter(|text| !text.trim().is_empty())
+}
+
+fn base_instructions(entry: &Value) -> Option<&str> {
+    entry
+        .get("base_instructions")
+        .and_then(Value::as_str)
+        .filter(|text| !text.trim().is_empty())
+}
+
+fn has_instructions(entry: &Value) -> bool {
+    instructions_template(entry).is_some() || base_instructions(entry).is_some()
+}
+
+/// Copies `model_messages` (preferred) or `base_instructions` from a cache
+/// entry. Returns false when the source has neither.
+fn copy_instructions(source: &Value, target: &mut Value) -> bool {
+    if let Some(messages) = source.get("model_messages") {
+        if instructions_template(source).is_some() {
+            target["model_messages"] = messages.clone();
+            return true;
+        }
+    }
+    if let Some(base) = source.get("base_instructions") {
+        if base_instructions(source).is_some() {
+            target["base_instructions"] = base.clone();
+            return true;
+        }
+    }
+    false
+}
+
+fn inject_entry_schema(entry: &mut Value, source: Option<&Value>) {
+    if !has_instructions(entry) {
+        let copied = source
+            .map(|source| copy_instructions(source, entry))
+            .unwrap_or(false);
+        if !copied {
+            entry["base_instructions"] = json!(FALLBACK_BASE_INSTRUCTIONS);
+        }
+    }
+    if entry.get("experimental_supported_tools").is_none() {
+        let tools = source
+            .and_then(|source| source.get("experimental_supported_tools"))
+            .cloned();
+        entry["experimental_supported_tools"] =
+            tools.unwrap_or_else(|| json!(DEFAULT_CATALOG_TOOLS));
+    }
+}
+
+/// Every final catalog entry needs tools and an instructions block. Existing
+/// values win; a missing one is filled from the cache entry for that slug,
+/// then from the cache template, then from the minimal fallback.
+fn inject_catalog_schema(models: &mut [Value], cache: Option<&ModelsCache>) {
+    for entry in models.iter_mut() {
+        let slug = entry
+            .get("slug")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let source = cache.map(|cache| {
+            slug.as_deref()
+                .and_then(|slug| cache.by_slug.get(slug))
+                .unwrap_or(&cache.template)
+        });
+        inject_entry_schema(entry, source);
     }
 }
 
@@ -447,6 +589,9 @@ fn custom_catalog_entry(
         json!(["text"])
     };
     entry["supports_image_detail_original"] = json!(false);
+    if entry.get("experimental_supported_tools").is_none() {
+        entry["experimental_supported_tools"] = json!(["send_user_message_async", "clock"]);
+    }
     entry
 }
 
@@ -545,6 +690,11 @@ pub async fn sync_catalog(
         custom += 1;
     }
 
+    // The bundled entries were stripped of private metadata above; restore the
+    // schema-required fields from the Codex cache (best effort).
+    let cache = load_models_cache().and_then(|value| models_cache_from_value(&value));
+    inject_catalog_schema(&mut models, cache.as_ref());
+
     let payload = json!({ "models": models });
     let path = paths::codex_home().join(CATALOG_FILE);
     if let Some(dir) = path.parent() {
@@ -558,8 +708,9 @@ pub async fn sync_catalog(
 #[cfg(test)]
 mod tests {
     use super::{
-        custom_catalog_entry, prettify, provider_tag, strip_private_catalog_metadata,
-        third_party_band, third_party_band_for_model, vision_capable,
+        custom_catalog_entry, inject_catalog_schema, models_cache_from_value, prettify,
+        provider_tag, strip_private_catalog_metadata, third_party_band, third_party_band_for_model,
+        vision_capable,
     };
     use serde_json::json;
 
@@ -714,5 +865,121 @@ mod tests {
         assert_eq!(text["input_modalities"], json!(["text"]));
         assert_eq!(text["supports_image_detail_original"], json!(false));
         assert_eq!(text["priority"], json!(204));
+    }
+
+    #[test]
+    fn catalog_metadata_strip_keeps_experimental_tools() {
+        let mut value = json!({
+            "slug": "x",
+            "base_instructions": "secret",
+            "experimental_supported_tools": ["clock"]
+        });
+        strip_private_catalog_metadata(&mut value);
+        assert_eq!(value["experimental_supported_tools"], json!(["clock"]));
+        assert!(value.get("base_instructions").is_none());
+    }
+
+    #[test]
+    fn catalog_entry_adds_experimental_tools_when_template_lacks_them() {
+        let template = json!({"slug": "template"});
+        let entry = custom_catalog_entry(&template, "claude-sonnet-4-6", Some("anthropic"), 300, 1);
+        assert_eq!(
+            entry["experimental_supported_tools"],
+            json!(["send_user_message_async", "clock"])
+        );
+    }
+
+    fn fixture_cache() -> serde_json::Value {
+        json!({
+            "fetched_at": "2026-10-17T05:43:48Z",
+            "models": [
+                {
+                    "slug": "gpt-6.1-sol",
+                    "model_messages": {"instructions_template": "template instructions"},
+                    "experimental_supported_tools": ["clock"]
+                },
+                {
+                    "slug": "claude-sonnet-4-6",
+                    "base_instructions": "claude instructions",
+                    "experimental_supported_tools": ["alpha"]
+                }
+            ]
+        })
+    }
+
+    #[test]
+    fn catalog_injection_uses_the_cache_by_slug_and_the_template() {
+        let cache = models_cache_from_value(&fixture_cache()).expect("fixture cache");
+        let mut models = vec![
+            json!({"slug": "claude-sonnet-4-6"}),
+            json!({"slug": "openrouter/unknown-model"}),
+        ];
+
+        inject_catalog_schema(&mut models, Some(&cache));
+
+        assert_eq!(models[0]["base_instructions"], json!("claude instructions"));
+        assert_eq!(models[0]["experimental_supported_tools"], json!(["alpha"]));
+        assert!(models[0].get("model_messages").is_none());
+        assert_eq!(
+            models[1]["model_messages"]["instructions_template"],
+            json!("template instructions")
+        );
+        assert_eq!(models[1]["experimental_supported_tools"], json!(["clock"]));
+    }
+
+    #[test]
+    fn catalog_injection_preserves_existing_tools_and_instructions() {
+        let cache = models_cache_from_value(&fixture_cache()).expect("fixture cache");
+        let mut models = vec![json!({
+            "slug": "claude-sonnet-4-6",
+            "base_instructions": "own instructions",
+            "experimental_supported_tools": ["own-tool"]
+        })];
+
+        inject_catalog_schema(&mut models, Some(&cache));
+
+        assert_eq!(models[0]["base_instructions"], json!("own instructions"));
+        assert_eq!(
+            models[0]["experimental_supported_tools"],
+            json!(["own-tool"])
+        );
+    }
+
+    #[test]
+    fn catalog_injection_prefers_model_messages_over_base_instructions() {
+        let cache = models_cache_from_value(&json!({
+            "models": [{
+                "slug": "gpt-6.1-sol",
+                "model_messages": {"instructions_template": "preferred"},
+                "base_instructions": "not used",
+                "experimental_supported_tools": ["clock"]
+            }]
+        }))
+        .expect("fixture cache");
+        let mut models = vec![json!({"slug": "gpt-6.1-sol"})];
+
+        inject_catalog_schema(&mut models, Some(&cache));
+
+        assert_eq!(
+            models[0]["model_messages"]["instructions_template"],
+            json!("preferred")
+        );
+        assert!(models[0].get("base_instructions").is_none());
+    }
+
+    #[test]
+    fn catalog_injection_falls_back_without_a_cache() {
+        let mut models = vec![json!({"slug": "gpt-6.1-sol"})];
+
+        inject_catalog_schema(&mut models, None);
+
+        let instructions = models[0]["base_instructions"]
+            .as_str()
+            .expect("fallback instructions");
+        assert!(!instructions.trim().is_empty());
+        assert_eq!(
+            models[0]["experimental_supported_tools"],
+            json!(["send_user_message_async", "clock"])
+        );
     }
 }

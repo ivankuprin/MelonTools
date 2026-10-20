@@ -111,7 +111,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -217,7 +221,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -328,7 +336,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -435,7 +447,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -542,7 +558,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -649,7 +669,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -752,7 +776,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -851,7 +879,11 @@
       "upgrade": null,
       "use_responses_lite": false,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [],
@@ -942,7 +974,11 @@
       "upgrade": null,
       "use_responses_lite": false,
       "visibility": "hide",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -1042,7 +1078,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "hide",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     },
     {
       "additional_speed_tiers": [
@@ -1145,7 +1185,11 @@
       "upgrade": null,
       "use_responses_lite": true,
       "visibility": "list",
-      "web_search_tool_type": "text_and_image"
+      "web_search_tool_type": "text_and_image",
+      "experimental_supported_tools": [
+        "send_user_message_async",
+        "clock"
+      ]
     }
   ]
 }

@@ -973,7 +973,7 @@ function claudeCard(settings) {
       </label>
       <div class="row">
         <label class="field" style="flex-direction:row;align-items:center;gap:6px">
-          <input type="checkbox" id="claude-enabled" ${settings.claudeEnabled ? "checked" : ""}>
+          <input type="checkbox" id="claude-enabled" ${settings.claudeEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
           <span>${t("sourceEnabled")}</span>
         </label>
         <button class="btn small" onclick="A.claudeSaveKeys()">${t("save")}</button>
@@ -1086,11 +1086,11 @@ function providersPage() {
         </label>
         <div class="row">
           <label class="field" style="flex-direction:row;align-items:center;gap:6px">
-            <input type="checkbox" id="or-enabled" ${settings.openrouterEnabled ? "checked" : ""}>
+            <input type="checkbox" id="or-enabled" ${settings.openrouterEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
             <span>${t("sourceEnabled")}</span>
           </label>
           <label class="field" style="flex-direction:row;align-items:center;gap:6px">
-            <input type="checkbox" id="oc-enabled" ${settings.opencodeEnabled ? "checked" : ""}>
+            <input type="checkbox" id="oc-enabled" ${settings.opencodeEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
             <span>OpenCode ${t("sourceEnabled")}</span>
           </label>
         </div>
@@ -1652,6 +1652,21 @@ const A = {
     });
   },
 
+  providerToggleChanged() {
+    const openrouter = document.getElementById("or-enabled");
+    const opencode = document.getElementById("oc-enabled");
+    const claude = document.getElementById("claude-enabled");
+    S.settings = {
+      ...S.settings,
+      ...(openrouter ? { openrouterEnabled: openrouter.checked } : {}),
+      ...(opencode ? { opencodeEnabled: opencode.checked } : {}),
+      ...(claude ? { claudeEnabled: claude.checked } : {}),
+    };
+    inv("settings_set", { settings: S.settings })
+      .then((settings) => { S.settings = settings; })
+      .catch((error) => toast(errorText(error), true));
+  },
+
   codexRouteRemove() {
     run("route", async () => {
       S.route = await inv("codex_route_remove");
@@ -1738,7 +1753,17 @@ const A = {
     run("keys", async () => {
       const openrouterKey = document.getElementById("or-key").value.trim();
       const opencodeKey = document.getElementById("oc-key").value.trim();
-      S.settings = await inv("settings_set", { settings: { ...S.settings, openrouterKey, opencodeKey } });
+      const openrouterEnabled = document.getElementById("or-enabled");
+      const opencodeEnabled = document.getElementById("oc-enabled");
+      S.settings = await inv("settings_set", {
+        settings: {
+          ...S.settings,
+          openrouterKey,
+          opencodeKey,
+          openrouterEnabled: openrouterEnabled ? openrouterEnabled.checked : !!S.settings.openrouterEnabled,
+          opencodeEnabled: opencodeEnabled ? opencodeEnabled.checked : !!S.settings.opencodeEnabled,
+        },
+      });
       toast(t("done"));
     });
   },

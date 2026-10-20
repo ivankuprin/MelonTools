@@ -23,7 +23,8 @@ final class CodexModelCatalogTests: XCTestCase {
         XCTAssertEqual(sanitized["display_name"] as? String, "Sample Model")
         XCTAssertNil(sanitized["base_instructions"])
         XCTAssertNil(sanitized["model_messages"])
-        XCTAssertNil(sanitized["experimental_supported_tools"])
+        XCTAssertNotNil(sanitized["experimental_supported_tools"])
+        // Required by current Codex schemas; it is a capability list, not private prompt data.
 
         let nested = try XCTUnwrap(sanitized["nested"] as? [String: Any])
         XCTAssertNil(nested["policy"])
@@ -103,8 +104,33 @@ final class CodexModelCatalogTests: XCTestCase {
         XCTAssertNil(ModelSourcesStore.supportsImages(inputModalities: nil))
     }
 
-    /// A cloned catalog entry carries the image modality only when the model
-    /// flag is true; false and unknown stay text-only.
+    /// Generation adds the capability list Codex requires even when no local
+    /// cache is available.
+    func testCatalogCloneAlwaysCarriesExperimentalTools() throws {
+        let template: [String: Any] = ["slug": "template", "context_window": 128_000]
+        let source = ModelSource(
+            id: "claude",
+            kind: .claude,
+            title: "Claude",
+            baseURL: "",
+            apiKey: "",
+            enabled: true,
+            models: []
+        )
+        let model = SourceModel(
+            id: "claude-sonnet-4-6",
+            display: "Claude Sonnet 4.6",
+            contextLength: nil,
+            enabled: true,
+            alias: "claude-sonnet-4-6"
+        )
+        let clone = try XCTUnwrap(CodexModelCatalog.makeEntry(from: template, model: model, source: source))
+        let entry = try XCTUnwrap(
+            CodexModelCatalog.applyRequiredSchema(to: [clone], defaults: nil).first
+        )
+        XCTAssertEqual(entry["experimental_supported_tools"] as? [String], ["send_user_message_async", "clock"])
+    }
+
     func testCatalogCloneCarriesImageCapability() throws {
         let template: [String: Any] = ["slug": "template", "context_window": 128_000]
         let source = ModelSource(
@@ -274,6 +300,116 @@ final class CodexModelCatalogTests: XCTestCase {
         XCTAssertEqual(antigravity.models.map(\.supportsImages), [true, true, false] as [Bool?])
         XCTAssertNil(persisted.sources.first { $0.id == "openrouter" }?.models.first?.supportsImages)
         XCTAssertNil(persisted.sources.first { $0.id == "opencode" }?.models.first?.supportsImages)
+    }
+
+    // MARK: - Catalog schema (instructions + tools)
+
+    /// Current Codex requires instructions and `experimental_supported_tools`
+    /// on every entry. Generation takes them from Codex's local cache: the
+    /// by-slug entry first, then the `gpt-6.1-sol` template.
+    func testGeneratedCatalogEntriesCarryInstructionsAndTools() throws {
+        let cache = """
+        {"models":[
+          {"slug":"gpt-6.1-sol","experimental_supported_tools":["send_user_message_async","clock"],
+           "model_messages":{"instructions_template":"template instructions","instructions_variables":{}}},
+          {"slug":"pool-model","experimental_supported_tools":[],
+           "model_messages":{"instructions_template":"pool instructions"}}
+        ]}
+        """
+        let defaults = try XCTUnwrap(CodexModelCatalog.SchemaDefaults.decode(Data(cache.utf8)))
+        let base = CodexModelCatalog.sanitizedEntries([
+            ["slug": "pool-model", "context_window": 128_000],
+            ["slug": "gpt-6.1-sol", "context_window": 128_000]
+        ])
+        let source = ModelSource(
+            id: "openrouter",
+            kind: .openRouter,
+            title: "OpenRouter",
+            baseURL: ModelSourcesStore.openRouterBaseURL,
+            apiKey: "key",
+            enabled: true,
+            models: [SourceModel(
+                id: "vision-model",
+                display: "Vision Model",
+                contextLength: nil,
+                enabled: true,
+                alias: "openrouter/vision-model",
+                supportsImages: true
+            )]
+        )
+
+        let (entries, custom) = CodexModelCatalog.generatedEntries(
+            base: base,
+            sources: [source],
+            defaults: defaults
+        )
+
+        XCTAssertEqual(custom, 1)
+        XCTAssertEqual(entries.count, 3)
+        for entry in entries {
+            let messages = entry["model_messages"] as? [String: Any]
+            let template = messages?["instructions_template"] as? String
+            let baseInstructions = entry["base_instructions"] as? String
+            XCTAssertTrue(
+                !(template ?? "").isEmpty || !(baseInstructions ?? "").isEmpty,
+                "missing instructions for \(entry["slug"] as? String ?? "?")"
+            )
+            XCTAssertNotNil(entry["experimental_supported_tools"] as? [String])
+        }
+
+        let pool = try XCTUnwrap(entries.first { $0["slug"] as? String == "pool-model" })
+        XCTAssertEqual(
+            (pool["model_messages"] as? [String: Any])?["instructions_template"] as? String,
+            "pool instructions"
+        )
+        let clone = try XCTUnwrap(entries.first { $0["slug"] as? String == "openrouter/vision-model" })
+        XCTAssertEqual(
+            (clone["model_messages"] as? [String: Any])?["instructions_template"] as? String,
+            "template instructions"
+        )
+        XCTAssertEqual(clone["input_modalities"] as? [String], ["text", "image"])
+        XCTAssertEqual(clone["experimental_supported_tools"] as? [String], ["send_user_message_async", "clock"])
+    }
+
+    /// No `models_cache.json`: every entry still gets the minimal prompt and
+    /// the native tool list, so Codex can parse the catalog.
+    func testGeneratedCatalogFallsBackWithoutCodexCache() throws {
+        let base = CodexModelCatalog.sanitizedEntries([
+            ["slug": "pool-model", "context_window": 128_000]
+        ])
+        let (entries, _) = CodexModelCatalog.generatedEntries(base: base, sources: [], defaults: nil)
+        let entry = try XCTUnwrap(entries.first)
+        XCTAssertEqual(entry["base_instructions"] as? String, CodexModelCatalog.fallbackInstructions)
+        XCTAssertEqual(entry["experimental_supported_tools"] as? [String], ["send_user_message_async", "clock"])
+        XCTAssertNil(entry["model_messages"])
+    }
+
+    /// Private prompt fields are dropped while sanitizing the base, before the
+    /// public template is injected.
+    func testSanitizeRemovesPrivatePromptFieldsBeforeInjection() throws {
+        let base = CodexModelCatalog.sanitizedEntries([[
+            "slug": "pool-model",
+            "context_window": 128_000,
+            "base_instructions": "private instruction fixture",
+            "model_messages": ["instructions_template": "private template fixture"]
+        ]])
+        let sanitized = try XCTUnwrap(base.first)
+        XCTAssertNil(sanitized["base_instructions"])
+        XCTAssertNil(sanitized["model_messages"])
+
+        let cache = """
+        {"models":[{"slug":"gpt-6.1-sol","experimental_supported_tools":["send_user_message_async","clock"],
+         "model_messages":{"instructions_template":"public template"}}]}
+        """
+        let defaults = try XCTUnwrap(CodexModelCatalog.SchemaDefaults.decode(Data(cache.utf8)))
+        let generated = try XCTUnwrap(
+            CodexModelCatalog.applyRequiredSchema(to: base, defaults: defaults).first
+        )
+        XCTAssertEqual(
+            (generated["model_messages"] as? [String: Any])?["instructions_template"] as? String,
+            "public template"
+        )
+        XCTAssertNotEqual(generated["base_instructions"] as? String, "private instruction fixture")
     }
 }
 
