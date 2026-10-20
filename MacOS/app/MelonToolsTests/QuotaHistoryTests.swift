@@ -158,3 +158,138 @@ final class QuotaHistoryTests: XCTestCase {
         XCTAssertEqual(siblings, [QuotaHistoryStore.fileName])
     }
 }
+
+/// Pure dashboard aggregation: pool counters, trend buckets and provider
+/// ranking. No store or clock dependency.
+final class DashboardAggregationTests: XCTestCase {
+    private func account(
+        id: String,
+        hourly: Double?,
+        weekly: Double?,
+        reserve: Int? = nil,
+        error: String? = nil,
+        updated: Date = Date()
+    ) -> CodexAccount {
+        var quota = CodexQuota()
+        quota.hourlyRemainingPercent = hourly
+        quota.weeklyRemainingPercent = weekly
+
+        var account = CodexAccount(tokens: CodexTokens())
+        account.id = id
+        account.quota = quota
+        account.quotaUpdatedAt = updated
+        account.quotaError = error
+        account.weeklyReservePercent = reserve
+        return account
+    }
+
+    func testPoolHealthCountsUsablePausedAndErrors() {
+        let accounts = [
+            account(id: "a", hourly: 80, weekly: 60),
+            account(id: "b", hourly: 40, weekly: 20),
+            account(id: "c", hourly: 50, weekly: 3, reserve: 5),
+            account(id: "d", hourly: nil, weekly: nil, error: "boom"),
+        ]
+
+        let health = DashboardMetrics.poolHealth(accounts: accounts)
+        XCTAssertEqual(health.total, 4)
+        XCTAssertEqual(health.usable, 3)
+        XCTAssertEqual(health.paused, 1)
+        XCTAssertEqual(health.errors, 1)
+        XCTAssertEqual(health.hourlyAverage ?? 0, (80 + 40 + 50) / 3, accuracy: 0.001)
+        XCTAssertEqual(health.weeklyAverage ?? 0, (60 + 20 + 3) / 3, accuracy: 0.001)
+        XCTAssertNil(DashboardMetrics.average([]))
+    }
+
+    func testPoolHealthIgnoresStaleQuotaWhenCountingPaused() {
+        let stale = account(
+            id: "stale",
+            hourly: 0,
+            weekly: 0,
+            updated: Date().addingTimeInterval(-2 * CodexRoutingPlanner.quotaFreshness)
+        )
+        let health = DashboardMetrics.poolHealth(accounts: [stale])
+        XCTAssertEqual(health.paused, 0)
+        XCTAssertEqual(health.usable, 1)
+    }
+
+    func testTrendBucketsHourlyAcrossAllKeys() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let start = now.addingTimeInterval(-24 * 3600)
+        let history: [String: [QuotaHistorySample]] = [
+            "account-a": [
+                QuotaHistorySample(at: start.addingTimeInterval(600), hourly: 20),
+                QuotaHistorySample(at: start.addingTimeInterval(23 * 3600 + 600), hourly: 60),
+                QuotaHistorySample(at: start.addingTimeInterval(-60), hourly: 99),
+            ],
+            "claude": [
+                QuotaHistorySample(at: start.addingTimeInterval(1_200), hourly: 40),
+                QuotaHistorySample(at: start.addingTimeInterval(23 * 3600 + 1_200), hourly: 80),
+            ],
+        ]
+
+        let points = DashboardTrend.points(
+            history: history,
+            field: .hourly,
+            now: now,
+            window: 24 * 3600,
+            bucket: 3600
+        )
+
+        XCTAssertEqual(points.count, 2)
+        XCTAssertEqual(points[0].start, start)
+        XCTAssertEqual(points[0].value, 30, accuracy: 0.001)
+        XCTAssertEqual(points[1].start, start.addingTimeInterval(23 * 3600))
+        XCTAssertEqual(points[1].value, 70, accuracy: 0.001)
+    }
+
+    func testTrendBucketsWeeklyByDayAndIgnoresMissingValues() {
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        let start = now.addingTimeInterval(-7 * 24 * 3600)
+        let history: [String: [QuotaHistorySample]] = [
+            "account-a": [
+                QuotaHistorySample(at: start.addingTimeInterval(3600), weekly: 30),
+                QuotaHistorySample(at: start.addingTimeInterval(24 * 3600 + 7_200), weekly: 50),
+            ],
+            "openrouter": [
+                QuotaHistorySample(at: start.addingTimeInterval(6 * 24 * 3600 + 10_800), weekly: 70),
+                QuotaHistorySample(at: start.addingTimeInterval(2 * 3600), hourly: 10),
+            ],
+        ]
+
+        let points = DashboardTrend.points(
+            history: history,
+            field: .weekly,
+            now: now,
+            window: 7 * 24 * 3600,
+            bucket: 24 * 3600
+        )
+
+        XCTAssertEqual(points.map(\.value), [30, 50, 70])
+        XCTAssertEqual(
+            points.map(\.start),
+            [
+                start,
+                start.addingTimeInterval(24 * 3600),
+                start.addingTimeInterval(6 * 24 * 3600),
+            ]
+        )
+    }
+
+    func testTopProvidersRankByTokensAndKeepUnpricedRows() {
+        var spend = SessionSpend()
+        spend.providers = [
+            "openrouter": SessionSpend.ProviderStats(usd: 2.5, turns: 3, tokens: 1_000),
+            "opencode": SessionSpend.ProviderStats(usd: nil, turns: 5, tokens: 5_000),
+            "Claude": SessionSpend.ProviderStats(usd: 1, turns: 2, tokens: 100),
+            "Antigravity": SessionSpend.ProviderStats(usd: 9, turns: 1, tokens: 50),
+        ]
+
+        let top = spend.topProviders()
+        XCTAssertEqual(top.map(\.provider), ["opencode", "openrouter", "Claude"])
+        XCTAssertNil(top[0].stats.usd)
+        XCTAssertEqual(top[1].stats.usd, 2.5)
+        XCTAssertEqual(spend.topProviders(limit: 2).map(\.provider), ["opencode", "openrouter"])
+        XCTAssertTrue(spend.topProviders(limit: 0).isEmpty)
+    }
+}

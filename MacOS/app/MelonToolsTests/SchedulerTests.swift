@@ -30,6 +30,10 @@ final class SchedulerTests: XCTestCase {
         var value = 0
     }
 
+    private final class NoticeBox {
+        var notices: [SchedulerNotificationPolicy.Notice] = []
+    }
+
     private func okRunner(
         _ content: String = "answer",
         tokens: Int = 42,
@@ -60,7 +64,8 @@ final class SchedulerTests: XCTestCase {
             fileURL: fileURL,
             runner: runner,
             gateway: gateway,
-            isGatewayRunning: gatewayRunning
+            isGatewayRunning: gatewayRunning,
+            notifications: .disabled
         )
     }
 
@@ -478,5 +483,103 @@ final class SchedulerTests: XCTestCase {
 
         let ids = try await catalog.fetchModels(gateway: gateway)
         XCTAssertEqual(ids, ["gpt-5", "opencode/a", "openrouter/z"])
+    }
+
+    // MARK: - Notifications
+
+    func testTaskNotificationSuccessUsesTaskNameAnd120CharacterPrefix() throws {
+        let long = String(repeating: "я", count: 150)
+        let notice = try XCTUnwrap(SchedulerNotificationPolicy.notice(
+            taskId: "t1",
+            taskName: "Nightly",
+            status: .ok,
+            result: long,
+            error: nil,
+            now: Date(timeIntervalSince1970: 100)
+        ))
+
+        XCTAssertEqual(notice.title, L("Scheduled task finished"))
+        XCTAssertEqual(notice.identifier, "task-t1-100")
+        XCTAssertEqual(notice.body, "Nightly: " + String(long.prefix(120)) + "…")
+        XCTAssertEqual(notice.body.count, "Nightly: ".count + 120 + 1)
+    }
+
+    func testTaskNotificationErrorKeepsVerbatimPrefix() throws {
+        let error = "HTTP 500: " + String(repeating: "x", count: 200)
+        let notice = try XCTUnwrap(SchedulerNotificationPolicy.notice(
+            taskId: "t2",
+            taskName: "Sync",
+            status: .error,
+            result: "",
+            error: error,
+            now: Date(timeIntervalSince1970: 200)
+        ))
+
+        XCTAssertEqual(notice.title, L("Scheduled task failed"))
+        XCTAssertEqual(notice.body, "Sync: " + String(error.prefix(120)) + "…")
+        XCTAssertTrue(notice.body.hasPrefix("Sync: HTTP 500: "))
+    }
+
+    func testTaskNotificationSkipsUnfinishedStatuses() {
+        XCTAssertNil(SchedulerNotificationPolicy.notice(
+            taskId: "t3", taskName: "x", status: .never, result: "", error: nil
+        ))
+        XCTAssertNil(SchedulerNotificationPolicy.notice(
+            taskId: "t4", taskName: "x", status: .running, result: "", error: nil
+        ))
+    }
+
+    func testRunDeliversNotificationThroughSink() async {
+        let box = NoticeBox()
+        let store = SchedulerStore(
+            fileURL: fileURL,
+            runner: okRunner("done"),
+            gateway: gateway,
+            isGatewayRunning: true,
+            notifications: SchedulerNotificationSink(
+                isEnabled: { true },
+                post: { box.notices.append($0) }
+            )
+        )
+        let task = store.addTask(
+            name: "run",
+            prompt: "p",
+            model: "m",
+            reasoningEffort: nil,
+            intervalMinutes: 60,
+            enabled: true
+        )
+
+        await store.runNow(id: task.id)
+
+        XCTAssertEqual(box.notices.count, 1)
+        XCTAssertEqual(box.notices.first?.body, "run: done")
+        XCTAssertEqual(box.notices.first?.identifier.hasPrefix("task-"), true)
+    }
+
+    // MARK: - Dashboard scheduler summary
+
+    func testDashboardSchedulerSummaryUsesDueCountNextRunAndNewestHistory() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let due = SchedulerTask(name: "due", model: "m", intervalMinutes: 60, nextRunAt: 900)
+        let later = SchedulerTask(name: "later", model: "m", intervalMinutes: 60, nextRunAt: 2_000)
+        let disabled = SchedulerTask(
+            name: "off", model: "m", intervalMinutes: 60, enabled: false, nextRunAt: 800
+        )
+
+        XCTAssertEqual(DashboardMetrics.dueCount(tasks: [due, later, disabled], now: now), 1)
+        XCTAssertEqual(
+            DashboardMetrics.nextRun(tasks: [later, disabled, due]),
+            Date(timeIntervalSince1970: 900)
+        )
+
+        let history = [
+            SchedulerHistoryEntry(
+                taskId: due.id, at: 1_100, status: .error, model: "m",
+                durationMs: 1, tokens: 2, result: "", error: "boom"
+            ),
+        ]
+        XCTAssertEqual(DashboardMetrics.lastStatus(tasks: [due], history: history), .error)
+        XCTAssertNil(DashboardMetrics.lastStatus(tasks: [later], history: []))
     }
 }

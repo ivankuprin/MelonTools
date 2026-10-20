@@ -26,7 +26,7 @@ mod vault;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
 pub struct AppState {
@@ -114,6 +114,11 @@ async fn settings_set(
     if merged.management_secret.trim().is_empty() {
         merged.management_secret = state.settings().management_secret;
     }
+    // Reset-notification markers are app-managed: an older UI payload without
+    // them must not cause the same window to be announced again.
+    if merged.quota_reset_notified.is_empty() {
+        merged.quota_reset_notified = state.settings().quota_reset_notified;
+    }
     settings::save(&merged)?;
     if let Ok(mut guard) = state.settings.lock() {
         *guard = merged.clone();
@@ -142,8 +147,7 @@ async fn gateway_status(state: State<'_, AppState>) -> Result<Value, String> {
     }))
 }
 
-#[tauri::command]
-async fn gateway_start(state: State<'_, AppState>) -> Result<String, String> {
+async fn start_gateway(state: &AppState) -> Result<String, String> {
     let settings = state.settings();
     let result = gateway::start(&state.gw, &settings).await?;
     let _ = codex_route::apply(settings.port, &settings.api_key);
@@ -160,8 +164,7 @@ async fn gateway_start(state: State<'_, AppState>) -> Result<String, String> {
     Ok(result)
 }
 
-#[tauri::command]
-async fn gateway_stop(state: State<'_, AppState>) -> Result<String, String> {
+async fn stop_gateway(state: &AppState) -> Result<String, String> {
     let result = gateway::stop(&state.gw)?;
     let _ = codex_route::remove();
     if let Ok(mut guard) = state.watchdog.lock() {
@@ -169,6 +172,16 @@ async fn gateway_stop(state: State<'_, AppState>) -> Result<String, String> {
         guard.supervised = false;
     }
     Ok(result)
+}
+
+#[tauri::command]
+async fn gateway_start(state: State<'_, AppState>) -> Result<String, String> {
+    start_gateway(state.inner()).await
+}
+
+#[tauri::command]
+async fn gateway_stop(state: State<'_, AppState>) -> Result<String, String> {
+    stop_gateway(state.inner()).await
 }
 
 /// Rewrites config.yaml + gateway auth files from the vault.
@@ -204,20 +217,35 @@ async fn vault_list() -> Result<Vec<Value>, String> {
     Ok(vault::list_views())
 }
 
-/// Last quota reading before a refresh, used to detect a crossing.
-type PreviousQuota = HashMap<String, (Option<f64>, Option<f64>)>;
+/// Last quota reading before a refresh, used to detect a crossing and a
+/// recovered block.
+type PreviousQuota = HashMap<String, PreviousAccount>;
+
+#[derive(Clone)]
+struct PreviousAccount {
+    hourly: Option<f64>,
+    weekly: Option<f64>,
+    blocked: bool,
+    block_code: Option<String>,
+}
 
 fn quota_snapshot() -> PreviousQuota {
     vault::accounts()
         .into_iter()
         .filter_map(|account| {
-            let quota = account.quota?;
+            let quota = account.quota.clone()?;
+            let block_code = account
+                .block_info()
+                .and_then(|info| info.get("code").and_then(|code| code.as_str()).map(String::from));
+            let id = account.id.clone();
             Some((
-                account.id,
-                (
-                    quota.hourly_remaining_percent,
-                    quota.weekly_remaining_percent,
-                ),
+                id,
+                PreviousAccount {
+                    hourly: quota.hourly_remaining_percent,
+                    weekly: quota.weekly_remaining_percent,
+                    blocked: account.is_blocked(),
+                    block_code,
+                },
             ))
         })
         .collect()
@@ -239,6 +267,7 @@ async fn quota_refresh(
         0
     };
     check_low_quota(&app, &state, &previous);
+    check_quota_reset(&app, &state, &previous);
     Ok(json!({
         "accounts": vault::list_views(),
         "errors": errors,
@@ -257,7 +286,7 @@ fn quota_history() -> Vec<Value> {
 /// window id, so each window notifies at most once across restarts.
 fn check_low_quota(app: &tauri::AppHandle, state: &AppState, previous: &PreviousQuota) {
     let settings = state.settings();
-    if !settings.notify_low_quota {
+    if !settings.notifications || !settings.notify_low_quota {
         return;
     }
     let now = chrono::Utc::now().timestamp();
@@ -266,14 +295,14 @@ fn check_low_quota(app: &tauri::AppHandle, state: &AppState, previous: &Previous
         let Some(quota) = account.quota.clone() else {
             continue;
         };
-        let before = previous.get(&account.id).copied().unwrap_or((None, None));
+        let before = previous.get(&account.id);
         let checks = [
             (
                 "5h",
                 quota.hourly_remaining_percent,
                 quota.hourly_reset_at,
                 account.hourly_reserve_percent,
-                before.0,
+                before.and_then(|value| value.hourly),
                 3600i64,
                 if english { "5-hour window" } else { "5-часовое окно" },
             ),
@@ -282,7 +311,7 @@ fn check_low_quota(app: &tauri::AppHandle, state: &AppState, previous: &Previous
                 quota.weekly_remaining_percent,
                 quota.weekly_reset_at,
                 account.weekly_reserve_percent,
-                before.1,
+                before.and_then(|value| value.weekly),
                 21600i64,
                 if english { "weekly window" } else { "недельное окно" },
             ),
@@ -336,6 +365,79 @@ fn check_low_quota(app: &tauri::AppHandle, state: &AppState, previous: &Previous
                 })
                 .body(body)
                 .show();
+        }
+    }
+}
+
+/// One toast per account/window when a refresh turns a blocked account into a
+/// usable one. The marker is stored in settings, so restarts cannot repeat it.
+fn check_quota_reset(app: &tauri::AppHandle, state: &AppState, previous: &PreviousQuota) {
+    let settings = state.settings();
+    if !settings.notifications || !settings.notify_quota_reset {
+        return;
+    }
+    let english = settings.lang == "en";
+    let now = chrono::Utc::now().timestamp();
+    let mut markers = settings.quota_reset_notified.clone();
+    let mut changed = false;
+    for account in vault::accounts() {
+        let Some(before) = previous.get(&account.id) else {
+            continue;
+        };
+        let Some(window) = before.block_code.as_deref().and_then(quota::block_window) else {
+            continue;
+        };
+        let reset_at = match window {
+            "hourly" => account
+                .quota
+                .as_ref()
+                .and_then(|quota| quota.hourly_reset_at),
+            "weekly" => account
+                .quota
+                .as_ref()
+                .and_then(|quota| quota.weekly_reset_at),
+            _ => None,
+        }
+        .map(|value| value + vault::APPLE_REF_UNIX_OFFSET);
+        let key = quota::reset_notification_key(&account.id, window, reset_at, now);
+        let notified = markers.iter().any(|marker| marker == &key);
+        if !quota::should_notify_quota_reset(before.blocked, account.is_blocked(), notified) {
+            continue;
+        }
+        markers.push(key);
+        changed = true;
+        let label = match (english, window) {
+            (true, "hourly") => "5-hour window",
+            (true, "weekly") => "weekly window",
+            (false, "hourly") => "5-часовое окно",
+            (false, "weekly") => "недельное окно",
+            (true, _) => "quota",
+            (false, _) => "квота",
+        };
+        let body = if english {
+            format!("{}: {} is available again", account.display_name(), label)
+        } else {
+            format!("{}: {} снова доступна", account.display_name(), label)
+        };
+        let _ = app
+            .notification()
+            .builder()
+            .title(if english {
+                "Melon Tools · quota reset"
+            } else {
+                "Melon Tools · сброс квоты"
+            })
+            .body(body)
+            .show();
+    }
+    if changed {
+        if markers.len() > 200 {
+            let excess = markers.len() - 200;
+            markers.drain(0..excess);
+        }
+        if let Ok(mut guard) = state.settings.lock() {
+            guard.quota_reset_notified = markers;
+            let _ = settings::save(&guard);
         }
     }
 }
@@ -598,9 +700,13 @@ async fn scheduler_delete(id: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
-async fn scheduler_run_now(state: State<'_, AppState>, id: String) -> Result<Value, String> {
+async fn scheduler_run_now(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Value, String> {
     let settings = state.settings();
-    scheduler::run_now(&settings, &id).await
+    scheduler::run_now(&settings, &id, &app).await
 }
 
 /// Model ids served by the running gateway, grouped by id prefix. The picker
@@ -996,6 +1102,79 @@ fn ensure_single_instance() {
     }
 }
 
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ApiToggle {
+    Start,
+    Stop,
+}
+
+/// Pause a running gateway; start it again when it is stopped or the user
+/// explicitly stopped it earlier.
+fn api_toggle_action(running: bool, user_stopped: bool) -> ApiToggle {
+    if user_stopped || !running {
+        ApiToggle::Start
+    } else {
+        ApiToggle::Stop
+    }
+}
+
+/// Frontend payload for the tray items that the webview owns. Show, API toggle
+/// and Quit are handled entirely in Rust.
+fn tray_event_payload(menu_id: &str) -> Option<Value> {
+    match menu_id {
+        "scheduler" => Some(json!({"action": "navigate", "section": "scheduler"})),
+        "run-next" => Some(json!({"action": "run-next"})),
+        _ => None,
+    }
+}
+
+fn handle_tray_menu(app: &tauri::AppHandle, menu_id: &str) {
+    match menu_id {
+        "show" => show_main_window(app),
+        "scheduler" | "run-next" => {
+            show_main_window(app);
+            if let Some(payload) = tray_event_payload(menu_id) {
+                let _ = app.emit("tray-action", payload);
+            }
+        }
+        "api-toggle" => {
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = handle.state::<AppState>();
+                let settings = state.settings();
+                let running = gateway::health(settings.port, &settings.api_key).await;
+                let user_stopped = state
+                    .watchdog
+                    .lock()
+                    .map(|guard| guard.user_stopped)
+                    .unwrap_or(false);
+                match api_toggle_action(running, user_stopped) {
+                    ApiToggle::Start => {
+                        let _ = start_gateway(state.inner()).await;
+                    }
+                    ApiToggle::Stop => {
+                        let _ = stop_gateway(state.inner()).await;
+                    }
+                }
+                let running = gateway::health(settings.port, &settings.api_key).await;
+                let _ = handle.emit(
+                    "tray-action",
+                    json!({"action": "refresh", "running": running}),
+                );
+            });
+        }
+        "quit" => app.exit(0),
+        _ => {}
+    }
+}
+
 fn main() {
     ensure_single_instance();
     let initial_settings = settings::load();
@@ -1010,33 +1189,57 @@ fn main() {
             update: Mutex::new(None),
         })
         .setup(|app| {
-            // System tray: open window / quit.
-            let open_item =
-                tauri::menu::MenuItem::with_id(app, "open", "Открыть Melon Tools", true, None::<&str>)?;
-            let quit_item = tauri::menu::MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
-            let menu = tauri::menu::Menu::with_items(app, &[&open_item, &quit_item])?;
+            // System tray: window, scheduler navigation, run-next, API
+            // pause/resume and quit.
+            let show_item = tauri::menu::MenuItem::with_id(
+                app,
+                "show",
+                "Показать",
+                true,
+                None::<&str>,
+            )?;
+            let scheduler_item = tauri::menu::MenuItem::with_id(
+                app,
+                "scheduler",
+                "Планировщик",
+                true,
+                None::<&str>,
+            )?;
+            let run_item = tauri::menu::MenuItem::with_id(
+                app,
+                "run-next",
+                "Выполнить следующую задачу",
+                true,
+                None::<&str>,
+            )?;
+            let api_item = tauri::menu::MenuItem::with_id(
+                app,
+                "api-toggle",
+                "Пауза / Возобновить API",
+                true,
+                None::<&str>,
+            )?;
+            let quit_item =
+                tauri::menu::MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+            let menu = tauri::menu::Menu::with_items(
+                app,
+                &[
+                    &show_item,
+                    &scheduler_item,
+                    &run_item,
+                    &api_item,
+                    &quit_item,
+                ],
+            )?;
             let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))?;
             tauri::tray::TrayIconBuilder::new()
                 .icon(icon)
                 .menu(&menu)
                 .tooltip("Melon Tools")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "open" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
+                .on_menu_event(|app, event| handle_tray_menu(app, event.id.as_ref()))
                 .on_tray_icon_event(|tray, event| {
                     if let tauri::tray::TrayIconEvent::Click { .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        show_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
@@ -1088,7 +1291,7 @@ fn main() {
                         let state = scheduler_handle.state::<AppState>();
                         state.settings()
                     };
-                    scheduler::tick(&settings).await;
+                    scheduler::tick(&settings, &scheduler_handle).await;
                     tokio::time::sleep(std::time::Duration::from_secs(scheduler::TICK_SECS)).await;
                 }
             });
@@ -1164,7 +1367,27 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{launcher_argv, settings_view};
+    use super::{api_toggle_action, launcher_argv, settings_view, tray_event_payload, ApiToggle};
+
+    #[test]
+    fn tray_events_map_to_frontend_actions() {
+        let scheduler = tray_event_payload("scheduler").unwrap();
+        assert_eq!(scheduler["action"], "navigate");
+        assert_eq!(scheduler["section"], "scheduler");
+        let run = tray_event_payload("run-next").unwrap();
+        assert_eq!(run["action"], "run-next");
+        assert!(tray_event_payload("show").is_none());
+        assert!(tray_event_payload("api-toggle").is_none());
+        assert!(tray_event_payload("unknown").is_none());
+    }
+
+    #[test]
+    fn api_toggle_pauses_only_a_running_gateway() {
+        assert_eq!(api_toggle_action(true, false), ApiToggle::Stop);
+        assert_eq!(api_toggle_action(false, false), ApiToggle::Start);
+        assert_eq!(api_toggle_action(true, true), ApiToggle::Start);
+        assert_eq!(api_toggle_action(false, true), ApiToggle::Start);
+    }
 
     #[test]
     fn launcher_accepts_only_http_schemes() {

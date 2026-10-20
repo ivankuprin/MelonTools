@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tauri_plugin_notification::NotificationExt;
 
 use crate::{gateway, paths, settings};
 
@@ -413,7 +414,7 @@ async fn acquire(wait: bool) -> Option<RunGuard> {
 }
 
 /// One scheduler tick: at most one due task, serial with every other run.
-pub async fn tick(settings: &settings::Settings) {
+pub async fn tick(settings: &settings::Settings, app: &tauri::AppHandle) {
     let Some(_guard) = acquire(false).await else {
         return;
     };
@@ -421,12 +422,17 @@ pub async fn tick(settings: &settings::Settings) {
     let Some(task) = due_task(&store, now_secs()).cloned() else {
         return;
     };
-    run_and_record(settings, &task).await;
+    let outcome = run_and_record(settings, &task).await;
+    notify_outcome(app, settings, &task.name, &outcome);
 }
 
 /// "Run now" runs whatever the task state is (disabled included) and advances
 /// the schedule; it waits for a scheduled run to finish first.
-pub async fn run_now(settings: &settings::Settings, id: &str) -> Result<Value, String> {
+pub async fn run_now(
+    settings: &settings::Settings,
+    id: &str,
+    app: &tauri::AppHandle,
+) -> Result<Value, String> {
     let task = load()
         .tasks
         .into_iter()
@@ -435,11 +441,12 @@ pub async fn run_now(settings: &settings::Settings, id: &str) -> Result<Value, S
     let _guard = acquire(true)
         .await
         .ok_or_else(|| "планировщик занят — повторите позже".to_string())?;
-    run_and_record(settings, &task).await;
+    let outcome = run_and_record(settings, &task).await;
+    notify_outcome(app, settings, &task.name, &outcome);
     Ok(view())
 }
 
-async fn run_and_record(settings: &settings::Settings, task: &Task) {
+async fn run_and_record(settings: &settings::Settings, task: &Task) -> Outcome {
     mark_running(&task.id);
     let outcome = execute(settings.port, &settings.api_key, task).await;
     let at = now_secs();
@@ -449,6 +456,60 @@ async fn run_and_record(settings: &settings::Settings, task: &Task) {
     if apply_outcome(&mut store, &task.id, at, &outcome).is_ok() {
         let _ = save(&store);
     }
+    outcome
+}
+
+/// Toast after every run, gated by the master switch and the scheduler toggle.
+fn notify_outcome(
+    app: &tauri::AppHandle,
+    settings: &settings::Settings,
+    task_name: &str,
+    outcome: &Outcome,
+) {
+    if !settings.notifications || !settings.notify_scheduler {
+        return;
+    }
+    let (title, body) = notification_text(settings.lang == "en", task_name, outcome);
+    let _ = app
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show();
+}
+
+/// The first 120 characters of the result (success) or error (failure).
+pub fn notification_text(english: bool, task_name: &str, outcome: &Outcome) -> (String, String) {
+    let ok = outcome.status == "ok";
+    let title = match (english, ok) {
+        (true, true) => "Melon Tools · task completed",
+        (true, false) => "Melon Tools · task failed",
+        (false, true) => "Melon Tools · задача выполнена",
+        (false, false) => "Melon Tools · задача с ошибкой",
+    };
+    let raw = if ok {
+        outcome.result.as_str()
+    } else {
+        outcome.error.as_deref().unwrap_or("")
+    };
+    let prefix = notification_prefix(raw, 120);
+    let body = if prefix.is_empty() {
+        task_name.to_string()
+    } else {
+        format!("{}: {}", task_name, prefix)
+    };
+    (title.to_string(), body)
+}
+
+/// First non-empty line, trimmed and cut to `cap` characters on a UTF-8
+/// boundary. Notifications are diagnostics, not the full result.
+pub fn notification_prefix(text: &str, cap: usize) -> String {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    line.chars().take(cap).collect()
 }
 
 fn mark_running(id: &str) {
@@ -966,6 +1027,42 @@ mod tests {
         assert_eq!(empty.status, "ok");
         assert_eq!(empty.result, "");
         assert_eq!(empty.tokens, None);
+    }
+
+    #[test]
+    fn success_notification_uses_the_result_prefix() {
+        let outcome = Outcome {
+            status: "ok".to_string(),
+            result: "  first line  \nsecond line".to_string(),
+            ..Outcome::default()
+        };
+        let (title, body) = notification_text(true, "Nightly", &outcome);
+        assert_eq!(title, "Melon Tools · task completed");
+        assert_eq!(body, "Nightly: first line");
+    }
+
+    #[test]
+    fn error_notification_keeps_the_verbatim_prefix() {
+        let outcome = Outcome {
+            status: "error".to_string(),
+            error: Some(format!("{}tail", "e".repeat(200))),
+            ..Outcome::default()
+        };
+        let (title, body) = notification_text(true, "Nightly", &outcome);
+        assert_eq!(title, "Melon Tools · task failed");
+        assert_eq!(body, format!("Nightly: {}", "e".repeat(120)));
+        assert!(notification_prefix(&"ё".repeat(200), 120).chars().count() == 120);
+    }
+
+    #[test]
+    fn empty_notification_prefix_falls_back_to_the_name() {
+        let outcome = Outcome {
+            status: "error".to_string(),
+            error: None,
+            ..Outcome::default()
+        };
+        let (_, body) = notification_text(false, "Ночной отчёт", &outcome);
+        assert_eq!(body, "Ночной отчёт");
     }
 
     #[test]

@@ -161,4 +161,118 @@ final class LowQuotaNotificationTests: XCTestCase {
         )
         XCTAssertEqual(QuotaNotificationPolicy.windowKey(for: nil), "")
     }
+
+    // MARK: - Reset notifications
+
+    private func window(
+        _ remaining: Double?,
+        reset: Date? = nil,
+        reserve: Int? = nil
+    ) -> QuotaWindowState {
+        QuotaWindowState(remaining: remaining, reset: reset, reservePercent: reserve)
+    }
+
+    private func resetDecisions(
+        accountId: String = "account-a",
+        hourlyBefore: QuotaWindowState = QuotaWindowState(remaining: 50),
+        hourlyAfter: QuotaWindowState = QuotaWindowState(remaining: 50),
+        weeklyBefore: QuotaWindowState = QuotaWindowState(remaining: 50),
+        weeklyAfter: QuotaWindowState = QuotaWindowState(remaining: 50),
+        records: [String: QuotaNotificationRecord] = [:]
+    ) -> [QuotaResetNotificationPolicy.Decision] {
+        QuotaResetNotificationPolicy.decisions(
+            accountId: accountId,
+            hourlyBefore: hourlyBefore,
+            hourlyAfter: hourlyAfter,
+            weeklyBefore: weeklyBefore,
+            weeklyAfter: weeklyAfter,
+            records: records,
+            now: now
+        )
+    }
+
+    func testQuotaResetNotifiesWhenBlockedAccountBecomesUsable() throws {
+        let decisions = resetDecisions(
+            hourlyBefore: window(0),
+            hourlyAfter: window(80, reset: reset),
+            weeklyBefore: window(50),
+            weeklyAfter: window(60)
+        )
+
+        let decision = try XCTUnwrap(decisions.first)
+        XCTAssertEqual(decisions.count, 1)
+        XCTAssertEqual(decision.window, .hourly)
+        XCTAssertEqual(decision.stateKey, "account-a:reset:hourly")
+        XCTAssertEqual(decision.windowKey, QuotaNotificationPolicy.windowKey(for: reset))
+        XCTAssertEqual(decision.remaining, 80)
+    }
+
+    func testQuotaResetIsSilentWhileAnotherWindowStillBlocks() {
+        let decisions = resetDecisions(
+            hourlyBefore: window(0),
+            hourlyAfter: window(80, reset: reset),
+            weeklyBefore: window(0),
+            weeklyAfter: window(0)
+        )
+        XCTAssertTrue(decisions.isEmpty, "the account is still not usable")
+    }
+
+    func testQuotaResetIgnoresAccountsThatWereNotBlocked() {
+        XCTAssertTrue(resetDecisions(
+            hourlyBefore: window(50),
+            hourlyAfter: window(80, reset: reset),
+            weeklyBefore: window(50),
+            weeklyAfter: window(60)
+        ).isEmpty)
+    }
+
+    func testQuotaResetCoversBothRecoveredWindows() {
+        let decisions = resetDecisions(
+            hourlyBefore: window(0),
+            hourlyAfter: window(80, reset: reset),
+            weeklyBefore: window(0),
+            weeklyAfter: window(60, reset: reset.addingTimeInterval(3600))
+        )
+        XCTAssertEqual(decisions.count, 2)
+        XCTAssertEqual(
+            Set(decisions.map(\.stateKey)),
+            ["account-a:reset:hourly", "account-a:reset:weekly"]
+        )
+    }
+
+    func testQuotaResetFiresOncePerResetWindow() throws {
+        let first = try XCTUnwrap(resetDecisions(
+            hourlyBefore: window(0),
+            hourlyAfter: window(80, reset: reset)
+        ).first)
+        let records = [
+            first.stateKey: QuotaNotificationRecord(
+                notifiedAt: now,
+                windowKey: first.windowKey
+            ),
+        ]
+
+        XCTAssertTrue(resetDecisions(
+            hourlyBefore: window(0),
+            hourlyAfter: window(80, reset: reset),
+            records: records
+        ).isEmpty)
+
+        let next = resetDecisions(
+            hourlyBefore: window(0),
+            hourlyAfter: window(80, reset: reset.addingTimeInterval(3600)),
+            records: records
+        )
+        XCTAssertEqual(next.count, 1, "a new reset window re-arms the notice")
+    }
+
+    func testQuotaResetRecognisesReserveRecovery() {
+        let decisions = resetDecisions(
+            hourlyBefore: window(50),
+            hourlyAfter: window(50),
+            weeklyBefore: window(4, reset: reset, reserve: 5),
+            weeklyAfter: window(10, reset: reset, reserve: 5)
+        )
+        XCTAssertEqual(decisions.map(\.window), [.weekly])
+    }
 }

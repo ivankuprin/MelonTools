@@ -1,15 +1,15 @@
 # Melon Tools for Windows
 
-Порт приложения на **Tauri 2** (Rust + WebView2). Версия **2.0.3**.
+Порт приложения на **Tauri 2** (Rust + WebView2). Версия **2.1.0**.
 
-Готовый **установщик** (с выбором папки) и портативный **Windows x64** доступны в [последнем релизе](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.3-win-x64-portable.exe) — или обновитесь прямо из приложения: сайдбар → **«Обновить»**.
+Готовый **установщик** (с выбором папки) и портативный **Windows x64** доступны в [последнем релизе](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.1.0-win-x64-portable.exe) — или обновитесь прямо из приложения: сайдбар → **«Обновить»**.
 Скачайте и запустите `.exe`; это приложение, не установщик. Для запуска нужен
 **WebView2 Runtime**. Файл не подписан Authenticode, поэтому Windows может
 показать предупреждение. SHA-256 опубликован рядом с файлом; в PowerShell
 проверьте его командой:
 
 ```powershell
-Get-FileHash .\MelonTools-2.0.3-win-x64-portable.exe -Algorithm SHA256
+Get-FileHash .\MelonTools-2.1.0-win-x64-portable.exe -Algorithm SHA256
 ```
 
 Исходники и инструкции по сборке приведены ниже.

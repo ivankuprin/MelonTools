@@ -363,9 +363,44 @@ pub async fn refresh_all(client: &Client, only: Option<&str>) -> Vec<String> {
     errors
 }
 
+/// Window affected by a block code: `hourly` or `weekly`.
+pub fn block_window(code: &str) -> Option<&'static str> {
+    match code {
+        "hourly_exhausted" | "hourly_reserve" => Some("hourly"),
+        "weekly_exhausted" | "weekly_reserve" => Some("weekly"),
+        _ => None,
+    }
+}
+
+/// A reset toast is due only when the account left the blocked state and this
+/// account/window marker was not announced already.
+pub fn should_notify_quota_reset(
+    previous_blocked: bool,
+    current_blocked: bool,
+    already_notified: bool,
+) -> bool {
+    previous_blocked && !current_blocked && !already_notified
+}
+
+/// Stable per-window marker. The reset timestamp is authoritative; without one
+/// the current hour is the fallback bucket so a broken payload cannot spam.
+pub fn reset_notification_key(
+    account_id: &str,
+    window: &str,
+    reset_at: Option<f64>,
+    now: i64,
+) -> String {
+    match reset_at.filter(|value| value.is_finite()) {
+        Some(reset) => format!("{}:{}:r{:.0}", account_id, window, reset),
+        None => format!("{}:{}:t{}", account_id, window, now.div_euclid(3600)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::subscription_url;
+    use super::{
+        block_window, reset_notification_key, should_notify_quota_reset, subscription_url,
+    };
 
     #[test]
     fn subscription_url_percent_encodes_account_id() {
@@ -385,5 +420,40 @@ mod tests {
             subscription_url(Some("a+b&c=d/e")),
             "https://chatgpt.com/backend-api/subscriptions?account_id=a%2Bb%26c%3Dd%2Fe"
         );
+    }
+
+    #[test]
+    fn reset_notification_fires_only_after_leaving_the_blocked_state() {
+        assert!(should_notify_quota_reset(true, false, false));
+        assert!(!should_notify_quota_reset(true, false, true));
+        assert!(!should_notify_quota_reset(false, false, false));
+        assert!(!should_notify_quota_reset(true, true, false));
+    }
+
+    #[test]
+    fn reset_marker_is_stable_per_window_and_moves_with_the_reset() {
+        let first = reset_notification_key("acc", "hourly", Some(1_700_000_000.4), 10);
+        let same = reset_notification_key("acc", "hourly", Some(1_700_000_000.1), 99_999);
+        let next = reset_notification_key("acc", "hourly", Some(1_700_003_600.0), 10);
+        assert_eq!(first, same);
+        assert_ne!(first, next);
+        assert!(first.contains("acc:hourly:r"));
+    }
+
+    #[test]
+    fn reset_marker_falls_back_to_an_hour_bucket_without_a_reset_time() {
+        let same = reset_notification_key("acc", "quota", None, 7_200);
+        assert_eq!(same, reset_notification_key("acc", "quota", None, 7_500));
+        assert_ne!(same, reset_notification_key("acc", "quota", None, 10_800));
+        assert!(same.ends_with(":t2"));
+    }
+
+    #[test]
+    fn block_codes_map_to_their_quota_window() {
+        assert_eq!(block_window("hourly_exhausted"), Some("hourly"));
+        assert_eq!(block_window("hourly_reserve"), Some("hourly"));
+        assert_eq!(block_window("weekly_exhausted"), Some("weekly"));
+        assert_eq!(block_window("weekly_reserve"), Some("weekly"));
+        assert_eq!(block_window("something_else"), None);
     }
 }

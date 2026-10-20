@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Combine
-import UserNotifications
 
 // MARK: - Low-quota notifications
 
@@ -137,6 +136,82 @@ enum QuotaNotificationPolicy {
             windowKey: key,
             stateKey: stateKey
         )
+    }
+}
+
+// MARK: - Quota reset notifications
+
+/// One account window at refresh time. `isBlocked` mirrors the routing
+/// planner: a zero window or a window at/below its user reserve pauses the
+/// account. No freshness check here — the transition compares what the last
+/// refresh left behind with what the new refresh returned.
+struct QuotaWindowState: Equatable {
+    var remaining: Double? = nil
+    var reset: Date? = nil
+    var reservePercent: Int? = nil
+
+    var isBlocked: Bool {
+        guard let remaining else { return false }
+        if remaining <= 0 { return true }
+        if let reservePercent, reservePercent > 0, remaining <= Double(reservePercent) {
+            return true
+        }
+        return false
+    }
+
+    var isUsable: Bool {
+        remaining != nil && !isBlocked
+    }
+}
+
+/// Pure reset decision helper. A notification is due only when the account
+/// was blocked by at least one window before the refresh and is usable after
+/// it. Every window that recovered gets its own notice, at most once per
+/// reset window.
+enum QuotaResetNotificationPolicy {
+    struct Decision: Equatable {
+        let window: QuotaNotificationWindow
+        let remaining: Double
+        let windowKey: String
+        let stateKey: String
+    }
+
+    static func decisions(
+        accountId: String,
+        hourlyBefore: QuotaWindowState,
+        hourlyAfter: QuotaWindowState,
+        weeklyBefore: QuotaWindowState,
+        weeklyAfter: QuotaWindowState,
+        records: [String: QuotaNotificationRecord],
+        now: Date = Date()
+    ) -> [Decision] {
+        let wasBlocked = hourlyBefore.isBlocked || weeklyBefore.isBlocked
+        let stillBlocked = hourlyAfter.isBlocked || weeklyAfter.isBlocked
+        guard wasBlocked, !stillBlocked else { return [] }
+
+        var result: [Decision] = []
+        let pairs: [(QuotaNotificationWindow, QuotaWindowState, QuotaWindowState)] = [
+            (.hourly, hourlyBefore, hourlyAfter),
+            (.weekly, weeklyBefore, weeklyAfter),
+        ]
+        for (window, before, after) in pairs {
+            guard before.isBlocked, after.isUsable, let remaining = after.remaining else { continue }
+            let key = QuotaNotificationPolicy.windowKey(for: after.reset)
+            let stateKey = "\(accountId):reset:\(window.rawValue)"
+            guard QuotaNotificationPolicy.shouldNotify(
+                stateKey: stateKey,
+                windowKey: key,
+                records: records,
+                now: now
+            ) else { continue }
+            result.append(Decision(
+                window: window,
+                remaining: remaining,
+                windowKey: key,
+                stateKey: stateKey
+            ))
+        }
+        return result
     }
 }
 
@@ -765,6 +840,16 @@ final class CodexStore: ObservableObject {
         defer { busyAccountIds.remove(accountId) }
 
         var account = accounts[idx]
+        let beforeHourly = QuotaWindowState(
+            remaining: account.quota?.hourlyRemainingPercent,
+            reset: account.quota?.hourlyResetAt,
+            reservePercent: account.hourlyReservePercent
+        )
+        let beforeWeekly = QuotaWindowState(
+            remaining: account.quota?.weeklyRemainingPercent,
+            reset: account.quota?.weeklyResetAt,
+            reservePercent: account.weeklyReservePercent
+        )
         do {
             if forceTokens || account.needsRefresh {
                 // A forced refresh re-reads the id_token claims — that is how a
@@ -832,6 +917,11 @@ final class CodexStore: ObservableObject {
                 ),
                 for: accountId
             )
+            maybeNotifyQuotaReset(
+                account: account,
+                beforeHourly: beforeHourly,
+                beforeWeekly: beforeWeekly
+            )
             maybeNotifyLowQuota(account)
             applyRoutingIfNeeded(reason: L("quota refreshed"))
             return
@@ -853,7 +943,6 @@ final class CodexStore: ObservableObject {
     }
 
     private static let notificationRecordsKey = "quotaNotificationRecords"
-    private var notificationAuthorizationRequested = false
 
     /// Persisted per account/window bookkeeping. The reset timestamp in
     /// `windowKey` is what makes a notification “once per window” instead of
@@ -870,6 +959,59 @@ final class CodexStore: ObservableObject {
             guard let data = try? JSONEncoder().encode(newValue) else { return }
             UserDefaults.standard.set(data, forKey: Self.notificationRecordsKey)
         }
+    }
+
+    /// One notification per account/window when a blocked or exhausted
+    /// account becomes usable again after a quota refresh. The persisted
+    /// reset marker suppresses repeats of the same reset window.
+    private func maybeNotifyQuotaReset(
+        account: CodexAccount,
+        beforeHourly: QuotaWindowState,
+        beforeWeekly: QuotaWindowState
+    ) {
+        guard UserDefaults.standard.bool(forKey: "quotaNotifications") else { return }
+        guard let quota = account.quota else { return }
+
+        let afterHourly = QuotaWindowState(
+            remaining: quota.hourlyRemainingPercent,
+            reset: quota.hourlyResetAt,
+            reservePercent: account.hourlyReservePercent
+        )
+        let afterWeekly = QuotaWindowState(
+            remaining: quota.weeklyRemainingPercent,
+            reset: quota.weeklyResetAt,
+            reservePercent: account.weeklyReservePercent
+        )
+        var records = notificationRecords
+        let now = Date()
+        let decisions = QuotaResetNotificationPolicy.decisions(
+            accountId: account.id,
+            hourlyBefore: beforeHourly,
+            hourlyAfter: afterHourly,
+            weeklyBefore: beforeWeekly,
+            weeklyAfter: afterWeekly,
+            records: records,
+            now: now
+        )
+        guard !decisions.isEmpty else { return }
+
+        for decision in decisions {
+            records[decision.stateKey] = QuotaNotificationRecord(
+                notifiedAt: now,
+                windowKey: decision.windowKey
+            )
+            let windowLabel: String
+            switch decision.window {
+            case .hourly: windowLabel = L("hourly")
+            case .weekly: windowLabel = L("weekly")
+            }
+            MTNotificationCenter.post(
+                title: L("Codex quota reset"),
+                body: "\(account.displayName): \(windowLabel) \(Int(decision.remaining.rounded()))%",
+                identifier: "quota-reset-\(decision.stateKey)-\(Int(now.timeIntervalSince1970))"
+            )
+        }
+        notificationRecords = records
     }
 
     /// One notification per account/window when the remaining quota reaches
@@ -892,8 +1034,6 @@ final class CodexStore: ObservableObject {
         )
         guard !decisions.isEmpty else { return }
 
-        let center = UNUserNotificationCenter.current()
-        requestNotificationAuthorizationIfNeeded(center)
         let now = Date()
         for decision in decisions {
             records[decision.stateKey] = QuotaNotificationRecord(
@@ -905,22 +1045,13 @@ final class CodexStore: ObservableObject {
             case .hourly: windowLabel = L("hourly")
             case .weekly: windowLabel = L("weekly")
             }
-            let content = UNMutableNotificationContent()
-            content.title = L("Low Codex quota")
-            content.body = "\(account.displayName): \(windowLabel) \(Int(decision.remaining.rounded()))%"
-            content.sound = .default
-            let identifier = "quota-\(decision.stateKey)-\(Int(now.timeIntervalSince1970))"
-            center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+            MTNotificationCenter.post(
+                title: L("Low Codex quota"),
+                body: "\(account.displayName): \(windowLabel) \(Int(decision.remaining.rounded()))%",
+                identifier: "quota-\(decision.stateKey)-\(Int(now.timeIntervalSince1970))"
+            )
         }
         notificationRecords = records
-    }
-
-    /// The authorization prompt is one-shot per app session; adding requests
-    /// before the user answers is harmless (the system queues or drops them).
-    private func requestNotificationAuthorizationIfNeeded(_ center: UNUserNotificationCenter) {
-        guard !notificationAuthorizationRequested else { return }
-        notificationAuthorizationRequested = true
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     // MARK: - Launch in Codex

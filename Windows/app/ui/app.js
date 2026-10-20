@@ -34,7 +34,6 @@ const DICT = {
     poolPauseConfirm: "Снять паузу по резерву? Квота может опуститься до 0%.",
     quotaAge: "квота обновлена", never: "никогда", stale: "устарела",
     history: "История", historyHint: "Остаток квоты по последним обновлениям.",
-    notificationsHint: "Тост, когда остаток пересекает резерв аккаунта (или 10%).",
     apiSub: "Локальный OpenAI-совместимый шлюз для Codex: пул аккаунтов, апстримы, ключ доступа.",
     endpoint: "Адрес", apiKey: "Ключ", copy: "Копировать", copied: "Скопировано",
     endpointsTitle: "Endpoint-ы", checkTitle: "Сквозная проверка", checkHint: "маленький запрос через пул — видно, что шлюз обслуживает модели.",
@@ -104,7 +103,7 @@ const DICT = {
     instanceBind: "Аккаунт", instanceNone: "текущий логин", instanceDelete: "Удалить", instanceHint: "Отдельный CODEX_HOME со своим входом.",
     composer: "Композер", composerHint: "Чипы в композере Codex: аккаунты и квоты прямо в строке ввода.",
     models: "Модели", modelsSearch: "Поиск модели…", modelsCount: "моделей", sources: "Источники", sourceEnabled: "включён",
-    autostart: "Автозапуск с Windows", notifications: "Уведомления о низкой квоте", session: "Сессия",
+    autostart: "Автозапуск с Windows", session: "Сессия",
     donateScan: "Отсканируйте QR — сеть TRON (TRC20)",
     update: "Обновить", updateCheck: "Проверить обновление", updateChecking: "Проверяем обновления…", updateAvailable: "Доступно обновление {v}",
     updateUpToDate: "У вас последняя версия ({v})", updateFailed: "Не удалось проверить обновления",
@@ -122,6 +121,20 @@ const DICT = {
     diagIdle: "Проверка ещё не запускалась.", diagAt: "проверено", diagProvider: "Провайдер",
     diagAuth: "Авторизация", diagQuota: "Последняя квота", diagCodex: "Аккаунты Codex",
     diagKeySet: "ключ есть", diagKeyMissing: "ключа нет", diagUp: "доступен", diagDown: "недоступен", diagApiOk: "API ok",
+    notifications: "Уведомления", notifyLowQuota: "Низкая квота", notifyScheduler: "Запуски планировщика", notifyQuotaReset: "Сброс квоты",
+    notificationsHint: "Главный переключатель уведомлений; ниже — отдельные категории.",
+    dashCards: "Карточки дашборда", dashCardPool: "Здоровье пула", dashCardTrends: "Тренды квот", dashCardSpend: "Расход", dashCardScheduler: "Планировщик",
+    dashPoolHealth: "Здоровье пула", dashUsable: "Рабочие", dashPaused: "На паузе", dashErrors: "С ошибкой",
+    dashAvgFive: "Средний 5ч", dashAvgWeek: "Средняя неделя",
+    dashQuotaTrends: "Тренды квот", dashLast24h: "24 часа · по часам", dashLast7d: "7 дней · по дням",
+    dashTrendEmpty: "Данных пока нет", dashTrendHint: "Средний остаток по всем аккаунтам и провайдерам.",
+    dashSamples: "точек", dashAvg: "среднее",
+    dashSpend: "Расход и провайдеры", dashSessionSpend: "Расход сессии", dashSessionTokens: "Токены сессии",
+    dashTopProviders: "Топ-3 провайдера по токенам", dashProvider: "Провайдер", dashTokens: "Токены", dashTurns: "Ходы", dashSpendShort: "Расход",
+    dashNoUsage: "Нет данных об использовании — выполните задачу в планировщике.",
+    dashScheduler: "Планировщик", dashDue: "Готовы к запуску", dashNextRun: "Следующий запуск", dashLastRun: "Последний статус",
+    dashRunNext: "Запустить следующую", dashOpenScheduler: "Открыть планировщик", dashNoTasks: "Нет включённых задач.",
+    dashRunNextDone: "Запущено: {name}",
   },
   en: {
     dashboard: "Dashboard", accounts: "Accounts", api: "API Service", providers: "Providers", donate: "Donate", settings: "Settings",
@@ -149,7 +162,6 @@ const DICT = {
     poolPauseConfirm: "Lift the reserve pause? Quota may drop to 0%.",
     quotaAge: "quota updated", never: "never", stale: "stale",
     history: "History", historyHint: "Quota remaining across recent refreshes.",
-    notificationsHint: "Toast when remaining crosses an account reserve (or 10%).",
     apiSub: "Local OpenAI-compatible gateway for Codex: account pool, upstreams, access key.",
     endpoint: "Base URL", apiKey: "Key", copy: "Copy", copied: "Copied",
     endpointsTitle: "Endpoints", checkTitle: "End-to-end check", checkHint: "a tiny request through the pool — proves models are served.",
@@ -219,7 +231,7 @@ const DICT = {
     instanceBind: "Account", instanceNone: "current login", instanceDelete: "Delete", instanceHint: "A separate CODEX_HOME with its own login.",
     composer: "Composer", composerHint: "Chips in the Codex composer: accounts and quotas right in the input row.",
     models: "Models", modelsSearch: "Search models…", modelsCount: "models", sources: "Sources", sourceEnabled: "enabled",
-    autostart: "Start with Windows", notifications: "Low-quota notifications", session: "Session",
+    autostart: "Start with Windows", session: "Session",
     donateScan: "Scan the QR — TRON network (TRC20)",
     update: "Update", updateCheck: "Check for updates", updateChecking: "Checking for updates…", updateAvailable: "Update {v} is available",
     updateUpToDate: "You are up to date ({v})", updateFailed: "Could not check for updates",
@@ -237,6 +249,20 @@ const DICT = {
     diagIdle: "The check has not run yet.", diagAt: "checked", diagProvider: "Provider",
     diagAuth: "Auth", diagQuota: "Last quota", diagCodex: "Codex accounts",
     diagKeySet: "key set", diagKeyMissing: "no key", diagUp: "up", diagDown: "down", diagApiOk: "API ok",
+    notifications: "Notifications", notifyLowQuota: "Low quota", notifyScheduler: "Scheduler runs", notifyQuotaReset: "Quota reset",
+    notificationsHint: "Master notification switch; individual categories below.",
+    dashCards: "Dashboard cards", dashCardPool: "Pool health", dashCardTrends: "Quota trends", dashCardSpend: "Spend", dashCardScheduler: "Scheduler",
+    dashPoolHealth: "Pool health", dashUsable: "Usable", dashPaused: "Paused", dashErrors: "Errors",
+    dashAvgFive: "Avg 5h", dashAvgWeek: "Avg week",
+    dashQuotaTrends: "Quota trends", dashLast24h: "24 hours · hourly", dashLast7d: "7 days · daily",
+    dashTrendEmpty: "No data yet", dashTrendHint: "Average remaining across all accounts and providers.",
+    dashSamples: "samples", dashAvg: "avg",
+    dashSpend: "Spend & providers", dashSessionSpend: "Session spend", dashSessionTokens: "Session tokens",
+    dashTopProviders: "Top 3 providers by tokens", dashProvider: "Provider", dashTokens: "Tokens", dashTurns: "Turns", dashSpendShort: "Spend",
+    dashNoUsage: "No usage data — run a scheduler task.",
+    dashScheduler: "Scheduler", dashDue: "Due", dashNextRun: "Next run", dashLastRun: "Last status",
+    dashRunNext: "Run next", dashOpenScheduler: "Open scheduler", dashNoTasks: "No enabled tasks.",
+    dashRunNextDone: "Started: {name}",
   },
 };
 
@@ -265,6 +291,7 @@ const S = {
   modelsQuery: "",
   diag: null,
   scheduler: null,
+  schedulerAt: 0,
   schedulerError: null,
   schedulerForm: null,
   schedulerModels: null,
@@ -353,7 +380,7 @@ function mock(cmd, args) {
   ];
   const mocks = {
     app_info: { name: "Melon Tools", version: "1.4.7", platform: "windows", dataDir: "C:\\Users\\you\\AppData\\Roaming\\MelonTools", codexHome: "C:\\Users\\you\\.codex" },
-    settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "", claudeEnabled: false, claudeApiKey: "", notifyLowQuota: true },
+    settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "", claudeEnabled: false, claudeApiKey: "", notifications: true, notifyLowQuota: true, notifyScheduler: true, notifyQuotaReset: true, dashboardShowPoolHealth: true, dashboardShowQuotaTrends: true, dashboardShowSpend: true, dashboardShowScheduler: true, quotaResetNotified: [] },
     settings_set: (a) => a.settings,
     vault_list: demoAccounts,
     quota_history: historyMocks,
@@ -398,7 +425,7 @@ function mock(cmd, args) {
     codex_route_status: { configPath: "C:\\Users\\you\\.codex\\config.toml", provider: "melon_local_access", ours: true, catalogExists: true, catalogPath: "C:\\Users\\you\\.codex\\melon-model-catalog.json" },
     codex_route_apply: { route: { provider: "melon_local_access", ours: true, catalogExists: true }, catalogCustom: 32 },
     codex_route_remove: { provider: null, ours: false, catalogExists: true },
-    bridge_status: { attached: true, debugPort: 55660, model: "GPT-6.1 Sol", targets: 3, reason: null },
+    bridge_status: { attached: true, debugPort: 55660, model: "GPT-6.1 Sol", targets: 3, reason: null, session: { total: { total: 2730 }, cost: { total: 0.42, providers: { openai: { usd: 0.32 }, opencode: { usd: 0.10 } } } } },
     routing_state: { strategy: "auto", strategies: ["auto", "quotaHighFirst", "quotaLowFirst", "planHighFirst", "planLowFirst", "expirySoonFirst", "custom"], priorityOrder: [], orderedIds: ["demo-1", "demo-2"], blockedIds: ["demo-2"] },
     set_routing_strategy: (a) => ({ strategy: a.strategy, orderedIds: ["demo-1", "demo-2"], blockedIds: ["demo-2"], accounts: demoAccounts }),
     move_priority: { strategy: "custom", orderedIds: ["demo-2", "demo-1"], blockedIds: [], accounts: demoAccounts },
@@ -473,7 +500,11 @@ function demoScheduler() {
     DEMO_SCHEDULER = {
       path: "C:\\Users\\you\\AppData\\Roaming\\MelonTools\\scheduler.json",
       tasks: [task],
-      history: [{ taskId: task.id, at: now - 1800, status: "ok", model: task.model, durationMs: 4200, tokens: 1530, result: task.lastResult, error: null }],
+      history: [
+        { taskId: task.id, at: now - 1800, status: "ok", model: task.model, durationMs: 4200, tokens: 1530, result: task.lastResult, error: null },
+        { taskId: task.id, at: now - 3600, status: "ok", model: "opencode/grok-4.7", durationMs: 3100, tokens: 820, result: "ok", error: null },
+        { taskId: task.id, at: now - 5400, status: "ok", model: "claude-opus-5-5", durationMs: 2800, tokens: 380, result: "ok", error: null },
+      ],
     };
   }
   return DEMO_SCHEDULER;
@@ -576,6 +607,311 @@ function historyStrip(key) {
     <span class="spark-label">${esc(t("history"))}</span>
     ${sparkline(key, "hourlyLeft", t("fiveHour"))}<span class="spark-name">${esc(t("fiveHour"))}</span>
     ${sparkline(key, "weeklyLeft", t("week"))}<span class="spark-name">${esc(t("week"))}</span>
+  </div>`;
+}
+
+// MARK: - Dashboard 2.0 helpers
+
+const HOUR_SECONDS = 3600;
+const DAY_SECONDS = 86400;
+const DASHBOARD_CARD_SETTINGS = [
+  "dashboardShowPoolHealth",
+  "dashboardShowQuotaTrends",
+  "dashboardShowSpend",
+  "dashboardShowScheduler",
+];
+
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function formatTokens(value) {
+  const number = finiteNumber(value);
+  if (number === null) return "—";
+  return Math.round(number).toLocaleString(S.lang === "en" ? "en-US" : "ru-RU");
+}
+
+function formatMoney(value) {
+  const number = finiteNumber(value);
+  return number === null ? "—" : `$${number.toFixed(2)}`;
+}
+
+// Counts partition the pool: an account with a quota error is "error" even if
+// it also carries a block reason. Averages use only numeric readings.
+function poolHealth(accounts, routing) {
+  const list = Array.isArray(accounts) ? accounts : [];
+  const blockedIds = new Set(((routing && routing.blockedIds) || []).map(String));
+  let usable = 0;
+  let paused = 0;
+  let errors = 0;
+  let hourlySum = 0;
+  let hourlyCount = 0;
+  let weeklySum = 0;
+  let weeklyCount = 0;
+  for (const account of list) {
+    if (!account) continue;
+    if (account.quotaError || account.needsRelogin) errors += 1;
+    else if (account.blocked || account.blockInfo || blockedIds.has(String(account.id))) paused += 1;
+    else usable += 1;
+    const hourly = finiteNumber(account.hourlyRemaining);
+    if (hourly !== null) { hourlySum += hourly; hourlyCount += 1; }
+    const weekly = finiteNumber(account.weeklyRemaining);
+    if (weekly !== null) { weeklySum += weekly; weeklyCount += 1; }
+  }
+  return {
+    total: list.length,
+    usable,
+    paused,
+    errors,
+    averageHourly: hourlyCount ? hourlySum / hourlyCount : null,
+    averageWeekly: weeklyCount ? weeklySum / weeklyCount : null,
+  };
+}
+
+// One series of bucket means. `field` is hourlyLeft or weeklyLeft; samples
+// outside the window are ignored instead of being clamped into an edge slot.
+function quotaTrend(history, field, windowSeconds, bucketSeconds, nowSeconds) {
+  const buckets = Math.max(1, Math.round(windowSeconds / bucketSeconds));
+  const sums = new Array(buckets).fill(0);
+  const counts = new Array(buckets).fill(0);
+  const cutoff = nowSeconds - windowSeconds;
+  for (const sample of Array.isArray(history) ? history : []) {
+    const timestamp = finiteNumber(sample && sample.timestamp);
+    const value = finiteNumber(sample && sample[field]);
+    if (timestamp === null || value === null) continue;
+    if (timestamp < cutoff || timestamp > nowSeconds + bucketSeconds) continue;
+    const index = Math.min(buckets - 1, Math.max(0, Math.floor((timestamp - cutoff) / bucketSeconds)));
+    sums[index] += value;
+    counts[index] += 1;
+  }
+  const points = [];
+  let total = 0;
+  let totalCount = 0;
+  for (let index = 0; index < buckets; index += 1) {
+    if (!counts[index]) continue;
+    const value = sums[index] / counts[index];
+    points.push({ index, value });
+    total += sums[index];
+    totalCount += counts[index];
+  }
+  return {
+    points,
+    buckets,
+    average: totalCount ? total / totalCount : null,
+    latest: points.length ? points[points.length - 1].value : null,
+    count: totalCount,
+  };
+}
+
+function quotaTrends(history, nowSeconds) {
+  const now = finiteNumber(nowSeconds) ?? nowRef();
+  return {
+    hourly: quotaTrend(history, "hourlyLeft", 24 * HOUR_SECONDS, HOUR_SECONDS, now),
+    weekly: quotaTrend(history, "weeklyLeft", 7 * DAY_SECONDS, DAY_SECONDS, now),
+  };
+}
+
+function trendChart(trend, label) {
+  if (!trend || !trend.points.length) {
+    return `<div class="trend"><div class="trend-head"><span>${esc(label)}</span><span class="val">—</span></div>
+      <div class="trend-empty">${esc(t("dashTrendEmpty"))}</div></div>`;
+  }
+  const points = trend.points.map((point) => {
+    const x = trend.buckets <= 1 ? 50 : (point.index / (trend.buckets - 1)) * 100;
+    const y = 30 - (Math.max(0, Math.min(100, point.value)) / 100) * 28;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const latest = trend.latest === null ? "—" : `${Math.round(trend.latest)}%`;
+  const average = trend.average === null ? "—" : `${Math.round(trend.average)}%`;
+  return `<div class="trend" title="${esc(t("dashTrendHint"))}">
+    <div class="trend-head"><span>${esc(label)}</span><span class="val">${latest}</span></div>
+    <svg class="trend-svg" viewBox="0 0 100 32" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">
+      <line x1="0" y1="16" x2="100" y2="16" class="trend-grid"></line>
+      <polyline points="${points}"></polyline>
+    </svg>
+    <div class="trend-foot"><span>${trend.count} ${esc(t("dashSamples"))}</span><span>${esc(t("dashAvg"))}: ${average}</span></div>
+  </div>`;
+}
+
+function providerOfModel(model) {
+  const id = String(model || "");
+  if (id.startsWith("opencode/")) return "opencode";
+  if (id.startsWith("openrouter/")) return "openrouter";
+  if (id.startsWith("claude-")) return "claude";
+  return "gateway";
+}
+
+function providerName(provider) {
+  switch (provider) {
+    case "gateway": return t("sgGateway");
+    case "claude": return t("sgClaude");
+    case "opencode": return t("sgOpenCode");
+    case "openrouter": return t("sgOpenRouter");
+    default: return String(provider || "—");
+  }
+}
+
+// Windows has no provider price table: the scheduler history contributes
+// tokens/turns, the optional bridge session contributes priced spend. A row
+// without a USD value renders "—" instead of a fabricated number.
+function usageSummary(scheduler, bridge) {
+  const rows = new Map();
+  const rowFor = (provider) => {
+    if (!rows.has(provider)) rows.set(provider, { provider, tokens: 0, usd: null, priced: false, turns: 0 });
+    return rows.get(provider);
+  };
+  for (const entry of (scheduler && scheduler.history) || []) {
+    if (!entry) continue;
+    const row = rowFor(providerOfModel(entry.model));
+    const tokens = finiteNumber(entry.tokens);
+    if (tokens !== null) row.tokens += tokens;
+    row.turns += 1;
+    const usd = finiteNumber(entry.usd !== undefined ? entry.usd : entry.cost);
+    if (usd !== null) {
+      row.usd = (row.usd || 0) + usd;
+      row.priced = true;
+    }
+  }
+  const session = bridge && bridge.session;
+  const cost = session && session.cost;
+  const providers = (cost && cost.providers) || {};
+  for (const [provider, stats] of Object.entries(providers)) {
+    const row = rowFor(provider === "openai" ? "gateway" : provider);
+    const usd = finiteNumber(stats && stats.usd);
+    if (usd !== null) {
+      row.usd = (row.usd || 0) + usd;
+      row.priced = true;
+    }
+  }
+  const list = [...rows.values()].sort((left, right) =>
+    right.tokens - left.tokens || (right.usd || 0) - (left.usd || 0));
+  const totalTokens = list.reduce((sum, row) => sum + row.tokens, 0);
+  const bridgeTokens = finiteNumber(
+    session && session.total && (session.total.total !== undefined ? session.total.total : session.total.tokens)
+  );
+  return {
+    rows: list.slice(0, 3),
+    totalTokens,
+    sessionSpend: finiteNumber(cost && (cost.total !== undefined ? cost.total : cost.usd)),
+    sessionTokens: bridgeTokens !== null ? bridgeTokens : (totalTokens || null),
+  };
+}
+
+// The tray and dashboard "Run next" share this pick: due tasks first because
+// they have the earliest nextRunAt, disabled tasks never qualify.
+function schedulerNextTask(data, nowSeconds) {
+  const now = finiteNumber(nowSeconds) ?? nowRef();
+  const tasks = ((data && data.tasks) || []).filter((task) =>
+    task && task.enabled && finiteNumber(task.nextRunAt) !== null);
+  tasks.sort((left, right) => Number(left.nextRunAt) - Number(right.nextRunAt));
+  return tasks[0] || null;
+}
+
+function schedulerSummary(data, nowSeconds) {
+  const now = finiteNumber(nowSeconds) ?? nowRef();
+  const tasks = ((data && data.tasks) || []).filter(Boolean);
+  const enabled = tasks.filter((task) => task.enabled);
+  const due = enabled.filter((task) =>
+    finiteNumber(task.nextRunAt) !== null && Number(task.nextRunAt) <= now);
+  const last = tasks
+    .filter((task) => finiteNumber(task.lastRunAt) !== null)
+    .sort((left, right) => Number(right.lastRunAt) - Number(left.lastRunAt))[0] || null;
+  return { due: due.length, next: schedulerNextTask(data, now), last };
+}
+
+function dashboardVisibility(settings) {
+  const value = settings || {};
+  return {
+    pool: value.dashboardShowPoolHealth !== false,
+    trends: value.dashboardShowQuotaTrends !== false,
+    spend: value.dashboardShowSpend !== false,
+    scheduler: value.dashboardShowScheduler !== false,
+  };
+}
+
+function dashboardCardToggles(settings) {
+  const value = settings || {};
+  const cards = [
+    ["dashboardShowPoolHealth", "dashCardPool"],
+    ["dashboardShowQuotaTrends", "dashCardTrends"],
+    ["dashboardShowSpend", "dashCardSpend"],
+    ["dashboardShowScheduler", "dashCardScheduler"],
+  ];
+  return `<div class="card dashboard-toggle-card" data-dashboard-toggles>
+    <div class="row">
+      <span class="spark-label">${esc(t("dashCards"))}</span>
+      ${cards.map(([setting, key]) => `<label class="card-toggle">
+        <input type="checkbox" ${value[setting] !== false ? "checked" : ""} onchange="A.dashboardCardToggle('${setting}', this.checked)">
+        <span>${esc(t(key))}</span>
+      </label>`).join("")}
+    </div>
+  </div>`;
+}
+
+function dashboardPoolCard(health) {
+  const stat = (label, value, cls) => `<div class="stat ${cls || ""}">
+    <span class="value">${value}</span><span class="label">${esc(label)}</span></div>`;
+  return `<div class="card" data-dashboard-card="pool-health">
+    <h2>${t("dashPoolHealth")} <span class="hint">${health.total} ${t("accountsCount")}</span></h2>
+    <div class="stat-grid">
+      ${stat(t("dashUsable"), health.usable, "ok")}
+      ${stat(t("dashPaused"), health.paused, "warn")}
+      ${stat(t("dashErrors"), health.errors, "danger")}
+      ${stat(t("dashAvgFive"), health.averageHourly === null ? "—" : `${Math.round(health.averageHourly)}%`, "")}
+      ${stat(t("dashAvgWeek"), health.averageWeekly === null ? "—" : `${Math.round(health.averageWeekly)}%`, "")}
+    </div>
+  </div>`;
+}
+
+function dashboardTrendsCard(trends) {
+  return `<div class="card" data-dashboard-card="quota-trends">
+    <h2>${t("dashQuotaTrends")} <span class="hint">${t("dashTrendHint")}</span></h2>
+    <div class="trend-grid">
+      ${trendChart(trends.hourly, t("dashLast24h"))}
+      ${trendChart(trends.weekly, t("dashLast7d"))}
+    </div>
+  </div>`;
+}
+
+function dashboardSpendCard(usage) {
+  const rows = usage.rows.map((row) => `<tr>
+    <td>${esc(providerName(row.provider))}</td>
+    <td>${formatTokens(row.tokens)}</td>
+    <td>${row.priced && row.usd !== null ? formatMoney(row.usd) : "—"}</td>
+    <td>${row.turns}</td>
+  </tr>`).join("");
+  return `<div class="card" data-dashboard-card="spend">
+    <h2>${t("dashSpend")}</h2>
+    <div class="usage-totals">
+      <div class="stat"><span class="value">${formatMoney(usage.sessionSpend)}</span><span class="label">${esc(t("dashSessionSpend"))}</span></div>
+      <div class="stat"><span class="value">${formatTokens(usage.sessionTokens)}</span><span class="label">${esc(t("dashSessionTokens"))}</span></div>
+    </div>
+    ${usage.rows.length ? `<div class="usage-title">${esc(t("dashTopProviders"))}</div>
+      <table class="usage">
+        <thead><tr><th>${t("dashProvider")}</th><th>${t("dashTokens")}</th><th>${t("dashSpendShort")}</th><th>${t("dashTurns")}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>` : `<div class="footnote">${t("dashNoUsage")}</div>`}
+  </div>`;
+}
+
+function dashboardSchedulerCard(summary) {
+  const next = summary.next;
+  const last = summary.last;
+  return `<div class="card" data-dashboard-card="scheduler">
+    <h2>${t("dashScheduler")}</h2>
+    <div class="stat-grid">
+      <div class="stat ${summary.due ? "warn" : ""}"><span class="value">${summary.due}</span><span class="label">${esc(t("dashDue"))}</span></div>
+      <div class="stat"><span class="value">${next ? esc(schedulerNextText(next.nextRunAt)) : "—"}</span><span class="label">${esc(t("dashNextRun"))}</span></div>
+      <div class="stat"><span class="value">${last ? esc(ageText(last.lastRunAt)) : "—"}</span><span class="label">${esc(t("dashLastRun"))}</span></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn small" onclick="A.schedulerRunNext()" ${next && !S.busy["sched-run-next"] ? "" : "disabled"}>${t("dashRunNext")}</button>
+      <button class="ghost small" onclick="A.go('scheduler')">${t("dashOpenScheduler")}</button>
+      ${last ? schedulerStatusPill(last) : ""}
+      ${last ? `<span class="footnote" style="margin:0">${esc(last.name || "")}</span>` : `<span class="footnote" style="margin:0">${t("dashNoTasks")}</span>`}
+    </div>
   </div>`;
 }
 
@@ -810,14 +1146,20 @@ function pageHead(kicker, title, subtitle) {
 // MARK: - Pages
 
 function dashboardPage() {
-  const accounts = S.accounts || [];
+  const accounts = Array.isArray(S.accounts) ? S.accounts : [];
   const ready = accounts.filter((a) => !a.blocked);
   const poolHourly = accounts.reduce((sum, a) => sum + (a.hourlyRemaining ?? 0), 0);
   const poolWeekly = accounts.reduce((sum, a) => sum + (a.weeklyRemaining ?? 0), 0);
   const status = S.status || {};
+  const cards = dashboardVisibility(S.settings);
+  const health = poolHealth(accounts, S.routing);
+  const trends = quotaTrends(S.history, nowRef());
+  const usage = usageSummary(S.scheduler, S.bridge);
+  const schedule = schedulerSummary(S.scheduler, nowRef());
 
   return `
   ${pageHead("melon tools", t("dashTitle"), t("dashSub"))}
+  ${dashboardCardToggles(S.settings)}
   <div class="grid2">
     <div class="card">
       <h2>${t("gateway")} <span class="hint">:${status.port || "—"}</span></h2>
@@ -855,6 +1197,13 @@ function dashboardPage() {
       </div>
     </div>
   </div>
+
+  <div class="dash-grid">
+    ${cards.pool ? dashboardPoolCard(health) : ""}
+    ${cards.spend ? dashboardSpendCard(usage) : ""}
+  </div>
+  ${cards.trends ? dashboardTrendsCard(trends) : ""}
+  ${cards.scheduler ? dashboardSchedulerCard(schedule) : ""}
 
   <div class="card">
     <h2>${t("quick")}</h2>
@@ -1418,8 +1767,22 @@ function settingsPage() {
           <span>${t("autostart")}</span>
         </label>
         <label class="field" style="flex-direction:row;align-items:center;gap:6px">
-          <input type="checkbox" ${settings.notifyLowQuota ? "checked" : ""} onchange="A.notifyToggle(this.checked)">
+          <input type="checkbox" ${settings.notifications !== false ? "checked" : ""} onchange="A.notifyToggle(this.checked)">
           <span>${t("notifications")}</span>
+        </label>
+      </div>
+      <div class="row">
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" ${settings.notifyLowQuota !== false ? "checked" : ""} onchange="A.notifyDetailToggle('notifyLowQuota', this.checked)">
+          <span>${t("notifyLowQuota")}</span>
+        </label>
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" ${settings.notifyScheduler !== false ? "checked" : ""} onchange="A.notifyDetailToggle('notifyScheduler', this.checked)">
+          <span>${t("notifyScheduler")}</span>
+        </label>
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" ${settings.notifyQuotaReset !== false ? "checked" : ""} onchange="A.notifyDetailToggle('notifyQuotaReset', this.checked)">
+          <span>${t("notifyQuotaReset")}</span>
         </label>
       </div>
       <div class="footnote" style="margin-top:0">${t("notificationsHint")}</div>
@@ -1429,6 +1792,8 @@ function settingsPage() {
       </div>
     </div>
   </div>
+
+  ${dashboardCardToggles(settings)}
 
   <div class="card">
     <h2>${t("about")}</h2>
@@ -1729,6 +2094,14 @@ const A = {
     try {
       S.status = await inv("gateway_status");
       S.bridge = await inv("bridge_status");
+      if (S.section === "dashboard") {
+        try {
+          S.scheduler = await inv("scheduler_list");
+          S.schedulerAt = Date.now();
+        } catch {
+          // Keep the previous scheduler snapshot on a failed read.
+        }
+      }
       renderFooter();
       if (S.section !== "dashboard" && S.section !== "api" && S.section !== "accounts") return;
       if (editsInProgress()) {
@@ -1773,6 +2146,12 @@ const A = {
       S.routing = await inv("routing_state");
       S.calls = await inv("gateway_recent_calls", { limit: 8 });
       S.autostart = await inv("autostart_get");
+      try {
+        S.scheduler = await inv("scheduler_list");
+        S.schedulerAt = Date.now();
+      } catch {
+        S.scheduler = null;
+      }
     } catch (error) {
       toast(String(error), true);
     }
@@ -2559,6 +2938,33 @@ const A = {
     });
   },
 
+  // Dashboard/tray entry point: one serial run of the earliest due/enabled
+  // task. The scheduler page opens so the result is visible immediately.
+  schedulerRunNext() {
+    run("sched-run-next", async () => {
+      if (!S.scheduler) {
+        S.scheduler = await inv("scheduler_list");
+        S.schedulerAt = Date.now();
+      }
+      const task = schedulerNextTask(S.scheduler);
+      if (!task) {
+        toast(t("dashNoTasks"));
+        return;
+      }
+      S.section = "scheduler";
+      S.busy["sched-run-" + task.id] = true;
+      try {
+        S.scheduler = await inv("scheduler_run_now", { id: task.id });
+        S.schedulerError = null;
+        S.schedulerAt = Date.now();
+        S.schedulerOpen = task.id;
+        toast(fmt(t("dashRunNextDone"), { name: task.name }));
+      } finally {
+        S.busy["sched-run-" + task.id] = false;
+      }
+    });
+  },
+
   schedulerDelete(id) {
     const task = ((S.scheduler && S.scheduler.tasks) || []).find((item) => item.id === id);
     const name = (task && task.name) || id;
@@ -2580,8 +2986,28 @@ const A = {
   notifyToggle(enabled) {
     run("notify", async () => {
       S.settings = await inv("settings_set", {
-        settings: { ...S.settings, notifyLowQuota: enabled },
+        settings: { ...S.settings, notifications: enabled },
       });
+    });
+  },
+
+  notifyDetailToggle(key, enabled) {
+    if (["notifyLowQuota", "notifyScheduler", "notifyQuotaReset"].indexOf(key) < 0) return;
+    run("notify-detail", async () => {
+      S.settings = await inv("settings_set", {
+        settings: { ...S.settings, [key]: enabled },
+      });
+    });
+  },
+
+  // Persisted per-card visibility. The optimistic update keeps the checkbox
+  // responsive; a failed save surfaces as a toast.
+  dashboardCardToggle(setting, enabled) {
+    if (DASHBOARD_CARD_SETTINGS.indexOf(setting) < 0) return;
+    S.settings = { ...(S.settings || {}), [setting]: enabled };
+    render();
+    run("dashboard-cards", async () => {
+      S.settings = await inv("settings_set", { settings: { ...S.settings } });
     });
   },
 
@@ -2663,6 +3089,39 @@ const A = {
 };
 
 window.A = A;
+
+// Tray events arrive as `tray-action`: navigation and run-next are owned by the
+// renderer, gateway pause/resume only asks for a status refresh.
+function handleTrayAction(payload) {
+  const action = payload && payload.action;
+  if (action === "navigate") {
+    S.section = payload.section || "dashboard";
+    render();
+    return;
+  }
+  if (action === "run-next") {
+    A.schedulerRunNext();
+    return;
+  }
+  if (action === "refresh") {
+    A.refreshStatus();
+  }
+}
+
+window.__mt = {
+  S,
+  A,
+  handleTrayAction,
+  poolHealth,
+  quotaTrend,
+  quotaTrends,
+  trendChart,
+  usageSummary,
+  schedulerNextTask,
+  schedulerSummary,
+  dashboardPage,
+  dashboardVisibility,
+};
 
 // MARK: - Edit tracking (M3)
 
@@ -2842,6 +3301,16 @@ function showOnboarding() {
 // MARK: - Boot
 
 (async function boot() {
+  if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === "function") {
+    try {
+      window.__TAURI__.event.listen("tray-action", (event) => {
+        handleTrayAction(event && event.payload);
+      }).catch(() => {});
+    } catch {
+      // Older webview without the event API: tray navigation degrades to
+      // opening the window only.
+    }
+  }
   await A.loadAll();
   showOnboarding();
   // Daily update check: lights the badge only; the window opens on click.

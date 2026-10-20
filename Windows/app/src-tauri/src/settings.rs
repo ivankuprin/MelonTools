@@ -30,9 +30,22 @@ pub struct Settings {
     pub routing_strategy: String,
     /// Manual order of account ids (for the custom strategy).
     pub priority_order: Vec<String>,
+    /// Master switch for every toast notification.
+    pub notifications: bool,
     /// Toast when an hourly/weekly window crosses below its account reserve
     /// (10 % when no reserve is configured).
     pub notify_low_quota: bool,
+    /// Toast after an automatic or manual scheduler run.
+    pub notify_scheduler: bool,
+    /// Toast when a blocked account becomes usable after a refresh.
+    pub notify_quota_reset: bool,
+    /// Dashboard 2.0 card visibility. Default on.
+    pub dashboard_show_pool_health: bool,
+    pub dashboard_show_quota_trends: bool,
+    pub dashboard_show_spend: bool,
+    pub dashboard_show_scheduler: bool,
+    /// `<account>:<window>:<reset>` markers for reset notifications. Bounded.
+    pub quota_reset_notified: Vec<String>,
     /// Unix seconds of the last update check (auto-check is daily).
     pub last_update_check: Option<i64>,
 }
@@ -53,7 +66,15 @@ impl Default for Settings {
             management_secret: String::new(),
             routing_strategy: "auto".to_string(),
             priority_order: Vec::new(),
+            notifications: true,
             notify_low_quota: true,
+            notify_scheduler: true,
+            notify_quota_reset: true,
+            dashboard_show_pool_health: true,
+            dashboard_show_quota_trends: true,
+            dashboard_show_spend: true,
+            dashboard_show_scheduler: true,
+            quota_reset_notified: Vec::new(),
             last_update_check: None,
         }
     }
@@ -234,6 +255,50 @@ mod tests {
             assert!(s.api_key.starts_with(crate::dpapi::PREFIX_PLAIN));
             unprotect_secrets(&mut s);
             assert_eq!(s.api_key, value);
+        }
+    }
+
+    #[test]
+    fn notification_and_dashboard_toggles_default_on() {
+        let s = Settings::default();
+        assert!(s.notifications);
+        assert!(s.notify_low_quota);
+        assert!(s.notify_scheduler);
+        assert!(s.notify_quota_reset);
+        assert!(s.dashboard_show_pool_health);
+        assert!(s.dashboard_show_quota_trends);
+        assert!(s.dashboard_show_spend);
+        assert!(s.dashboard_show_scheduler);
+        assert!(s.quota_reset_notified.is_empty());
+    }
+
+    #[test]
+    fn legacy_settings_get_21_defaults_and_keep_explicit_values() {
+        let s: Settings =
+            serde_json::from_str(r#"{"port":19000,"notifyLowQuota":false}"#).unwrap();
+        assert_eq!(s.port, 19000);
+        assert!(!s.notify_low_quota);
+        assert!(s.notifications);
+        assert!(s.notify_scheduler);
+        assert!(s.notify_quota_reset);
+        assert!(s.dashboard_show_pool_health);
+        assert!(s.dashboard_show_quota_trends);
+        assert!(s.dashboard_show_spend);
+        assert!(s.dashboard_show_scheduler);
+        assert!(s.quota_reset_notified.is_empty());
+
+        let raw = serde_json::to_value(&s).unwrap();
+        for key in [
+            "notifications",
+            "notifyScheduler",
+            "notifyQuotaReset",
+            "dashboardShowPoolHealth",
+            "dashboardShowQuotaTrends",
+            "dashboardShowSpend",
+            "dashboardShowScheduler",
+            "quotaResetNotified",
+        ] {
+            assert!(raw.get(key).is_some(), "missing key {key}");
         }
     }
 }

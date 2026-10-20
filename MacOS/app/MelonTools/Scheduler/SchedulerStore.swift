@@ -1,5 +1,107 @@
 import Combine
 import Foundation
+import UserNotifications
+
+// MARK: - Local notifications
+
+/// One authorization prompt and one delivery path for the whole app. Both the
+/// scheduler and the Codex quota watcher use this helper, so the user answers
+/// the system prompt at most once per session.
+@MainActor
+enum MTNotificationCenter {
+    private static var authorizationRequested = false
+
+    static func requestAuthorizationIfNeeded() {
+        guard !authorizationRequested else { return }
+        authorizationRequested = true
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    static func post(title: String, body: String, identifier: String) {
+        requestAuthorizationIfNeeded()
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        )
+    }
+}
+
+/// Pure task-run notification content. Success shows the task name and the
+/// first 120 characters of the result; failure keeps the error prefix verbatim.
+enum SchedulerNotificationPolicy {
+    static let enabledKey = "taskNotifications"
+    static let previewLength = 120
+
+    struct Notice: Equatable {
+        let title: String
+        let body: String
+        let identifier: String
+    }
+
+    static func notice(
+        taskId: String,
+        taskName: String,
+        status: SchedulerTaskStatus,
+        result: String,
+        error: String?,
+        now: Date = Date()
+    ) -> Notice? {
+        let title: String
+        let payload: String
+        switch status {
+        case .ok:
+            title = L("Scheduled task finished")
+            payload = preview(result)
+        case .error:
+            title = L("Scheduled task failed")
+            payload = preview(error ?? "")
+        case .never, .running:
+            return nil
+        }
+        let body = payload.isEmpty ? taskName : "\(taskName): \(payload)"
+        return Notice(
+            title: title,
+            body: body,
+            identifier: "task-\(taskId)-\(Int(now.timeIntervalSince1970))"
+        )
+    }
+
+    /// First `previewLength` characters, with an ellipsis when the text is
+    /// longer. No other normalization: error text stays verbatim.
+    static func preview(_ text: String, limit: Int = previewLength) -> String {
+        guard limit > 0 else { return "" }
+        guard text.count > limit else { return text }
+        return String(text.prefix(limit)) + "…"
+    }
+}
+
+/// Delivery seam: production posts a system notification, tests inject a
+/// recorder or a disabled sink.
+struct SchedulerNotificationSink {
+    var isEnabled: @MainActor () -> Bool
+    var post: @MainActor (SchedulerNotificationPolicy.Notice) -> Void
+
+    static let system = SchedulerNotificationSink(
+        isEnabled: {
+            UserDefaults.standard.object(forKey: SchedulerNotificationPolicy.enabledKey) as? Bool ?? true
+        },
+        post: { notice in
+            MTNotificationCenter.post(
+                title: notice.title,
+                body: notice.body,
+                identifier: notice.identifier
+            )
+        }
+    )
+
+    static let disabled = SchedulerNotificationSink(
+        isEnabled: { false },
+        post: { _ in }
+    )
+}
 
 /// Task scheduler store: CRUD, persistence, the 30 s tick and the serial run
 /// queue. The file is `~/Library/Application Support/MelonTools/scheduler.json`
@@ -27,6 +129,7 @@ final class SchedulerStore: ObservableObject {
     private let catalog: SchedulerModelCatalog
     private let gatewayOverride: SchedulerGateway?
     private let gatewayRunningOverride: Bool?
+    private let notifications: SchedulerNotificationSink
     private var timer: Timer?
     private var loaded = false
 
@@ -35,13 +138,15 @@ final class SchedulerStore: ObservableObject {
         runner: SchedulerRunner = SchedulerRunner(),
         catalog: SchedulerModelCatalog = SchedulerModelCatalog(),
         gateway: SchedulerGateway? = nil,
-        isGatewayRunning: Bool? = nil
+        isGatewayRunning: Bool? = nil,
+        notifications: SchedulerNotificationSink = .system
     ) {
         self.fileURL = fileURL
         self.runner = runner
         self.catalog = catalog
         self.gatewayOverride = gateway
         self.gatewayRunningOverride = isGatewayRunning
+        self.notifications = notifications
     }
 
     nonisolated static func defaultFileURL() -> URL {
@@ -287,6 +392,18 @@ final class SchedulerStore: ObservableObject {
         history = SchedulerPolicy.trimHistory([entry] + history)
         runningTaskID = nil
         save()
+
+        if notifications.isEnabled(),
+           let notice = SchedulerNotificationPolicy.notice(
+               taskId: taskID,
+               taskName: updated.name,
+               status: result.status,
+               result: body,
+               error: result.error,
+               now: finishedAt
+           ) {
+            notifications.post(notice)
+        }
     }
 
     // MARK: - Model list

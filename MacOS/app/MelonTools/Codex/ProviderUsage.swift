@@ -428,6 +428,29 @@ struct SessionSpend: Equatable {
     var hasData: Bool { pricedTurns > 0 }
 
     func stats(for provider: String) -> ProviderStats? { providers[provider] }
+
+    /// One ranked provider row for the dashboard.
+    struct ProviderRanking: Equatable {
+        let provider: String
+        let stats: SessionSpend.ProviderStats
+    }
+
+    /// Top providers by tokens consumed in the session. Spend breaks ties,
+    /// then the provider name, so the result is deterministic. Tokens are the
+    /// primary key because unpriced providers still report them.
+    func topProviders(limit: Int = 3) -> [ProviderRanking] {
+        let ranked = providers.map { ProviderRanking(provider: $0.key, stats: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.stats.tokens != rhs.stats.tokens {
+                    return lhs.stats.tokens > rhs.stats.tokens
+                }
+                let leftUSD = lhs.stats.usd ?? 0
+                let rightUSD = rhs.stats.usd ?? 0
+                if leftUSD != rightUSD { return leftUSD > rightUSD }
+                return lhs.provider < rhs.provider
+            }
+        return Array(ranked.prefix(max(0, limit)))
+    }
 }
 
 /// A small least-recently-used cache. Reads and inserts refresh recency, and

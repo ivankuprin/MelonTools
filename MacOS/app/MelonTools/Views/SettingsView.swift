@@ -10,6 +10,11 @@ struct SettingsView: View {
     @AppStorage("gatewayStopOnQuit") private var gatewayStopOnQuit = false
     @AppStorage("quotaRefreshInterval") private var quotaRefreshInterval = 300
     @AppStorage("quotaNotifications") private var quotaNotifications = false
+    @AppStorage("taskNotifications") private var taskNotifications = true
+    @AppStorage(DashboardWidgetKey.poolHealth) private var showPoolHealth = true
+    @AppStorage(DashboardWidgetKey.quotaTrends) private var showQuotaTrends = true
+    @AppStorage(DashboardWidgetKey.spend) private var showSpend = true
+    @AppStorage(DashboardWidgetKey.scheduler) private var showScheduler = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginItemError: String?
 
@@ -64,6 +69,23 @@ struct SettingsView: View {
                     }
                 }
 
+                MTCard(title: L("Dashboard widgets"), systemImage: "square.grid.2x2") {
+                    VStack(alignment: .leading, spacing: MTTheme.s2) {
+                        Toggle(L("Show pool health"), isOn: $showPoolHealth)
+                            .toggleStyle(.switch)
+                            .font(MTTheme.body(12))
+                        Toggle(L("Show quota trends"), isOn: $showQuotaTrends)
+                            .toggleStyle(.switch)
+                            .font(MTTheme.body(12))
+                        Toggle(L("Show spend & top providers"), isOn: $showSpend)
+                            .toggleStyle(.switch)
+                            .font(MTTheme.body(12))
+                        Toggle(L("Show scheduler summary"), isOn: $showScheduler)
+                            .toggleStyle(.switch)
+                            .font(MTTheme.body(12))
+                    }
+                }
+
                 MTCard(title: L("Service settings"), systemImage: "network") {
                     VStack(alignment: .leading, spacing: MTTheme.s2) {
                         Toggle(L("Start the service at app launch"), isOn: $gatewayAutoStart)
@@ -104,6 +126,9 @@ struct SettingsView: View {
                             }
                         }
                         Toggle(L("Notifications when quota is low"), isOn: $quotaNotifications)
+                            .toggleStyle(.switch)
+                            .font(MTTheme.body(12))
+                        Toggle(L("Notifications after scheduled runs"), isOn: $taskNotifications)
                             .toggleStyle(.switch)
                             .font(MTTheme.body(12))
                         Toggle(L("Launch at login"), isOn: $launchAtLogin)
@@ -159,88 +184,29 @@ struct SettingsView: View {
 
 // MARK: - Menu bar panel
 
+/// Menu bar panel: compact pool totals, quick actions and the live service
+/// state. Everything is one click away without opening the main window.
 struct MenuBarView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.openWindow) private var openWindow
 
     @ObservedObject private var codex = CodexStore.shared
     @ObservedObject private var gateway = CodexGatewayService.shared
+    @ObservedObject private var scheduler = SchedulerStore.shared
+
+    /// One scheduler window for the app lifetime; reopening brings it back.
+    private static var schedulerWindow: NSWindow?
 
     var body: some View {
         VStack(alignment: .leading, spacing: MTTheme.s3) {
-            HStack(spacing: MTTheme.s2) {
-                Image(nsImage: MelonAssets.logo)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 16, height: 16)
-                Text("Melon Tools")
-                    .font(MTTheme.body(12, weight: .bold))
-                Spacer()
-                Button {
-                    openWindow(id: "main")
-                    NSApp.activate(ignoringOtherApps: true)
-                } label: {
-                    Image(systemName: "macwindow")
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(.plain)
-                .help(L("Open window"))
-            }
-
+            header
+            poolTotals
             Divider()
-
-            VStack(alignment: .leading, spacing: MTTheme.s1) {
-                Text(L("Codex").uppercased())
-                    .font(MTTheme.mono(9, weight: .semibold))
-                    .tracking(1.2)
-                    .foregroundStyle(MTTheme.textSecondary)
-                if codex.accounts.isEmpty {
-                    Text(L("no accounts"))
-                        .font(MTTheme.mono(10))
-                        .foregroundStyle(MTTheme.textSecondary)
-                } else {
-                    ForEach(codex.accounts.prefix(3)) { account in
-                        HStack(spacing: 6) {
-                            MTQuotaRing(fraction: account.quota?.weeklyRemainingPercent.map { $0 / 100.0 }, size: 20)
-                            Text(account.displayName)
-                                .font(MTTheme.mono(10))
-                                .lineLimit(1)
-                            Spacer()
-                            if codex.currentAccountId == account.id {
-                                Text(L("active"))
-                                    .font(MTTheme.mono(8, weight: .semibold))
-                                    .foregroundStyle(MTTheme.ok)
-                            }
-                        }
-                    }
-                }
-            }
-
+            quickActions
             Divider()
-
-            HStack(spacing: MTTheme.s2) {
-                Circle()
-                    .fill(gateway.isRunning ? MTTheme.ok : MTTheme.textTertiary)
-                    .frame(width: 7, height: 7)
-                Text(String(format: L("service %@"), gateway.status.label))
-                    .font(MTTheme.mono(10))
-                Spacer()
-                if gateway.isRunning {
-                    Button(L("Stop")) {
-                        Task { await gateway.stop() }
-                    }
-                    .font(MTTheme.mono(10))
-                    .buttonStyle(.plain)
-                } else {
-                    Button(L("Start")) {
-                        codex.load()
-                        Task { await gateway.start(accounts: codex.accounts, priorities: codex.effectivePriorities()) }
-                    }
-                    .font(MTTheme.mono(10))
-                    .buttonStyle(.plain)
-                }
-            }
-
+            accountsSection
+            Divider()
+            serviceRow
             if gateway.isRunning {
                 Button {
                     gateway.launchThroughGateway()
@@ -252,23 +218,206 @@ struct MenuBarView: View {
                             .font(MTTheme.mono(10))
                         Spacer()
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-
-            Divider()
-
-            Button(L("Quit Melon Tools")) {
-                NSApp.terminate(nil)
-            }
-            .font(MTTheme.mono(10))
-            .buttonStyle(.plain)
         }
         .padding(MTTheme.s3)
-        .frame(width: 300)
+        .frame(width: 320)
         .onAppear {
             codex.load()
+            scheduler.start()
             Task { await gateway.healthCheck() }
+        }
+    }
+
+    // MARK: - Header and totals
+
+    private var header: some View {
+        HStack(spacing: MTTheme.s2) {
+            Image(nsImage: MelonAssets.logo)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 16, height: 16)
+            Text("Melon Tools")
+                .font(MTTheme.body(12, weight: .bold))
+            Spacer()
+            Button(action: openMainWindow) {
+                Image(systemName: "macwindow")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .help(L("Open window"))
+        }
+    }
+
+    private var poolTotals: some View {
+        let health = DashboardMetrics.poolHealth(accounts: codex.accounts)
+        return HStack(spacing: MTTheme.s3) {
+            compactMetric(title: L("5 h"), value: health.hourlyAverage)
+            compactMetric(title: L("Week"), value: health.weeklyAverage)
+            Spacer()
+            Text(String(format: L("Accounts in pool: %d"), codex.accounts.count))
+                .font(MTTheme.mono(9))
+                .foregroundStyle(MTTheme.textTertiary)
+        }
+    }
+
+    private func compactMetric(title: String, value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title.uppercased())
+                .font(MTTheme.mono(8, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(MTTheme.textTertiary)
+            Text(value.map { "\(Int($0.rounded()))%" } ?? "—")
+                .font(MTTheme.mono(13, weight: .semibold))
+                .foregroundStyle(value == nil ? MTTheme.textTertiary : MTTheme.textPrimary)
+        }
+    }
+
+    // MARK: - Quick actions
+
+    private var dueTasks: [SchedulerTask] {
+        SchedulerPolicy.due(scheduler.tasks, now: Date())
+    }
+
+    private var quickActions: some View {
+        VStack(alignment: .leading, spacing: MTTheme.s1) {
+            actionRow(icon: "macwindow", title: L("Open Melon Tools")) {
+                openMainWindow()
+            }
+            actionRow(icon: "clock.badge.checkmark", title: L("Scheduler")) {
+                openSchedulerWindow()
+            }
+            actionRow(
+                icon: "play.circle",
+                title: L("Run next due task") + (dueTasks.isEmpty ? "" : " (\(dueTasks.count))"),
+                disabled: dueTasks.isEmpty || !gateway.isRunning || scheduler.isRunning
+            ) {
+                guard let task = dueTasks.first else { return }
+                Task { await scheduler.runNow(id: task.id) }
+            }
+            actionRow(
+                icon: gateway.isRunning ? "pause.circle" : "play.circle",
+                title: gateway.isRunning ? L("Pause API") : L("Resume API"),
+                disabled: gateway.isStarting
+            ) {
+                toggleGateway()
+            }
+            actionRow(icon: "power", title: L("Quit Melon Tools")) {
+                NSApp.terminate(nil)
+            }
+        }
+    }
+
+    private func actionRow(
+        icon: String,
+        title: String,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                    .frame(width: 14)
+                Text(title)
+                    .font(MTTheme.mono(10))
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .foregroundStyle(disabled ? MTTheme.textTertiary : MTTheme.textPrimary)
+    }
+
+    private func openMainWindow() {
+        openWindow(id: "main")
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func openSchedulerWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = Self.schedulerWindow {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        let root = SchedulerView().environmentObject(app)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 980, height: 700),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Melon Tools — " + L("Scheduler")
+        window.contentView = NSHostingView(rootView: root)
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        Self.schedulerWindow = window
+    }
+
+    private func toggleGateway() {
+        if gateway.isRunning {
+            Task { await gateway.stop() }
+        } else {
+            codex.load()
+            Task {
+                await gateway.start(
+                    accounts: codex.accounts,
+                    priorities: codex.effectivePriorities()
+                )
+            }
+        }
+    }
+
+    // MARK: - Account preview and service
+
+    private var accountsSection: some View {
+        VStack(alignment: .leading, spacing: MTTheme.s1) {
+            Text(L("Codex").uppercased())
+                .font(MTTheme.mono(9, weight: .semibold))
+                .tracking(1.2)
+                .foregroundStyle(MTTheme.textSecondary)
+            if codex.accounts.isEmpty {
+                Text(L("no accounts"))
+                    .font(MTTheme.mono(10))
+                    .foregroundStyle(MTTheme.textSecondary)
+            } else {
+                ForEach(codex.accounts.prefix(3)) { account in
+                    HStack(spacing: 6) {
+                        MTQuotaRing(fraction: account.quota?.weeklyRemainingPercent.map { $0 / 100.0 }, size: 20)
+                        Text(account.displayName)
+                            .font(MTTheme.mono(10))
+                            .lineLimit(1)
+                        Spacer()
+                        if codex.currentAccountId == account.id {
+                            Text(L("active"))
+                                .font(MTTheme.mono(8, weight: .semibold))
+                                .foregroundStyle(MTTheme.ok)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var serviceRow: some View {
+        HStack(spacing: MTTheme.s2) {
+            Circle()
+                .fill(gateway.isRunning ? MTTheme.ok : MTTheme.textTertiary)
+                .frame(width: 7, height: 7)
+            Text(String(format: L("service %@"), gateway.status.label))
+                .font(MTTheme.mono(10))
+            Spacer()
+            if gateway.isRunning {
+                Text(L("running"))
+                    .font(MTTheme.mono(9))
+                    .foregroundStyle(MTTheme.ok)
+            }
         }
     }
 }
