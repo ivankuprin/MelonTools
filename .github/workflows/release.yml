@@ -154,6 +154,8 @@ jobs:
           cargo build --release --locked
           mkdir -p ../dist
           cp target/release/melontools.exe \
+            "../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe"
+          cp "../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe" \
             "../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
 
       - name: Build the Windows installer
@@ -168,7 +170,7 @@ jobs:
           }
           if (-not (Test-Path $makensis)) { throw "makensis not found" }
           Push-Location Windows
-          & $makensis /V2 "/DVERSION=$version" "/DSOURCE_EXE=dist/MelonTools-$version-win-x64.exe" "installer\MelonTools.nsi"
+          & $makensis /V2 "/DVERSION=$version" "/DSOURCE_EXE=dist/MelonTools-$version-win-x64-portable.exe" "installer\MelonTools.nsi"
           if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
           Pop-Location
           $setup = "Windows/dist/MelonTools-$version-setup.exe"
@@ -188,9 +190,14 @@ jobs:
           try {
             $bytes = [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64)
             [IO.File]::WriteAllBytes($env:WINDOWS_CERT_PFX, $bytes)
-            $exe = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
+            $exe = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe"
             ./packaging/sign-windows.ps1 -File $exe -Require
             if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed" }
+            $legacy = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
+            if (Test-Path $legacy) {
+              ./packaging/sign-windows.ps1 -File $legacy -Require
+              if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed for legacy alias" }
+            }
             $setup = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-setup.exe"
             if (Test-Path $setup) {
               ./packaging/sign-windows.ps1 -File $setup -Require
@@ -205,7 +212,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $files = @(Get-ChildItem "Windows/dist/MelonTools-*-win-x64.exe") +
+          $files = @(Get-ChildItem "Windows/dist/MelonTools-*-win-x64-portable.exe") +
+                   @(Get-ChildItem "Windows/dist/MelonTools-*-win-x64.exe") +
                    @(Get-ChildItem "Windows/dist/MelonTools-*-setup.exe")
           if (-not $files) { throw "No Windows artifacts found to hash." }
           foreach ($file in $files) {
@@ -220,6 +228,8 @@ jobs:
         with:
           name: windows-exe
           path: |
+            Windows/dist/MelonTools-*-win-x64-portable.exe
+            Windows/dist/MelonTools-*-win-x64-portable.exe.sha256
             Windows/dist/MelonTools-*-win-x64.exe
             Windows/dist/MelonTools-*-win-x64.exe.sha256
             Windows/dist/MelonTools-*-setup.exe

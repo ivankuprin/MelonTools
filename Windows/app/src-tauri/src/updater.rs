@@ -28,9 +28,28 @@ const ASSET_HOSTS: [&str; 3] = [
     "release-assets.githubusercontent.com",
 ];
 
-/// The only asset name the updater accepts: the Melon Tools Windows build.
+/// Asset names the updater accepts: the portable build (preferred) and the
+/// legacy name kept in releases so apps on 2.0.2 can still self-update.
 fn is_asset_name(name: &str) -> bool {
-    name.starts_with("MelonTools-") && name.ends_with("-win-x64.exe")
+    name.starts_with("MelonTools-")
+        && (name.ends_with("-win-x64-portable.exe") || name.ends_with("-win-x64.exe"))
+}
+
+/// Picks the preferred Windows asset: portable first, legacy second. The NSIS
+/// installer is deliberately never selected for self-update.
+fn pick_asset<'a>(assets: &'a [serde_json::Value]) -> Option<&'a serde_json::Value> {
+    for suffix in ["-win-x64-portable.exe", "-win-x64.exe"] {
+        if let Some(asset) = assets.iter().find(|asset| {
+            asset
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(|name| name.starts_with("MelonTools-") && name.ends_with(suffix))
+                .unwrap_or(false)
+        }) {
+            return Some(asset);
+        }
+    }
+    None
 }
 
 /// Bare host of an https URL, or `None` for any other scheme or a malformed
@@ -242,22 +261,22 @@ pub async fn check(force: bool, current: &str, last_check: Option<i64>) -> Resul
     let mut digest: Option<String> = None;
     if newer {
         if let Some(assets) = body.get("assets").and_then(|v| v.as_array()) {
-            for asset in assets {
-                let name = asset.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                if name.starts_with("MelonTools-") && name.ends_with("-win-x64.exe") {
-                    asset_name = name.to_string();
-                    asset_url = asset
-                        .get("browser_download_url")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    digest = asset
-                        .get("digest")
-                        .and_then(|v| v.as_str())
-                        .map(|d| d.trim_start_matches("sha256:").to_lowercase())
-                        .filter(|d| !d.is_empty());
-                    break;
-                }
+            if let Some(asset) = pick_asset(assets) {
+                asset_name = asset
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                asset_url = asset
+                    .get("browser_download_url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                digest = asset
+                    .get("digest")
+                    .and_then(|v| v.as_str())
+                    .map(|d| d.trim_start_matches("sha256:").to_lowercase())
+                    .filter(|d| !d.is_empty());
             }
         }
         if asset_url.is_empty() || !allowed(&asset_url) {
@@ -453,6 +472,22 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn asset_names_accept_portable_and_legacy_but_not_the_installer() {
+        assert!(is_asset_name("MelonTools-2.0.3-win-x64-portable.exe"));
+        assert!(is_asset_name("MelonTools-2.0.2-win-x64.exe"));
+        assert!(!is_asset_name("MelonTools-2.0.3-setup.exe"));
+        let assets = vec![
+            serde_json::json!({"name": "MelonTools-2.0.3-setup.exe"}),
+            serde_json::json!({"name": "MelonTools-2.0.3-win-x64.exe"}),
+            serde_json::json!({"name": "MelonTools-2.0.3-win-x64-portable.exe"}),
+        ];
+        assert_eq!(
+            pick_asset(&assets).and_then(|a| a.get("name")).and_then(|v| v.as_str()),
+            Some("MelonTools-2.0.3-win-x64-portable.exe")
+        );
+    }
+
     fn cached_update_requires_asset_name_and_digest() {
         let mut payload = check_payload();
         payload["assetName"] = json!("MelonTools-setup.msi");

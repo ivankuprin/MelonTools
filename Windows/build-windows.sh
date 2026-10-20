@@ -27,7 +27,8 @@ if [ -z "$VERSION" ]; then
   echo "Cannot read version from app/src-tauri/Cargo.toml" >&2
   exit 1
 fi
-SOURCE_EXE="dist/MelonTools-${VERSION}-win-x64.exe"
+PORTABLE_EXE="dist/MelonTools-${VERSION}-win-x64-portable.exe"
+LEGACY_EXE="dist/MelonTools-${VERSION}-win-x64.exe"
 INSTALLER="dist/MelonTools-${VERSION}-setup.exe"
 SIDECAR="$ROOT/app/src-tauri/binaries/cliproxyapi-x86_64-pc-windows-msvc.exe"
 PACKED_ENGINE="$ROOT/app/resources/cliproxyapi.exe.z"
@@ -99,9 +100,11 @@ echo "==> 3/6 cargo xwin build (x86_64-pc-windows-msvc)"
 
 echo "==> 4/6 collecting artifacts (single executable)"
 mkdir -p dist
-cp "$CARGO_TARGET_DIR/x86_64-pc-windows-msvc/release/melontools.exe" "$SOURCE_EXE"
-sign_windows_file "$SOURCE_EXE"
-cp "$SOURCE_EXE" "MelonTools-${VERSION}.exe"
+cp "$CARGO_TARGET_DIR/x86_64-pc-windows-msvc/release/melontools.exe" "$PORTABLE_EXE"
+sign_windows_file "$PORTABLE_EXE"
+# Legacy updater alias: apps on 2.0.2 only accept this name.
+cp "$PORTABLE_EXE" "$LEGACY_EXE"
+cp "$PORTABLE_EXE" "MelonTools-${VERSION}-portable.exe"
 # Optional loose engine for development or manual installs — the app extracts
 # its own embedded copy and does not need this file.
 if [ -f "$SIDECAR" ]; then
@@ -113,7 +116,7 @@ if command -v makensis >/dev/null 2>&1; then
   rm -f "$INSTALLER"
   makensis -V2 \
     -DVERSION="$VERSION" \
-    -DSOURCE_EXE="$SOURCE_EXE" \
+    -DSOURCE_EXE="$PORTABLE_EXE" \
     installer/MelonTools.nsi
   if [ ! -f "$INSTALLER" ]; then
     echo "makensis did not produce $INSTALLER" >&2

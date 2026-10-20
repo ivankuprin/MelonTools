@@ -1,20 +1,25 @@
-# Melon Tools 2.0.2
+# Melon Tools 2.0.3
 
-- **Clear pool-pause banner.** When every Codex account is paused, Accounts and
-  Providers now explain why and show the nearest reset: hourly reserve, weekly
-  reserve, mixed, or fully exhausted (no action offered).
-- **«Снять паузу».** If accounts still have quota left, the button (with a
-  confirmation warning) clears only the reserve that caused the pause, saves the
-  vault, syncs the running gateway and refreshes quotas.
+- **Clear Windows asset names.** The portable build is now published as
+  `MelonTools-2.0.3-win-x64-portable.exe`; the installer stays
+  `MelonTools-2.0.3-setup.exe`. No more identical-looking exe names.
+- **Updater compatibility.** The Windows updater prefers the portable asset,
+  accepts the legacy `-win-x64.exe` name (published alongside 2.0.3 so apps on
+  2.0.2 can still self-update) and never selects the installer.
+- No feature changes; macOS DMG and Windows builds are otherwise identical to
+  2.0.2.
 
 ## Downloads
 
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.2.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.2-setup.exe) — WebView2 Runtime required; custom install path.
-- [Windows portable exe](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.2-win-x64.exe)
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.3.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.3-setup.exe) — custom install path, WebView2 required.
+- [Windows portable](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.3-win-x64-portable.exe) — single file, no install.
 
 ## Earlier fixes
 
+- **2.0.2:** Pool-pause banner with nearest reset and «Снять паузу».
+- **2.0.1:** Windows NSIS installer with path selection; fixed welcome modal.
+- **2.0.0:** Fleet removed; task scheduler added.
 - **2.0.1:** Windows installer with path selection; fixed welcome modal; scheduler polish.
 - **2.0.0:** Fleet removed; task scheduler with model selection added.
 - **1.7.4:** Codex catalog schema fix (instructions + experimental tools from
