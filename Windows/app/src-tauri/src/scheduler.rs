@@ -2,13 +2,18 @@
 //!
 //! Tasks live in `%APPDATA%\MelonTools\scheduler.json` (atomic tmp+rename).
 //! A due task is sent to the local gateway as one chat completion; nothing is
-//! spawned outside the app process, so a closed app never runs anything.
+//! spawned outside the app process, so a quit app never runs anything. Hiding
+//! the main window to the tray leaves the process and this runner alive.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use chrono::{
+    Datelike, Duration as ChronoDuration, FixedOffset, Local, LocalResult, NaiveDate,
+    NaiveDateTime, TimeZone, Utc,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri_plugin_notification::NotificationExt;
@@ -27,6 +32,10 @@ pub const HISTORY_PER_TASK: usize = 20;
 pub const HISTORY_GLOBAL: usize = 200;
 /// One week is a sane upper bound; anything longer is a typo.
 pub const MAX_INTERVAL_MINUTES: i64 = 7 * 24 * 60;
+/// How many days the cron scanner looks ahead before giving up.
+pub const MAX_CRON_SCAN_DAYS: i64 = 3653;
+pub const SCHEDULE_INTERVAL: &str = "interval";
+pub const SCHEDULE_CRON: &str = "cron";
 pub const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 /// 500 ms polls while a "Run now" waits for the scheduled run to finish.
@@ -50,6 +59,10 @@ pub struct Task {
     pub prompt: String,
     pub model: String,
     pub reasoning_effort: Option<String>,
+    /// `"interval"` or `"cron"`. Older files omit it and default to interval.
+    pub schedule_kind: String,
+    pub cron_expression: Option<String>,
+    pub time_zone: Option<String>,
     pub interval_minutes: i64,
     pub enabled: bool,
     pub created_at: i64,
@@ -70,6 +83,9 @@ impl Default for Task {
             prompt: String::new(),
             model: String::new(),
             reasoning_effort: None,
+            schedule_kind: SCHEDULE_INTERVAL.to_string(),
+            cron_expression: None,
+            time_zone: None,
             interval_minutes: 60,
             enabled: true,
             created_at: 0,
@@ -113,6 +129,9 @@ pub struct TaskInput {
     pub prompt: String,
     pub model: String,
     pub reasoning_effort: Option<String>,
+    pub schedule_kind: String,
+    pub cron_expression: Option<String>,
+    pub time_zone: Option<String>,
     pub interval_minutes: i64,
     pub enabled: bool,
 }
@@ -125,6 +144,9 @@ impl Default for TaskInput {
             prompt: String::new(),
             model: String::new(),
             reasoning_effort: None,
+            schedule_kind: SCHEDULE_INTERVAL.to_string(),
+            cron_expression: None,
+            time_zone: None,
             interval_minutes: 60,
             enabled: true,
         }
@@ -138,6 +160,9 @@ struct Validated {
     prompt: String,
     model: String,
     effort: Option<String>,
+    schedule_kind: String,
+    cron_expression: Option<String>,
+    time_zone: Option<String>,
     interval_minutes: i64,
     enabled: bool,
 }
@@ -174,7 +199,14 @@ fn load_from(target: &std::path::Path) -> Store {
             task.last_status = "error".to_string();
         }
         if task.enabled && task.next_run_at.is_none() {
-            task.next_run_at = Some(next_after_run(now, task.interval_minutes));
+            task.next_run_at = next_run_for(
+                &task.schedule_kind,
+                task.interval_minutes,
+                task.cron_expression.as_deref(),
+                task.time_zone.as_deref(),
+                now,
+            )
+            .ok();
         }
     }
     store
@@ -250,6 +282,301 @@ pub fn next_after_run(now: i64, interval_minutes: i64) -> i64 {
     now + interval_minutes.clamp(1, MAX_INTERVAL_MINUTES) * 60
 }
 
+#[derive(Clone, Copy, Debug)]
+enum TaskZone {
+    Local,
+    Fixed(FixedOffset),
+}
+
+/// Windows has no bundled IANA rules. Accept the system zone, UTC/GMT and a
+/// fixed offset (`+03:00`, `UTC-5`, `+0530`); everything else is rejected
+/// instead of silently running in the wrong zone.
+fn normalize_time_zone(value: Option<&str>) -> Result<Option<String>, String> {
+    let raw = value.unwrap_or("").trim();
+    if raw.is_empty()
+        || raw.eq_ignore_ascii_case("local")
+        || raw.eq_ignore_ascii_case("system")
+    {
+        return Ok(None);
+    }
+    let upper = raw.to_ascii_uppercase();
+    if upper == "UTC" || upper == "GMT" || upper == "Z" {
+        return Ok(Some("UTC".to_string()));
+    }
+    let seconds = parse_offset_seconds(&upper)
+        .ok_or_else(|| format!("часовой пояс: используйте System, UTC или смещение вида +03:00 (получено «{}»)", raw))?;
+    let sign = if seconds < 0 { '-' } else { '+' };
+    let abs = seconds.unsigned_abs();
+    Ok(Some(format!(
+        "{}{:02}:{:02}",
+        sign,
+        abs / 3600,
+        (abs % 3600) / 60
+    )))
+}
+
+fn parse_offset_seconds(raw: &str) -> Option<i32> {
+    let rest = raw
+        .strip_prefix("UTC")
+        .or_else(|| raw.strip_prefix("GMT"))
+        .unwrap_or(raw);
+    let (sign, body) = if let Some(body) = rest.strip_prefix('+') {
+        (1, body)
+    } else if let Some(body) = rest.strip_prefix('-') {
+        (-1, body)
+    } else {
+        return None;
+    };
+    let (hours, minutes) = if let Some((hours, minutes)) = body.split_once(':') {
+        (hours.parse::<i32>().ok()?, minutes.parse::<i32>().ok()?)
+    } else if body.len() == 4 && body.chars().all(|c| c.is_ascii_digit()) {
+        (body[0..2].parse().ok()?, body[2..4].parse().ok()?)
+    } else if body.len() <= 2 && body.chars().all(|c| c.is_ascii_digit()) {
+        (body.parse().ok()?, 0)
+    } else {
+        return None;
+    };
+    if hours > 23 || minutes > 59 {
+        return None;
+    }
+    Some(sign * (hours * 3600 + minutes * 60))
+}
+
+fn task_zone(value: Option<&str>) -> Result<TaskZone, String> {
+    match normalize_time_zone(value)? {
+        None => Ok(TaskZone::Local),
+        Some(normalized) if normalized == "UTC" => Ok(TaskZone::Fixed(
+            FixedOffset::east_opt(0).expect("UTC offset"),
+        )),
+        Some(normalized) => {
+            let seconds = parse_offset_seconds(&normalized)
+                .ok_or_else(|| "часовой пояс: некорректное смещение".to_string())?;
+            Ok(TaskZone::Fixed(
+                FixedOffset::east_opt(seconds)
+                    .ok_or_else(|| "часовой пояс: смещение вне диапазона".to_string())?,
+            ))
+        }
+    }
+}
+
+fn zone_epoch(zone: TaskZone, naive: NaiveDateTime) -> Option<i64> {
+    match zone {
+        TaskZone::Local => match Local.from_local_datetime(&naive) {
+            LocalResult::Single(value) => Some(value.timestamp()),
+            LocalResult::Ambiguous(first, _) => Some(first.timestamp()),
+            LocalResult::None => None,
+        },
+        TaskZone::Fixed(offset) => offset
+            .from_local_datetime(&naive)
+            .single()
+            .map(|value| value.timestamp()),
+    }
+}
+
+/// Parsed five-field cron schedule. Values are sorted and deduplicated.
+#[derive(Clone, Debug)]
+struct CronSchedule {
+    minutes: Vec<u32>,
+    hours: Vec<u32>,
+    days: Vec<u32>,
+    months: Vec<u32>,
+    weekdays: Vec<u32>,
+    dom_restricted: bool,
+    dow_restricted: bool,
+}
+
+fn parse_cron(expression: &str) -> Result<CronSchedule, String> {
+    let fields: Vec<&str> = expression.split_whitespace().collect();
+    if fields.len() != 5 {
+        return Err(format!(
+            "cron: нужно 5 полей (минута час день месяц день недели), получено {}",
+            fields.len()
+        ));
+    }
+    let months = [
+        ("JAN", 1),
+        ("FEB", 2),
+        ("MAR", 3),
+        ("APR", 4),
+        ("MAY", 5),
+        ("JUN", 6),
+        ("JUL", 7),
+        ("AUG", 8),
+        ("SEP", 9),
+        ("OCT", 10),
+        ("NOV", 11),
+        ("DEC", 12),
+    ];
+    let weekdays = [
+        ("SUN", 0),
+        ("MON", 1),
+        ("TUE", 2),
+        ("WED", 3),
+        ("THU", 4),
+        ("FRI", 5),
+        ("SAT", 6),
+    ];
+    let minutes = parse_cron_field(fields[0], 0, 59, &[], "минуты")?;
+    let hours = parse_cron_field(fields[1], 0, 23, &[], "часы")?;
+    let days = parse_cron_field(fields[2], 1, 31, &[], "день")?;
+    let months = parse_cron_field(fields[3], 1, 12, &months, "месяц")?;
+    let mut weekdays = parse_cron_field(fields[4], 0, 7, &weekdays, "день недели")?;
+    for value in &mut weekdays {
+        if *value == 7 {
+            *value = 0;
+        }
+    }
+    weekdays.sort_unstable();
+    weekdays.dedup();
+    Ok(CronSchedule {
+        minutes,
+        hours,
+        days,
+        months,
+        weekdays,
+        // Vixie semantics: `*/n` still starts with `*`, so it does not make
+        // the day field "restricted" for the OR rule.
+        dom_restricted: !fields[2].starts_with('*'),
+        dow_restricted: !fields[4].starts_with('*'),
+    })
+}
+
+fn parse_cron_field(
+    raw: &str,
+    low: u32,
+    high: u32,
+    names: &[(&str, u32)],
+    label: &str,
+) -> Result<Vec<u32>, String> {
+    let mut values = Vec::new();
+    for part in raw.split(',') {
+        if part.is_empty() {
+            return Err(format!("cron: пустое значение в поле «{}»", label));
+        }
+        let mut pieces = part.split('/');
+        let base = pieces.next().unwrap_or("");
+        let step = match pieces.next() {
+            Some(text) => text
+                .parse::<u32>()
+                .map_err(|_| format!("cron: шаг в поле «{}» должен быть числом", label))?,
+            None => 1,
+        };
+        if pieces.next().is_some() {
+            return Err(format!("cron: лишний «/» в поле «{}»", label));
+        }
+        if step == 0 {
+            return Err(format!("cron: шаг в поле «{}» должен быть больше нуля", label));
+        }
+        let value = |text: &str| -> Result<u32, String> {
+            let upper = text.to_ascii_uppercase();
+            if let Some((_, value)) = names.iter().find(|(name, _)| *name == upper) {
+                return Ok(*value);
+            }
+            text.parse::<u32>()
+                .map_err(|_| format!("cron: некорректное значение «{}» в поле «{}»", text, label))
+        };
+        let (start, end) = if base == "*" {
+            (low, high)
+        } else if let Some((first, last)) = base.split_once('-') {
+            (value(first)?, value(last)?)
+        } else {
+            let single = value(base)?;
+            if step > 1 {
+                (single, high)
+            } else {
+                (single, single)
+            }
+        };
+        if start < low || end > high || start > end {
+            return Err(format!(
+                "cron: значение вне диапазона {}-{} в поле «{}»",
+                low, high, label
+            ));
+        }
+        let mut current = start;
+        while current <= end {
+            values.push(current);
+            current += step;
+        }
+    }
+    values.sort_unstable();
+    values.dedup();
+    Ok(values)
+}
+
+impl CronSchedule {
+    fn matches_date(&self, date: NaiveDate) -> bool {
+        if !self.months.contains(&date.month()) {
+            return false;
+        }
+        let dom = self.days.contains(&date.day());
+        let dow = self
+            .weekdays
+            .contains(&date.weekday().num_days_from_sunday());
+        if self.dom_restricted && self.dow_restricted {
+            dom || dow
+        } else {
+            dom && dow
+        }
+    }
+
+    /// First fire time at or after `now`, in the task time zone.
+    fn next_fire(&self, zone: TaskZone, now: i64) -> Result<i64, String> {
+        let start = Utc
+            .timestamp_opt(now, 0)
+            .single()
+            .ok_or_else(|| "cron: некорректная текущая дата".to_string())?;
+        let local_start = match zone {
+            TaskZone::Local => start.with_timezone(&Local).naive_local(),
+            TaskZone::Fixed(offset) => start.with_timezone(&offset).naive_local(),
+        };
+        let start_date = local_start.date();
+        for offset in 0..=MAX_CRON_SCAN_DAYS {
+            let Some(date) = start_date.checked_add_signed(ChronoDuration::days(offset)) else {
+                break;
+            };
+            if !self.matches_date(date) {
+                continue;
+            }
+            for hour in &self.hours {
+                for minute in &self.minutes {
+                    let Some(naive) = date.and_hms_opt(*hour, *minute, 0) else {
+                        continue;
+                    };
+                    if let Some(epoch) = zone_epoch(zone, naive) {
+                        if epoch >= now {
+                            return Ok(epoch);
+                        }
+                    }
+                }
+            }
+        }
+        Err("cron: следующее срабатывание не найдено в пределах 10 лет".to_string())
+    }
+}
+
+fn next_run_for(
+    schedule_kind: &str,
+    interval_minutes: i64,
+    cron_expression: Option<&str>,
+    time_zone: Option<&str>,
+    now: i64,
+) -> Result<i64, String> {
+    match schedule_kind {
+        "" | SCHEDULE_INTERVAL => Ok(next_after_run(now, interval_minutes)),
+        SCHEDULE_CRON => {
+            let expression = cron_expression
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "cron: укажите выражение".to_string())?;
+            let schedule = parse_cron(expression)?;
+            let zone = task_zone(time_zone)?;
+            schedule.next_fire(zone, now)
+        }
+        other => Err(format!("неизвестный тип расписания: {}", other)),
+    }
+}
+
 /// The single task to run now. Disabled tasks and future runs never qualify;
 /// the caller runs one task per tick, so a long pause cannot produce a burst.
 pub fn due_task(store: &Store, now: i64) -> Option<&Task> {
@@ -283,9 +610,42 @@ fn validate(input: &TaskInput) -> Result<Validated, String> {
     if model.is_empty() {
         return Err("выберите модель".to_string());
     }
-    if input.interval_minutes < 1 || input.interval_minutes > MAX_INTERVAL_MINUTES {
+    let schedule_kind = match input.schedule_kind.trim().to_ascii_lowercase().as_str() {
+        "" | SCHEDULE_INTERVAL => SCHEDULE_INTERVAL.to_string(),
+        SCHEDULE_CRON => SCHEDULE_CRON.to_string(),
+        other => return Err(format!("неизвестный тип расписания: {}", other)),
+    };
+    let cron_expression = if schedule_kind == SCHEDULE_CRON {
+        let expression = input
+            .cron_expression
+            .as_deref()
+            .unwrap_or("")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if expression.is_empty() {
+            return Err("cron: укажите выражение".to_string());
+        }
+        parse_cron(&expression)?;
+        Some(expression)
+    } else {
+        None
+    };
+    let time_zone = normalize_time_zone(input.time_zone.as_deref())?;
+    if schedule_kind == SCHEDULE_INTERVAL
+        && (input.interval_minutes < 1 || input.interval_minutes > MAX_INTERVAL_MINUTES)
+    {
         return Err(format!("интервал: от 1 до {} минут", MAX_INTERVAL_MINUTES));
     }
+    // Validate the first fire now, not on the first tick: an impossible date
+    // (for example 31 February) must be rejected with the editor open.
+    next_run_for(
+        &schedule_kind,
+        input.interval_minutes,
+        cron_expression.as_deref(),
+        time_zone.as_deref(),
+        now_secs(),
+    )?;
     let effort = match input
         .reasoning_effort
         .as_deref()
@@ -307,7 +667,10 @@ fn validate(input: &TaskInput) -> Result<Validated, String> {
         prompt: prompt.to_string(),
         model: model.to_string(),
         effort,
-        interval_minutes: input.interval_minutes,
+        schedule_kind,
+        cron_expression,
+        time_zone,
+        interval_minutes: input.interval_minutes.clamp(1, MAX_INTERVAL_MINUTES),
         enabled: input.enabled,
     })
 }
@@ -315,20 +678,33 @@ fn validate(input: &TaskInput) -> Result<Validated, String> {
 /// Copy the edit into the task and decide the next run. Kept pure so the
 /// scheduling rules are testable without touching the disk.
 fn apply_input(task: &mut Task, input: &Validated, now: i64) {
-    let schedule_changed =
-        task.interval_minutes != input.interval_minutes || task.enabled != input.enabled;
+    let schedule_changed = task.interval_minutes != input.interval_minutes
+        || task.schedule_kind != input.schedule_kind
+        || task.cron_expression != input.cron_expression
+        || task.time_zone != input.time_zone
+        || task.enabled != input.enabled;
     task.name = input.name.clone();
     task.prompt = input.prompt.clone();
     task.model = input.model.clone();
     task.reasoning_effort = input.effort.clone();
     task.interval_minutes = input.interval_minutes;
+    task.schedule_kind = input.schedule_kind.clone();
+    task.cron_expression = input.cron_expression.clone();
+    task.time_zone = input.time_zone.clone();
     task.enabled = input.enabled;
     if !task.enabled {
         // A disabled task has no schedule at all — re-enabling starts a fresh
-        // interval instead of firing an overdue run immediately.
+        // run instead of firing an overdue one immediately.
         task.next_run_at = None;
     } else if schedule_changed || task.next_run_at.is_none() {
-        task.next_run_at = Some(next_after_run(now, input.interval_minutes));
+        task.next_run_at = next_run_for(
+            &task.schedule_kind,
+            task.interval_minutes,
+            task.cron_expression.as_deref(),
+            task.time_zone.as_deref(),
+            now,
+        )
+        .ok();
     }
 }
 
@@ -543,10 +919,26 @@ pub fn apply_outcome(
         task.last_result = truncate_result(&outcome.result);
         task.last_duration_ms = Some(outcome.duration_ms);
         task.last_tokens = outcome.tokens;
-        // Failures keep the task enabled and move on to the next interval.
+        // Failures keep the task enabled and move on to the next fire time.
         // A manual run of a disabled task must not arm a schedule.
         task.next_run_at = if task.enabled {
-            Some(next_after_run(at, task.interval_minutes))
+            // +1 s for cron only: `at` has whole-second precision, and a fast
+            // run can finish in the same minute it was due. Without this the
+            // task would immediately become due again on the next tick.
+            // Intervals start from the exact completion time.
+            let reference = if task.schedule_kind == SCHEDULE_CRON {
+                at + 1
+            } else {
+                at
+            };
+            next_run_for(
+                &task.schedule_kind,
+                task.interval_minutes,
+                task.cron_expression.as_deref(),
+                task.time_zone.as_deref(),
+                reference,
+            )
+            .ok()
         } else {
             None
         };
@@ -1218,5 +1610,126 @@ mod tests {
         save_to(&target, &store).unwrap();
         assert_eq!(load_from(&target).tasks[0].last_status, "error");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn utc_at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> i64 {
+        NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .and_hms_opt(hour, minute, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp()
+    }
+
+    #[test]
+    fn cron_steps_fire_on_the_next_quarter_hour() {
+        // Tuesday 20 October 2026, 08:07 UTC.
+        let now = utc_at(2026, 10, 20, 8, 7);
+        let next = next_run_for("cron", 60, Some("*/15 * * * *"), Some("UTC"), now).unwrap();
+        assert_eq!(next, utc_at(2026, 10, 20, 8, 15));
+
+        // A run finishes a few seconds after the exact fire time, so the next
+        // fire is the following quarter hour.
+        let next = next_run_for("cron", 60, Some("*/15 * * * *"), Some("UTC"), next + 5).unwrap();
+        assert_eq!(next, utc_at(2026, 10, 20, 8, 30));
+    }
+
+    #[test]
+    fn cron_weekdays_and_names_skip_the_weekend() {
+        // Saturday 24 October 2026, 12:00 UTC.
+        let saturday = utc_at(2026, 10, 24, 12, 0);
+        let next = next_run_for("cron", 60, Some("0 9 * * MON-FRI"), Some("UTC"), saturday)
+            .unwrap();
+        assert_eq!(next, utc_at(2026, 10, 26, 9, 0), "Monday 09:00");
+    }
+
+    #[test]
+    fn cron_day_of_month_and_weekday_use_or_semantics() {
+        // Sunday 1 November 2026. The 13th or the first Friday after it.
+        let now = utc_at(2026, 11, 1, 0, 0);
+        let next = next_run_for("cron", 60, Some("0 0 13 * 5"), Some("UTC"), now).unwrap();
+        assert_eq!(next, utc_at(2026, 11, 6, 0, 0), "Friday wins over the 13th");
+    }
+
+    #[test]
+    fn cron_accepts_ranges_lists_and_steps() {
+        let now = utc_at(2026, 10, 20, 8, 7);
+        let schedule = parse_cron("5,10-20/5 8 * * *").unwrap();
+        assert_eq!(schedule.minutes, vec![5, 10, 15, 20]);
+        assert_eq!(schedule.hours, vec![8]);
+        let next = schedule.next_fire(TaskZone::Fixed(FixedOffset::east_opt(0).unwrap()), now).unwrap();
+        assert_eq!(next, utc_at(2026, 10, 20, 8, 10));
+    }
+
+    #[test]
+    fn cron_rejects_invalid_expressions_and_time_zones() {
+        assert!(parse_cron("* * * *").is_err());
+        assert!(parse_cron("60 * * * *").is_err());
+        assert!(parse_cron("*/0 * * * *").is_err());
+        assert!(parse_cron("10-1 * * * *").is_err());
+        assert!(parse_cron("* * 32 * *").is_err());
+        assert!(parse_cron("* * * FOO *").is_err());
+        assert!(next_run_for("cron", 60, Some("0 0 31 2 *"), Some("UTC"), 0).is_err());
+        assert!(next_run_for("cron", 60, Some("* * * * *"), Some("Europe/Moscow"), 0).is_err());
+        assert!(next_run_for("cron", 60, Some("* * * * *"), Some("+25:00"), 0).is_err());
+        assert!(next_run_for("cron", 60, None, Some("UTC"), 0).is_err());
+        assert!(next_run_for("weekly", 60, None, None, 0).is_err());
+    }
+
+    #[test]
+    fn fixed_time_zone_shifts_the_next_fire() {
+        let now = utc_at(2026, 10, 20, 5, 0); // 08:00 in +03:00
+        let next = next_run_for("cron", 60, Some("0 9 * * *"), Some("+03:00"), now).unwrap();
+        assert_eq!(next, utc_at(2026, 10, 20, 6, 0));
+        assert_eq!(normalize_time_zone(Some("UTC+3")).unwrap().as_deref(), Some("+03:00"));
+        assert_eq!(normalize_time_zone(Some("local")).unwrap(), None);
+    }
+
+    #[test]
+    fn legacy_tasks_default_to_interval_and_cron_fields_round_trip() {
+        let legacy: Task = serde_json::from_str(r#"{"id":"old","name":"n"}"#).unwrap();
+        assert_eq!(legacy.schedule_kind, SCHEDULE_INTERVAL);
+        assert!(legacy.cron_expression.is_none());
+        assert!(legacy.time_zone.is_none());
+
+        let mut value = task("cron");
+        value.schedule_kind = SCHEDULE_CRON.to_string();
+        value.cron_expression = Some("0 9 * * 1-5".to_string());
+        value.time_zone = Some("+03:00".to_string());
+        let json = serde_json::to_value(&value).unwrap();
+        assert_eq!(json["scheduleKind"], "cron");
+        assert_eq!(json["cronExpression"], "0 9 * * 1-5");
+        assert_eq!(json["timeZone"], "+03:00");
+        let back: Task = serde_json::from_value(json).unwrap();
+        assert_eq!(back, value);
+    }
+
+    #[test]
+    fn cron_input_schedules_the_next_fire_and_advances_after_a_run() {
+        let now = utc_at(2026, 10, 20, 8, 7);
+        let mut payload = input("cron task", 60, true);
+        payload.schedule_kind = SCHEDULE_CRON.to_string();
+        payload.cron_expression = Some("0 9 * * *".to_string());
+        payload.time_zone = Some("UTC".to_string());
+        let valid = validate(&payload).unwrap();
+        let mut stored = task("a");
+        apply_input(&mut stored, &valid, now);
+        assert_eq!(stored.next_run_at, Some(utc_at(2026, 10, 20, 9, 0)));
+
+        let outcome = Outcome {
+            status: "ok".to_string(),
+            ..Outcome::default()
+        };
+        let mut store = Store {
+            tasks: vec![stored],
+            history: Vec::new(),
+        };
+        // Even a run that finishes in the same second must move to tomorrow.
+        apply_outcome(&mut store, "a", utc_at(2026, 10, 20, 9, 0), &outcome).unwrap();
+        assert_eq!(
+            store.tasks[0].next_run_at,
+            Some(utc_at(2026, 10, 21, 9, 0)),
+            "the next run is tomorrow at 09:00"
+        );
     }
 }

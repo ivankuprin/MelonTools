@@ -215,12 +215,13 @@ final class SchedulerStore: ObservableObject {
                     changed = true
                 }
                 // An enabled task without a schedule (hand-edited file) gets
-                // one interval from now instead of running immediately.
+                // the next fire of its own kind instead of running
+                // immediately.
                 if restored[index].enabled, restored[index].nextRunAt == nil {
                     restored[index].nextRunAt = SchedulerPolicy.nextRun(
                         after: now,
-                        intervalMinutes: restored[index].intervalMinutes
-                    ).timeIntervalSince1970
+                        task: restored[index]
+                    )?.timeIntervalSince1970
                     changed = true
                 }
             }
@@ -258,6 +259,9 @@ final class SchedulerStore: ObservableObject {
         reasoningEffort: String?,
         intervalMinutes: Int,
         enabled: Bool,
+        scheduleKind: SchedulerScheduleKind = .interval,
+        cronExpression: String? = nil,
+        timeZoneIdentifier: String? = nil,
         now: Date = Date()
     ) -> SchedulerTask {
         let interval = clampedInterval(intervalMinutes)
@@ -267,11 +271,17 @@ final class SchedulerStore: ObservableObject {
             model: model,
             reasoningEffort: reasoningEffort,
             intervalMinutes: interval,
+            scheduleKind: scheduleKind,
+            cronExpression: scheduleKind == .cron ? normalizedCron(cronExpression) : nil,
+            timeZoneIdentifier: normalizedTimeZone(timeZoneIdentifier),
             enabled: enabled,
             createdAt: now.timeIntervalSince1970
         )
+        // An invalid schedule is never persisted; the editor blocks Save and
+        // shows the same message first.
+        guard task.scheduleValidationError == nil else { return task }
         task.nextRunAt = enabled
-            ? SchedulerPolicy.nextRun(after: now, intervalMinutes: interval).timeIntervalSince1970
+            ? SchedulerPolicy.nextRun(after: now, task: task)?.timeIntervalSince1970
             : nil
         tasks.append(task)
         save()
@@ -286,6 +296,9 @@ final class SchedulerStore: ObservableObject {
         reasoningEffort: String?,
         intervalMinutes: Int,
         enabled: Bool,
+        scheduleKind: SchedulerScheduleKind = .interval,
+        cronExpression: String? = nil,
+        timeZoneIdentifier: String? = nil,
         now: Date = Date()
     ) {
         guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
@@ -296,9 +309,13 @@ final class SchedulerStore: ObservableObject {
         task.model = model
         task.reasoningEffort = reasoningEffort
         task.intervalMinutes = interval
+        task.scheduleKind = scheduleKind
+        task.cronExpression = scheduleKind == .cron ? normalizedCron(cronExpression) : nil
+        task.timeZoneIdentifier = normalizedTimeZone(timeZoneIdentifier)
+        guard task.scheduleValidationError == nil else { return }
         task.enabled = enabled
         task.nextRunAt = enabled
-            ? SchedulerPolicy.nextRun(after: now, intervalMinutes: interval).timeIntervalSince1970
+            ? SchedulerPolicy.nextRun(after: now, task: task)?.timeIntervalSince1970
             : nil
         tasks[index] = task
         save()
@@ -317,7 +334,7 @@ final class SchedulerStore: ObservableObject {
         var task = tasks[index]
         task.enabled = enabled
         task.nextRunAt = enabled
-            ? SchedulerPolicy.nextRun(after: now, intervalMinutes: task.intervalMinutes).timeIntervalSince1970
+            ? SchedulerPolicy.nextRun(after: now, task: task)?.timeIntervalSince1970
             : nil
         tasks[index] = task
         save()
@@ -370,12 +387,9 @@ final class SchedulerStore: ObservableObject {
         updated.lastDurationMs = result.durationMs
         updated.lastTokens = result.tokens
         // Failures keep the task enabled; the next attempt is one interval
-        // away (no exponential retry, no burst).
+        // away or the next cron fire (no exponential retry, no burst).
         updated.nextRunAt = updated.enabled
-            ? SchedulerPolicy.nextRun(
-                after: finishedAt,
-                intervalMinutes: updated.intervalMinutes
-            ).timeIntervalSince1970
+            ? SchedulerPolicy.nextRun(after: finishedAt, task: updated)?.timeIntervalSince1970
             : nil
         tasks[currentIndex] = updated
 
@@ -439,5 +453,17 @@ final class SchedulerStore: ObservableObject {
 
     private func clampedInterval(_ value: Int) -> Int {
         max(1, min(value, SchedulerLimits.maximumIntervalMinutes))
+    }
+
+    private func normalizedCron(_ expression: String?) -> String? {
+        guard let expression else { return nil }
+        let trimmed = expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func normalizedTimeZone(_ identifier: String?) -> String? {
+        guard let identifier else { return nil }
+        let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

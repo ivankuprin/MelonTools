@@ -15,6 +15,7 @@ struct SchedulerView: View {
     private struct EditorTarget: Identifiable {
         let id = UUID()
         let task: SchedulerTask?
+        var template: SchedulerTaskTemplate? = nil
     }
 
     var body: some View {
@@ -61,7 +62,7 @@ struct SchedulerView: View {
             Task { await store.loadModelsIfNeeded() }
         }
         .sheet(item: $editorTarget) { target in
-            SchedulerEditorSheet(task: target.task)
+            SchedulerEditorSheet(task: target.task, template: target.template)
         }
         .sheet(item: $resultTarget) { task in
             SchedulerResultSheet(taskID: task.id)
@@ -91,6 +92,16 @@ struct SchedulerView: View {
     private var tasksCard: some View {
         MTCard(title: L("Tasks"), systemImage: "clock.badge.checkmark") {
             VStack(alignment: .leading, spacing: MTTheme.s2) {
+                HStack(spacing: MTTheme.s1) {
+                    Image(systemName: "menubar.rectangle")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(MTTheme.textTertiary)
+                    Text(L("Keep Melon Tools running in the menu bar for scheduled runs"))
+                        .font(MTTheme.mono(9))
+                        .foregroundStyle(MTTheme.textTertiary)
+                    Spacer(minLength: 0)
+                }
+
                 if store.tasks.isEmpty {
                     VStack(alignment: .leading, spacing: MTTheme.s1) {
                         Text(L("No scheduled tasks yet."))
@@ -115,6 +126,21 @@ struct SchedulerView: View {
                         .font(MTTheme.mono(9))
                         .foregroundStyle(MTTheme.textSecondary)
                     Spacer()
+                    Menu {
+                        ForEach(SchedulerTemplates.all) { template in
+                            Button {
+                                editorTarget = EditorTarget(task: nil, template: template)
+                            } label: {
+                                Text(L(template.name))
+                            }
+                            .help(L(template.description))
+                        }
+                    } label: {
+                        Label(L("From template"), systemImage: "square.on.square")
+                            .font(MTTheme.mono(10, weight: .semibold))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
                     MTSecondaryButton(title: L("New task"), systemImage: "plus") {
                         editorTarget = EditorTarget(task: nil)
                     }
@@ -153,9 +179,10 @@ struct SchedulerView: View {
                     .lineLimit(1)
                 Text("·")
                     .foregroundStyle(MTTheme.textTertiary)
-                Text(String(format: L("Every %d min"), task.intervalMinutes))
+                Text(scheduleText(task))
                     .font(MTTheme.mono(10))
                     .foregroundStyle(MTTheme.textSecondary)
+                    .lineLimit(1)
                 Text("·")
                     .foregroundStyle(MTTheme.textTertiary)
                 Text(L("Next run") + ": " + nextRunText(task))
@@ -233,6 +260,20 @@ struct SchedulerView: View {
         )
     }
 
+    private func scheduleText(_ task: SchedulerTask) -> String {
+        switch task.scheduleKind {
+        case .interval:
+            return String(format: L("Every %d min"), task.intervalMinutes)
+        case .cron:
+            let expression = task.cronExpression ?? "—"
+            guard let identifier = task.timeZoneIdentifier,
+                  let zone = TimeZone(identifier: identifier) else {
+                return expression
+            }
+            return expression + " · " + (zone.abbreviation(for: Date()) ?? identifier)
+        }
+    }
+
     private func nextRunText(_ task: SchedulerTask) -> String {
         guard task.enabled else { return L("Disabled") }
         guard let next = task.nextRunAt else { return "—" }
@@ -293,21 +334,43 @@ private struct SchedulerEditorSheet: View {
     @ObservedObject private var store = SchedulerStore.shared
 
     let task: SchedulerTask?
+    let template: SchedulerTaskTemplate?
 
     @State private var name: String
     @State private var prompt: String
     @State private var model: String
     @State private var effort: String
     @State private var intervalMinutes: Int
+    @State private var scheduleKind: SchedulerScheduleKind
+    @State private var cronExpression: String
+    @State private var timeZoneIdentifier: String
+    @State private var variableValues: [String: String]
     @State private var enabled: Bool
 
-    init(task: SchedulerTask?) {
+    init(task: SchedulerTask?, template: SchedulerTaskTemplate? = nil) {
         self.task = task
-        _name = State(initialValue: task?.name ?? "")
-        _prompt = State(initialValue: task?.prompt ?? "")
+        self.template = template
+        _name = State(initialValue: task?.name ?? template.map { L($0.name) } ?? "")
+        _prompt = State(initialValue: task?.prompt ?? template?.promptTemplate ?? "")
         _model = State(initialValue: task?.model ?? "")
         _effort = State(initialValue: task?.reasoningEffort ?? "")
-        _intervalMinutes = State(initialValue: task?.intervalMinutes ?? SchedulerLimits.defaultIntervalMinutes)
+        _intervalMinutes = State(
+            initialValue: task?.intervalMinutes
+                ?? template?.intervalMinutes
+                ?? SchedulerLimits.defaultIntervalMinutes
+        )
+        _scheduleKind = State(
+            initialValue: task?.scheduleKind ?? template?.scheduleKind ?? .interval
+        )
+        _cronExpression = State(
+            initialValue: task?.cronExpression ?? template?.cronExpression ?? ""
+        )
+        _timeZoneIdentifier = State(initialValue: task?.timeZoneIdentifier ?? "")
+        _variableValues = State(
+            initialValue: Dictionary(
+                uniqueKeysWithValues: (template?.variables ?? []).map { ($0, "") }
+            )
+        )
         _enabled = State(initialValue: task?.enabled ?? true)
     }
 
@@ -343,21 +406,55 @@ private struct SchedulerEditorSheet: View {
                             )
                     }
 
+                    if let template, !template.variables.isEmpty, task == nil {
+                        field(L("Variables")) {
+                            VStack(alignment: .leading, spacing: MTTheme.s2) {
+                                ForEach(template.variables, id: \.self) { variable in
+                                    HStack(spacing: MTTheme.s2) {
+                                        Text("{{\(variable)}}")
+                                            .font(MTTheme.mono(10, weight: .semibold))
+                                            .foregroundStyle(MTTheme.textSecondary)
+                                            .frame(width: 80, alignment: .leading)
+                                        TextField(
+                                            variableTitle(variable),
+                                            text: binding(for: variable)
+                                        )
+                                        .textFieldStyle(.roundedBorder)
+                                    }
+                                }
+                                Text(L("Variables are substituted when the task is created."))
+                                    .font(MTTheme.mono(9))
+                                    .foregroundStyle(MTTheme.textTertiary)
+                            }
+                        }
+                    }
+
                     field(L("Model")) {
                         modelField
                     }
 
-                    HStack(alignment: .top, spacing: MTTheme.s4) {
-                        field(L("Reasoning effort")) {
-                            Picker("", selection: $effort) {
-                                Text(L("None")).tag("")
-                                ForEach(SchedulerTask.reasoningEfforts, id: \.self) { value in
-                                    Text(value).tag(value)
-                                }
+                    field(L("Reasoning effort")) {
+                        Picker("", selection: $effort) {
+                            Text(L("None")).tag("")
+                            ForEach(SchedulerTask.reasoningEfforts, id: \.self) { value in
+                                Text(value).tag(value)
                             }
-                            .labelsHidden()
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    field(L("Schedule type")) {
+                        Picker("", selection: $scheduleKind) {
+                            ForEach(SchedulerScheduleKind.allCases) { kind in
+                                Text(kind.title).tag(kind)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+
+                    if scheduleKind == .interval {
                         field(L("Interval")) {
                             HStack(spacing: MTTheme.s2) {
                                 TextField("", value: $intervalMinutes, format: .number)
@@ -366,17 +463,68 @@ private struct SchedulerEditorSheet: View {
                                 Text(L("minutes"))
                                     .font(MTTheme.mono(10))
                                     .foregroundStyle(MTTheme.textSecondary)
+                                Spacer(minLength: 0)
                             }
                         }
+                        if let scheduleError {
+                            Text(scheduleError)
+                                .font(MTTheme.mono(9))
+                                .foregroundStyle(MTTheme.danger)
+                        }
+                    } else {
+                        field(L("Cron expression")) {
+                            VStack(alignment: .leading, spacing: MTTheme.s1) {
+                                TextField("0 9 * * 1-5", text: $cronExpression)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(MTTheme.mono(11))
+                                Text(L("Minute hour day month weekday"))
+                                    .font(MTTheme.mono(9))
+                                    .foregroundStyle(MTTheme.textTertiary)
+                                Text("*/15 * * * *  ·  0 9 * * 1-5  ·  0 */6 * * *  ·  0 0 1 * *")
+                                    .font(MTTheme.mono(9))
+                                    .foregroundStyle(MTTheme.textTertiary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        if let scheduleError {
+                            Text(scheduleError)
+                                .font(MTTheme.mono(9))
+                                .foregroundStyle(MTTheme.danger)
+                                .lineLimit(3)
+                                .textSelection(.enabled)
+                        }
+                    }
+
+                    field(L("Time zone")) {
+                        Picker("", selection: $timeZoneIdentifier) {
+                            Text(String(format: L("System (%@)"), TimeZone.current.identifier))
+                                .tag("")
+                            ForEach(TimeZone.knownTimeZoneIdentifiers.sorted(), id: \.self) { identifier in
+                                Text(identifier).tag(identifier)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if let templateError {
+                        Text(templateError)
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.danger)
                     }
 
                     Toggle(L("Enabled"), isOn: $enabled)
                         .toggleStyle(.switch)
                         .font(MTTheme.body(12))
 
-                    Text(L("Scheduler runs only while Melon Tools is open."))
-                        .font(MTTheme.mono(9))
-                        .foregroundStyle(MTTheme.textTertiary)
+                    VStack(alignment: .leading, spacing: MTTheme.s1) {
+                        Text(L("Keep Melon Tools running in the menu bar for scheduled runs"))
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.textTertiary)
+                        Text(L("Scheduler runs only while Melon Tools is open."))
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.textTertiary)
+                    }
                 }
                 .padding(MTTheme.s4)
             }
@@ -400,33 +548,84 @@ private struct SchedulerEditorSheet: View {
         }
     }
 
+    /// The editor shows the same message the store uses, so an invalid
+    /// schedule can never reach `scheduler.json`.
+    private var scheduleError: String? {
+        SchedulerTask.scheduleValidationError(
+            scheduleKind: scheduleKind,
+            cronExpression: cronExpression,
+            timeZoneIdentifier: normalizedTimeZone,
+            intervalMinutes: intervalMinutes
+        )
+    }
+
+    private var templateError: String? {
+        guard task == nil, let template else { return nil }
+        return SchedulerTemplates.validationError(template, values: variableValues)
+    }
+
+    private var normalizedTimeZone: String? {
+        let value = timeZoneIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && scheduleError == nil
+            && templateError == nil
+    }
+
+    private func variableTitle(_ variable: String) -> String {
+        switch variable {
+        case "repo": return L("Repository")
+        case "branch": return L("Branch")
+        case "path": return L("Path")
+        default: return variable.capitalized
+        }
+    }
+
+    private func binding(for variable: String) -> Binding<String> {
+        Binding(
+            get: { variableValues[variable] ?? "" },
+            set: { variableValues[variable] = $0 }
+        )
     }
 
     private func save() {
         guard canSave else { return }
         let selectedEffort = effort.isEmpty ? nil : effort
+        let renderedPrompt: String
+        if task == nil, let template {
+            renderedPrompt = SchedulerTemplates.render(template, values: variableValues)
+        } else {
+            renderedPrompt = prompt
+        }
         if let task {
             store.updateTask(
                 id: task.id,
                 name: name,
-                prompt: prompt,
+                prompt: renderedPrompt,
                 model: model,
                 reasoningEffort: selectedEffort,
                 intervalMinutes: intervalMinutes,
-                enabled: enabled
+                enabled: enabled,
+                scheduleKind: scheduleKind,
+                cronExpression: scheduleKind == .cron ? cronExpression : nil,
+                timeZoneIdentifier: normalizedTimeZone
             )
         } else {
             store.addTask(
                 name: name,
-                prompt: prompt,
+                prompt: renderedPrompt,
                 model: model,
                 reasoningEffort: selectedEffort,
                 intervalMinutes: intervalMinutes,
-                enabled: enabled
+                enabled: enabled,
+                scheduleKind: scheduleKind,
+                cronExpression: scheduleKind == .cron ? cronExpression : nil,
+                timeZoneIdentifier: normalizedTimeZone
             )
         }
         dismiss()

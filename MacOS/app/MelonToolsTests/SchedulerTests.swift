@@ -582,4 +582,137 @@ final class SchedulerTests: XCTestCase {
         XCTAssertEqual(DashboardMetrics.lastStatus(tasks: [due], history: history), .error)
         XCTAssertNil(DashboardMetrics.lastStatus(tasks: [later], history: []))
     }
+
+    // MARK: - Cron schedules
+
+    func testCronStepFiresOnTheNextQuarterHour() throws {
+        let cron = try SchedulerCron.parse("*/15 * * * *")
+        let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        // Tuesday 20 October 2026, 08:07 UTC.
+        let start = Date(timeIntervalSince1970: 1_792_483_620)
+        let next = try XCTUnwrap(cron.nextRun(after: start, timeZone: utc))
+        XCTAssertEqual(next.timeIntervalSince1970, 1_792_484_100, accuracy: 0.5)
+
+        let later = try XCTUnwrap(
+            cron.nextRun(after: next.addingTimeInterval(5), timeZone: utc)
+        )
+        XCTAssertEqual(later.timeIntervalSince1970, 1_792_485_000, accuracy: 0.5)
+    }
+
+    func testCronWeekdaysSkipTheWeekend() throws {
+        let cron = try SchedulerCron.parse("0 9 * * MON-FRI")
+        let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        // Saturday 24 October 2026, 12:00 UTC.
+        let saturday = Date(timeIntervalSince1970: 1_792_843_200)
+        let next = try XCTUnwrap(cron.nextRun(after: saturday, timeZone: utc))
+        XCTAssertEqual(next.timeIntervalSince1970, 1_793_005_200, accuracy: 0.5)
+    }
+
+    func testCronDayOfMonthAndWeekdayUseOrSemantics() throws {
+        let cron = try SchedulerCron.parse("0 0 13 * 5")
+        let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        // Sunday 1 November 2026: the next Friday wins over the 13th.
+        let start = Date(timeIntervalSince1970: 1_793_491_200)
+        let next = try XCTUnwrap(cron.nextRun(after: start, timeZone: utc))
+        XCTAssertEqual(next.timeIntervalSince1970, 1_793_923_200, accuracy: 0.5)
+    }
+
+    func testCronHonorsTheTaskTimeZone() throws {
+        let cron = try SchedulerCron.parse("0 9 * * *")
+        let plusThree = try XCTUnwrap(TimeZone(secondsFromGMT: 3 * 3600))
+        // 05:00 UTC is 08:00 in +03:00; 09:00 there is 06:00 UTC.
+        let start = Date(timeIntervalSince1970: 1_792_472_400)
+        let next = try XCTUnwrap(cron.nextRun(after: start, timeZone: plusThree))
+        XCTAssertEqual(next.timeIntervalSince1970, 1_792_476_000, accuracy: 0.5)
+    }
+
+    func testCronRejectsMalformedExpressionsAndSchedules() {
+        XCTAssertThrowsError(try SchedulerCron.parse("* * * *"))
+        XCTAssertThrowsError(try SchedulerCron.parse("60 * * * *"))
+        XCTAssertThrowsError(try SchedulerCron.parse("*/0 * * * *"))
+        XCTAssertThrowsError(try SchedulerCron.parse("10-1 * * * *"))
+        XCTAssertThrowsError(try SchedulerCron.parse("* * 32 * *"))
+
+        XCTAssertNotNil(SchedulerTask.scheduleValidationError(
+            scheduleKind: .cron,
+            cronExpression: "not a cron",
+            timeZoneIdentifier: nil,
+            intervalMinutes: 60
+        ))
+        XCTAssertNotNil(SchedulerTask.scheduleValidationError(
+            scheduleKind: .interval,
+            cronExpression: nil,
+            timeZoneIdentifier: "Mars/Olympus",
+            intervalMinutes: 60
+        ))
+        XCTAssertNil(SchedulerTask.scheduleValidationError(
+            scheduleKind: .cron,
+            cronExpression: "0 9 * * 1-5",
+            timeZoneIdentifier: "Europe/Moscow",
+            intervalMinutes: 60
+        ))
+    }
+
+    func testCronTaskPersistsAndSchedulesTheNextFire() throws {
+        let store = makeStore(runner: okRunner(), gatewayRunning: true)
+        let now = Date(timeIntervalSince1970: 1_792_483_620)
+        let task = store.addTask(
+            name: "cron",
+            prompt: "p",
+            model: "m",
+            reasoningEffort: nil,
+            intervalMinutes: 60,
+            enabled: true,
+            scheduleKind: .cron,
+            cronExpression: "0 9 * * *",
+            timeZoneIdentifier: "UTC",
+            now: now
+        )
+        XCTAssertEqual(task.scheduleKind, .cron)
+        XCTAssertEqual(task.cronExpression, "0 9 * * *")
+        XCTAssertEqual(task.nextRunAt, 1_792_486_800)
+
+        let restored = makeStore(runner: okRunner(), gatewayRunning: true)
+        restored.load()
+        XCTAssertEqual(restored.tasks.first?.scheduleKind, .cron)
+        XCTAssertEqual(restored.tasks.first?.cronExpression, "0 9 * * *")
+        XCTAssertEqual(restored.tasks.first?.timeZoneIdentifier, "UTC")
+    }
+
+    func testLegacyTaskWithoutScheduleFieldsLoadsAsInterval() throws {
+        let raw = """
+        {"id":"old","name":"n","prompt":"p","model":"m","intervalMinutes":60,
+         "enabled":true,"createdAt":1,"lastStatus":"never","lastResult":""}
+        """
+        let task = try JSONDecoder().decode(SchedulerTask.self, from: Data(raw.utf8))
+        XCTAssertEqual(task.scheduleKind, .interval)
+        XCTAssertNil(task.cronExpression)
+        XCTAssertNil(task.timeZoneIdentifier)
+    }
+
+    // MARK: - Templates
+
+    func testBuiltInTemplatesAreValidAndRenderVariables() {
+        XCTAssertNil(SchedulerTemplates.invalidTemplateID())
+        guard let template = SchedulerTemplates.template(id: "morning-digest") else {
+            return XCTFail("missing morning digest template")
+        }
+        let rendered = SchedulerTemplates.render(
+            template,
+            values: ["repo": "melon", "branch": "main"]
+        )
+        XCTAssertTrue(rendered.contains("melon"))
+        XCTAssertTrue(rendered.contains("main"))
+        XCTAssertFalse(rendered.contains("{{repo}}"))
+        XCTAssertFalse(rendered.contains("{{branch}}"))
+
+        XCTAssertNotNil(SchedulerTemplates.validationError(
+            template,
+            values: ["repo": "melon", "branch": " "]
+        ))
+        XCTAssertNil(SchedulerTemplates.validationError(
+            template,
+            values: ["repo": "melon", "branch": "main"]
+        ))
+    }
 }

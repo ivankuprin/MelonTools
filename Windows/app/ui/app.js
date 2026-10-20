@@ -84,7 +84,7 @@ const DICT = {
     strategyExpiry: "Скоро истекает — выше", strategyCustom: "Ручной порядок", orderUp: "Выше", orderDown: "Ниже", resetOrder: "Сбросить порядок",
     orderCustom: "Включён ручной порядок — шлюз следует списку карточек",
     preferred: "Первый", backup: "Бэкап", recentCalls: "Последние вызовы", noCalls: "пока пусто",
-    scheduler: "Планировщик", schedulerSub: "Задачи по расписанию: выполняются, только пока Melon Tools запущен.",
+    scheduler: "Планировщик", schedulerSub: "Задачи по расписанию: cron, интервалы и шаблоны. Работают, пока Melon Tools в трее.",
     schedulerAdd: "Добавить задачу", schedulerAddTitle: "Новая задача", schedulerEditTitle: "Изменить задачу",
     schedulerName: "Название", schedulerPrompt: "Запрос", schedulerModel: "Модель", schedulerEffort: "Reasoning effort",
     schedulerEffortDefault: "по умолчанию", schedulerInterval: "Интервал, мин", schedulerEnabled: "Включена",
@@ -98,6 +98,19 @@ const DICT = {
     schedulerModelHint: "Модели шлюза из /v1/models.", schedulerModelsFailed: "Список моделей недоступен — запустите шлюз и обновите.",
     schedulerGatewayOff: "Шлюз не отвечает — выполнять задачи некуда. Запустите API-сервис и повторите.",
     schedulerTokens: "токены", schedulerDuration: "время", schedulerMinutesShort: "{n} мин",
+    schedulerTemplate: "Шаблон", schedulerTemplateNone: "Без шаблона", schedulerFromTemplate: "Из шаблона",
+    schedulerScheduleType: "Тип расписания", schedulerScheduleInterval: "Интервал", schedulerScheduleCron: "Cron",
+    schedulerCron: "Cron-выражение", schedulerCronHint: "Минута час день месяц день недели",
+    schedulerCronExamples: "*/15 * * * * · 0 9 * * 1-5 · 0 */6 * * * · 0 0 1 * *",
+    schedulerCronInvalid: "Проверьте cron-выражение: нужно 5 полей", schedulerTimeZone: "Часовой пояс",
+    schedulerZoneSystem: "Системный", schedulerVariables: "Переменные",
+    schedulerVariableRequired: "Заполните переменные шаблона", schedulerTrayHint: "Закройте окно — Melon Tools останется в трее и продолжит выполнять задачи.",
+    schedulerRepo: "Репозиторий", schedulerBranch: "Ветка", schedulerPath: "Путь",
+    schedulerTplMorning: "Утренняя сводка", schedulerTplMorningDesc: "Свежие изменения и открытые задачи каждое утро в будни.",
+    schedulerTplPR: "Проверка PR", schedulerTplPRDesc: "Открытые PR, проверки и рискованные изменения перед концом рабочего дня.",
+    schedulerTplWeekly: "Недельная сводка репозитория", schedulerTplWeeklyDesc: "Слитые изменения, активные ветки и риски за неделю.",
+    schedulerTplLogs: "Проверка логов", schedulerTplLogsDesc: "Поиск ошибок и предупреждений в свежих логах каждые шесть часов.",
+    schedulerTplSpend: "Отчёт о расходе за день", schedulerTplSpendDesc: "Расход токенов, дорогие модели и необычные всплески за день.",
     sgGateway: "Шлюз", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", cancel: "Отмена",
     instances: "Инстансы", instanceNew: "Имя нового инстанса", instanceCreate: "Создать", instanceLaunch: "Запустить Codex",
     instanceBind: "Аккаунт", instanceNone: "текущий логин", instanceDelete: "Удалить", instanceHint: "Отдельный CODEX_HOME со своим входом.",
@@ -212,7 +225,7 @@ const DICT = {
     strategyExpiry: "Ending soon first", strategyCustom: "Manual order", orderUp: "Up", orderDown: "Down", resetOrder: "Reset order",
     orderCustom: "Manual order enabled — the gateway follows the card list",
     preferred: "Preferred", backup: "Backup", recentCalls: "Recent calls", noCalls: "empty for now",
-    scheduler: "Scheduler", schedulerSub: "Scheduled tasks: they run only while Melon Tools is running.",
+    scheduler: "Scheduler", schedulerSub: "Scheduled tasks: cron, intervals and templates. They run while Melon Tools is in the tray.",
     schedulerAdd: "Add task", schedulerAddTitle: "New task", schedulerEditTitle: "Edit task",
     schedulerName: "Name", schedulerPrompt: "Prompt", schedulerModel: "Model", schedulerEffort: "Reasoning effort",
     schedulerEffortDefault: "default", schedulerInterval: "Interval, min", schedulerEnabled: "Enabled",
@@ -226,6 +239,19 @@ const DICT = {
     schedulerModelHint: "Gateway models from /v1/models.", schedulerModelsFailed: "Model list unavailable — start the gateway and refresh.",
     schedulerGatewayOff: "The gateway is not reachable — there is nowhere to run tasks. Start the API service and retry.",
     schedulerTokens: "tokens", schedulerDuration: "time", schedulerMinutesShort: "{n} min",
+    schedulerTemplate: "Template", schedulerTemplateNone: "No template", schedulerFromTemplate: "From template",
+    schedulerScheduleType: "Schedule type", schedulerScheduleInterval: "Interval", schedulerScheduleCron: "Cron",
+    schedulerCron: "Cron expression", schedulerCronHint: "Minute hour day month weekday",
+    schedulerCronExamples: "*/15 * * * * · 0 9 * * 1-5 · 0 */6 * * * · 0 0 1 * *",
+    schedulerCronInvalid: "Check the cron expression: 5 fields are required", schedulerTimeZone: "Time zone",
+    schedulerZoneSystem: "System", schedulerVariables: "Variables",
+    schedulerVariableRequired: "Fill in the template variables", schedulerTrayHint: "Close the window — Melon Tools stays in the tray and keeps running tasks.",
+    schedulerRepo: "Repository", schedulerBranch: "Branch", schedulerPath: "Path",
+    schedulerTplMorning: "Morning digest", schedulerTplMorningDesc: "Recent changes and open work, every weekday morning.",
+    schedulerTplPR: "PR review", schedulerTplPRDesc: "Open pull requests, checks and risky changes before the end of the workday.",
+    schedulerTplWeekly: "Weekly repo summary", schedulerTplWeeklyDesc: "Merged work, active branches and open risks for the week.",
+    schedulerTplLogs: "Log check", schedulerTplLogsDesc: "Scan recent logs for errors and warnings every six hours.",
+    schedulerTplSpend: "Daily spend report", schedulerTplSpendDesc: "Token spend, expensive models and unusual spikes for the day.",
     sgGateway: "Gateway", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", cancel: "Cancel",
     instances: "Instances", instanceNew: "New instance name", instanceCreate: "Create", instanceLaunch: "Launch Codex",
     instanceBind: "Account", instanceNone: "current login", instanceDelete: "Delete", instanceHint: "A separate CODEX_HOME with its own login.",
@@ -446,6 +472,9 @@ function mock(cmd, args) {
         prompt: input.prompt || "",
         model: input.model || "",
         reasoningEffort: input.reasoningEffort || null,
+        scheduleKind: input.scheduleKind === "cron" ? "cron" : "interval",
+        cronExpression: input.cronExpression || null,
+        timeZone: input.timeZone || null,
         intervalMinutes: input.intervalMinutes || 60,
         enabled: input.enabled !== false,
         createdAt: now,
@@ -492,7 +521,9 @@ function demoScheduler() {
     const now = Date.now() / 1000;
     const task = {
       id: "demo-task-1", name: "Ночной отчёт", prompt: "Собери отчёт по изменениям за сутки.",
-      model: "gpt-6.1-sol", reasoningEffort: null, intervalMinutes: 60, enabled: true,
+      model: "gpt-6.1-sol", reasoningEffort: null,
+      scheduleKind: "cron", cronExpression: "0 9 * * 1-5", timeZone: null,
+      intervalMinutes: 60, enabled: true,
       createdAt: now - 7200, nextRunAt: now + 1800, lastRunAt: now - 1800,
       lastStatus: "ok", lastError: null, lastResult: "Отчёт готов: 3 изменения, 2 предупреждения.",
       lastDurationMs: 4200, lastTokens: 1530,
@@ -1908,6 +1939,62 @@ function schedulerStatusPill(task) {
   }
 }
 
+// Built-in task templates. The prompt keeps `{{variable}}` placeholders until
+// the user fills the fields and saves; the backend never sees the placeholders.
+const SCHEDULER_TEMPLATES = [
+  {
+    id: "morning-digest", nameKey: "schedulerTplMorning", descKey: "schedulerTplMorningDesc",
+    prompt: "Give me a short morning digest for {{repo}} on branch {{branch}}.\nSummarize the latest commits, open work and anything that needs attention today.\nKeep it under 200 words.",
+    variables: ["repo", "branch"], scheduleKind: "cron", cronExpression: "0 9 * * 1-5", intervalMinutes: 60,
+  },
+  {
+    id: "pr-review", nameKey: "schedulerTplPR", descKey: "schedulerTplPRDesc",
+    prompt: "Review the open pull requests in {{repo}} for branch {{branch}}.\nList failing checks, unresolved comments and the riskiest changes with file paths.\nFinish with the top three issues to fix first.",
+    variables: ["repo", "branch"], scheduleKind: "cron", cronExpression: "0 18 * * 1-5", intervalMinutes: 60,
+  },
+  {
+    id: "weekly-repo-summary", nameKey: "schedulerTplWeekly", descKey: "schedulerTplWeeklyDesc",
+    prompt: "Write a weekly summary for {{repo}} at {{path}}.\nCover merged changes, active branches, open risks and the next steps.\nUse no more than 250 words.",
+    variables: ["repo", "path"], scheduleKind: "cron", cronExpression: "0 10 * * 1", intervalMinutes: 60,
+  },
+  {
+    id: "log-check", nameKey: "schedulerTplLogs", descKey: "schedulerTplLogsDesc",
+    prompt: "Check the recent logs under {{path}} for errors and warnings.\nGroup the findings by severity, point to the likely cause and suggest a fix.\nIf everything is clean, say so in one line.",
+    variables: ["path"], scheduleKind: "cron", cronExpression: "0 */6 * * *", intervalMinutes: 360,
+  },
+  {
+    id: "daily-spend", nameKey: "schedulerTplSpend", descKey: "schedulerTplSpendDesc",
+    prompt: "Review today's model spend for {{repo}}.\nSummarize token usage, the most expensive models and any unusual spikes.\nFinish with one short recommendation.",
+    variables: ["repo"], scheduleKind: "cron", cronExpression: "0 21 * * *", intervalMinutes: 1440,
+  },
+];
+
+function schedulerTemplate(id) {
+  return SCHEDULER_TEMPLATES.find((item) => item.id === id) || null;
+}
+
+function schedulerVariableLabel(variable) {
+  if (variable === "repo") return t("schedulerRepo");
+  if (variable === "branch") return t("schedulerBranch");
+  if (variable === "path") return t("schedulerPath");
+  return variable;
+}
+
+function schedulerSystemZone() {
+  const offset = -new Date().getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const abs = Math.abs(offset);
+  return `System (${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")})`;
+}
+
+function schedulerZoneOptions(selected) {
+  const zones = ["", "UTC", "+03:00", "+02:00", "+01:00", "-05:00", "-08:00", "+05:30", "+08:00", "+10:00"];
+  return zones.map((value) => {
+    const label = value === "" ? schedulerSystemZone() : value;
+    return `<option value="${esc(value)}" ${value === (selected || "") ? "selected" : ""}>${esc(label)}</option>`;
+  }).join("");
+}
+
 function schedulerPage() {
   const data = S.scheduler;
   const tasks = (data && data.tasks) || [];
@@ -1938,6 +2025,7 @@ function schedulerPage() {
   }
   return `${head}
     ${banner}
+    <div class="footnote" style="margin-top:0">${t("schedulerTrayHint")}</div>
     <div class="row">
       <button class="btn small" onclick="A.schedulerEdit()">${t("schedulerAdd")}</button>
       <button class="ghost small" onclick="A.schedulerLoad()">${t("refresh")}</button>
@@ -1965,7 +2053,10 @@ function schedulerCard(task, data) {
     <div class="task-meta">
       <span>${t("schedulerModel")}: <span class="val">${esc(task.model || "—")}</span></span>
       ${task.reasoningEffort ? `<span class="pill gold">${esc(task.reasoningEffort)}</span>` : ""}
-      <span>${fmt(t("schedulerEvery"), { n: task.intervalMinutes || 0 })}</span>
+      <span>${task.scheduleKind === "cron"
+        ? `${t("schedulerScheduleCron")}: <span class="mono">${esc(task.cronExpression || "—")}</span>`
+        : fmt(t("schedulerEvery"), { n: task.intervalMinutes || 0 })}</span>
+      ${task.timeZone ? `<span>${t("schedulerTimeZone")}: <span class="mono">${esc(task.timeZone)}</span></span>` : ""}
       <span>${t("schedulerNext")}: <span class="val">${task.enabled ? esc(schedulerNextText(task.nextRunAt)) : "—"}</span></span>
       <span>${t("schedulerLast")}: <span class="val">${task.lastRunAt ? esc(ageText(task.lastRunAt)) : t("never")}</span></span>
       ${task.lastDurationMs != null ? `<span>${t("schedulerDuration")}: ${Math.round(task.lastDurationMs / 100) / 10} ${unit("s", "с")}</span>` : ""}
@@ -2017,19 +2108,36 @@ function schedulerModal() {
   return `<div class="modal" id="scheduler-modal"><div class="modal-card">
     <h2>${form.id ? t("schedulerEditTitle") : t("schedulerAddTitle")}</h2>
     <div class="stack">
+      ${!form.id ? `<label class="field">${t("schedulerTemplate")}<select id="sched-template" onchange="A.schedulerTemplateApply(this.value)">
+        <option value="">${t("schedulerTemplateNone")}</option>
+        ${SCHEDULER_TEMPLATES.map((item) => `<option value="${esc(item.id)}" ${form.templateId === item.id ? "selected" : ""}>${esc(t(item.nameKey))}</option>`).join("")}
+      </select></label>` : ""}
       <label class="field">${t("schedulerName")}<input type="text" id="sched-name" value="${esc(form.name || "")}"></label>
+      ${form.templateId && form.variables ? `<div class="row" style="align-items:flex-end">${Object.keys(form.variables).map((variable) => `
+        <label class="field">${esc(schedulerVariableLabel(variable))}<input type="text" id="sched-var-${esc(variable)}" value="${esc(form.variables[variable] || "")}" oninput="A.schedulerVarInput('${esc(variable)}', this.value)"></label>`).join("")}</div>
+        <div class="footnote" style="margin-top:0">${t("schedulerVariables")}: ${Object.keys(form.variables).map((variable) => `{{${esc(variable)}}}`).join(" · ")}</div>` : ""}
       <label class="field">${t("schedulerPrompt")}<textarea id="sched-prompt">${esc(form.prompt || "")}</textarea></label>
       <label class="field">${t("schedulerModel")}<select id="sched-model">${options.join("") || `<option value="">${t("schedulerModelsFailed")}</option>`}</select></label>
       <label class="field">${t("schedulerEffort")}<select id="sched-effort">
         <option value="" ${!form.reasoningEffort ? "selected" : ""}>${t("schedulerEffortDefault")}</option>
         ${["low", "medium", "high", "xhigh", "max"].map((value) => `<option value="${value}" ${form.reasoningEffort === value ? "selected" : ""}>${value}</option>`).join("")}
       </select></label>
-      <div class="row">
+      <label class="field">${t("schedulerScheduleType")}<select id="sched-schedule-kind" onchange="A.schedulerKindChanged(this.value)">
+        <option value="interval" ${(form.scheduleKind || "interval") === "interval" ? "selected" : ""}>${t("schedulerScheduleInterval")}</option>
+        <option value="cron" ${form.scheduleKind === "cron" ? "selected" : ""}>${t("schedulerScheduleCron")}</option>
+      </select></label>
+      <div id="sched-interval-row" style="${(form.scheduleKind || "interval") === "cron" ? "display:none" : ""}">
         <label class="field">${t("schedulerInterval")}<input class="small" type="number" id="sched-interval" min="1" step="1" value="${form.intervalMinutes || 60}"></label>
-        <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:16px">
-          <input type="checkbox" id="sched-enabled" ${form.enabled !== false ? "checked" : ""}><span>${t("schedulerEnabled")}</span>
-        </label>
       </div>
+      <div id="sched-cron-row" style="${form.scheduleKind === "cron" ? "" : "display:none"}">
+        <label class="field">${t("schedulerCron")}<input type="text" id="sched-cron" class="mono" value="${esc(form.cronExpression || "")}" placeholder="0 9 * * 1-5"></label>
+        <div class="footnote" style="margin-top:0">${t("schedulerCronHint")} · ${t("schedulerCronExamples")}</div>
+      </div>
+      <label class="field">${t("schedulerTimeZone")}<select id="sched-timezone">${schedulerZoneOptions(form.timeZone || "")}</select></label>
+      <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+        <input type="checkbox" id="sched-enabled" ${form.enabled !== false ? "checked" : ""}><span>${t("schedulerEnabled")}</span>
+      </label>
+      <div class="footnote" style="margin-top:0">${t("schedulerTrayHint")}</div>
       <div class="footnote" style="margin-top:0">${S.schedulerModelsError ? esc(S.schedulerModelsError) : t("schedulerModelHint")}</div>
       <div class="row" style="justify-content:flex-end">
         <button class="ghost" onclick="A.schedulerFormClose()">${t("cancel")}</button>
@@ -2867,11 +2975,58 @@ const A = {
         model: task.model,
         reasoningEffort: task.reasoningEffort || "",
         intervalMinutes: task.intervalMinutes,
+        scheduleKind: task.scheduleKind || "interval",
+        cronExpression: task.cronExpression || "",
+        timeZone: task.timeZone || "",
         enabled: task.enabled,
       }
-      : { id: "", name: "", prompt: "", model: "", reasoningEffort: "", intervalMinutes: 60, enabled: true };
+      : {
+        id: "", name: "", prompt: "", model: "", reasoningEffort: "", intervalMinutes: 60,
+        scheduleKind: "interval", cronExpression: "", timeZone: "", enabled: true,
+        templateId: "", variables: null,
+      };
     render();
     if (!S.schedulerModels) A.schedulerModelsLoad();
+  },
+
+  schedulerTemplateApply(id) {
+    if (!S.schedulerForm) return;
+    const template = schedulerTemplate(id);
+    if (!template) {
+      S.schedulerForm = {
+        ...S.schedulerForm,
+        templateId: "",
+        variables: null,
+      };
+      render();
+      return;
+    }
+    S.schedulerForm = {
+      ...S.schedulerForm,
+      templateId: template.id,
+      name: t(template.nameKey),
+      prompt: template.prompt,
+      scheduleKind: template.scheduleKind,
+      cronExpression: template.cronExpression || "",
+      intervalMinutes: template.intervalMinutes,
+      timeZone: S.schedulerForm.timeZone || "",
+      variables: Object.fromEntries(template.variables.map((variable) => [variable, ""])),
+    };
+    render();
+  },
+
+  schedulerVarInput(variable, value) {
+    if (!S.schedulerForm || !S.schedulerForm.variables) return;
+    if (!(variable in S.schedulerForm.variables)) return;
+    S.schedulerForm.variables[variable] = value;
+  },
+
+  schedulerKindChanged(kind) {
+    if (S.schedulerForm) S.schedulerForm.scheduleKind = kind === "cron" ? "cron" : "interval";
+    const interval = document.getElementById("sched-interval-row");
+    const cron = document.getElementById("sched-cron-row");
+    if (interval) interval.style.display = kind === "cron" ? "none" : "";
+    if (cron) cron.style.display = kind === "cron" ? "" : "none";
   },
 
   schedulerFormClose() {
@@ -2888,19 +3043,42 @@ const A = {
     };
     // Read the fields before run(): its first render rebuilds the modal.
     const name = value("sched-name").trim();
-    const prompt = value("sched-prompt").trim();
+    let prompt = value("sched-prompt").trim();
     const model = value("sched-model").trim();
     const reasoningEffort = value("sched-effort").trim();
-    const intervalMinutes = parseInt(value("sched-interval"), 10);
+    const scheduleKind = value("sched-schedule-kind") === "cron" ? "cron" : "interval";
+    const cronExpression = value("sched-cron").trim().replace(/\s+/g, " ");
+    const timeZone = value("sched-timezone").trim();
+    const intervalMinutes = parseInt(value("sched-interval"), 10) || 60;
     const enabledNode = document.getElementById("sched-enabled");
     const enabled = !!(enabledNode && enabledNode.checked);
     if (!name || !prompt || !model) {
       toast(t("schedulerRequired"), true);
       return;
     }
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 1) {
+    if (scheduleKind === "interval" && (!Number.isFinite(intervalMinutes) || intervalMinutes < 1)) {
       toast(t("schedulerInterval"), true);
       return;
+    }
+    if (scheduleKind === "cron" && cronExpression.split(" ").filter(Boolean).length !== 5) {
+      toast(t("schedulerCronInvalid"), true);
+      return;
+    }
+    // A template is rendered in the renderer: the backend stores the final
+    // prompt and never needs to know about {{placeholders}}.
+    if (!form.id && form.templateId) {
+      const template = schedulerTemplate(form.templateId);
+      if (template) {
+        for (const variable of template.variables) {
+          const raw = (form.variables && form.variables[variable]) || "";
+          const replacement = raw.trim();
+          if (!replacement) {
+            toast(t("schedulerVariableRequired"), true);
+            return;
+          }
+          prompt = prompt.split(`{{${variable}}}`).join(replacement);
+        }
+      }
     }
     const task = {
       id: form.id || "",
@@ -2908,6 +3086,9 @@ const A = {
       prompt,
       model,
       reasoningEffort: reasoningEffort || null,
+      scheduleKind,
+      cronExpression: scheduleKind === "cron" ? cronExpression : null,
+      timeZone: timeZone || null,
       intervalMinutes,
       enabled,
     };
