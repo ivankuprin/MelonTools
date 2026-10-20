@@ -1,7 +1,7 @@
 # Frequently asked questions
 
 Melon Tools is a desktop companion for Codex accounts, model providers, and
-Fleet workflows on macOS and Windows. This page answers the common questions
+scheduled model tasks on macOS and Windows. This page answers the common questions
 about providers, quota, updates, account risk, and troubleshooting.
 
 For data locations and the trust model, see
@@ -81,7 +81,7 @@ release tag and the checksum you saw.
 
 ### Why does macOS or Windows warn about the app?
 
-The 1.6.4 builds are ad-hoc signed (macOS) and not Authenticode-signed
+Current builds are ad-hoc signed (macOS) and not Authenticode-signed
 (Windows). Signing is **BLOCKED until certificates are provided**; see
 [packaging/README.md](../packaging/README.md). On macOS use right-click → Open
 for the first launch, or clear the quarantine flag:
@@ -92,6 +92,23 @@ xattr -dr com.apple.quarantine "/Applications/Melon Tools.app"
 
 On Windows, SmartScreen may show "More info → Run anyway". Verify the SHA-256
 before bypassing a warning.
+
+### Windows installer and SmartScreen
+
+The Windows release includes an NSIS installer
+(`MelonTools-<version>-setup.exe`) next to the portable single-file `.exe`.
+The installer is per-user and needs no administrator rights. It offers the
+default folder `%LOCALAPPDATA%\Programs\MelonTools`, lets you choose any
+writable path, creates Start Menu and optional desktop shortcuts, and registers
+an uninstaller in Windows Settings. Uninstalling keeps your data in
+`%APPDATA%\MelonTools`.
+
+Neither the installer nor the app is Authenticode-signed, so SmartScreen may
+show "Windows protected your PC"; choose **More info → Run anyway** after
+verifying the download. A clean launch without warnings requires a code-signing
+certificate, which is **BLOCKED until a certificate is provided** (see
+[packaging/README.md](../packaging/README.md)). The portable `.exe` remains
+available if you prefer not to install.
 
 ## Terms of service and account risk
 

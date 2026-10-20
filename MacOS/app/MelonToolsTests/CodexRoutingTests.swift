@@ -92,6 +92,133 @@ final class CodexRoutingTests: XCTestCase {
     }
 }
 
+/// The pool-pause banner is the last line of defense before the gateway has no
+/// usable account: a wrong classification either hides the pause or offers a
+/// lift that cannot help.
+final class CodexPoolPauseSummaryTests: XCTestCase {
+
+    private func account(
+        id: String,
+        hourly: Double? = 100,
+        weekly: Double? = 100,
+        hourlyReset: Date? = nil,
+        weeklyReset: Date? = nil,
+        hourlyReserve: Int? = nil,
+        weeklyReserve: Int? = nil
+    ) -> CodexAccount {
+        var quota = CodexQuota()
+        quota.hourlyRemainingPercent = hourly
+        quota.weeklyRemainingPercent = weekly
+        quota.hourlyResetAt = hourlyReset
+        quota.weeklyResetAt = weeklyReset
+        var account = CodexAccount(tokens: CodexTokens())
+        account.id = id
+        account.email = "\(id)@example.com"
+        account.quota = quota
+        account.quotaUpdatedAt = Date()
+        account.hourlyReservePercent = hourlyReserve
+        account.weeklyReservePercent = weeklyReserve
+        return account
+    }
+
+    func testAllHourlyReserveBlocksSummarizeAsHourly() throws {
+        let earlier = Date().addingTimeInterval(1_800)
+        let later = Date().addingTimeInterval(3_600)
+        let summary = try XCTUnwrap(CodexPoolPauseSummary.make(accounts: [
+            account(id: "a", hourly: 8, weekly: 80, hourlyReset: later, hourlyReserve: 10),
+            account(id: "b", hourly: 5, weekly: 70, hourlyReset: earlier, hourlyReserve: 10),
+        ]))
+
+        XCTAssertEqual(summary.reason, .hourlyReserve)
+        XCTAssertEqual(summary.resetAt, earlier)
+        XCTAssertTrue(summary.canLift)
+        XCTAssertEqual(summary.causes, ["a": .hourlyReserve, "b": .hourlyReserve])
+    }
+
+    func testAllWeeklyReserveBlocksUseTheWeeklyReset() throws {
+        let weeklyReset = Date().addingTimeInterval(86_400)
+        let summary = try XCTUnwrap(CodexPoolPauseSummary.make(accounts: [
+            account(id: "a", hourly: 90, weekly: 4, weeklyReset: weeklyReset, weeklyReserve: 5),
+        ]))
+
+        XCTAssertEqual(summary.reason, .weeklyReserve)
+        XCTAssertEqual(summary.resetAt, weeklyReset)
+        XCTAssertTrue(summary.canLift)
+        XCTAssertEqual(summary.causes["a"], .weeklyReserve)
+    }
+
+    func testMixedReservesPickTheNearestRelevantReset() throws {
+        let hourlyReset = Date().addingTimeInterval(3_600)
+        let weeklyReset = Date().addingTimeInterval(1_800)
+        let summary = try XCTUnwrap(CodexPoolPauseSummary.make(accounts: [
+            account(id: "hourly", hourly: 5, weekly: 80, hourlyReset: hourlyReset, hourlyReserve: 10),
+            account(id: "weekly", hourly: 80, weekly: 4, weeklyReset: weeklyReset, weeklyReserve: 5),
+        ]))
+
+        XCTAssertEqual(summary.reason, .mixed)
+        XCTAssertEqual(summary.resetAt, weeklyReset)
+        XCTAssertTrue(summary.canLift)
+    }
+
+    func testExhaustedPoolCannotBeLifted() throws {
+        let hourlyReset = Date().addingTimeInterval(600)
+        let weeklyReset = Date().addingTimeInterval(1_200)
+        let summary = try XCTUnwrap(CodexPoolPauseSummary.make(accounts: [
+            account(id: "hourly", hourly: 0, weekly: 50, hourlyReset: hourlyReset, hourlyReserve: 10),
+            account(id: "weekly", hourly: 50, weekly: 0, weeklyReset: weeklyReset, weeklyReserve: 5),
+        ]))
+
+        XCTAssertEqual(summary.reason, .exhausted)
+        XCTAssertFalse(summary.canLift)
+        XCTAssertEqual(summary.resetAt, hourlyReset)
+    }
+
+    func testZeroRemainingWithReserveIsExhaustedNotLiftable() throws {
+        let summary = try XCTUnwrap(CodexPoolPauseSummary.make(accounts: [
+            account(id: "a", hourly: 0, weekly: 60, hourlyReserve: 10),
+        ]))
+
+        XCTAssertEqual(summary.reason, .exhausted)
+        XCTAssertFalse(summary.canLift)
+        XCTAssertEqual(summary.causes["a"], .hourlyExhausted)
+    }
+
+    func testReserveAndExhaustedMixIsMixedButLiftable() throws {
+        let exhaustedReset = Date().addingTimeInterval(300)
+        let summary = try XCTUnwrap(CodexPoolPauseSummary.make(accounts: [
+            account(id: "reserve", hourly: 6, weekly: 80, hourlyReserve: 10),
+            account(id: "exhausted", hourly: 0, weekly: 70, hourlyReset: exhaustedReset),
+        ]))
+
+        XCTAssertEqual(summary.reason, .mixed)
+        XCTAssertTrue(summary.canLift)
+        XCTAssertEqual(summary.resetAt, exhaustedReset)
+    }
+
+    func testMissingResetIsSkippedWhenAnotherAccountHasOne() throws {
+        let knownReset = Date().addingTimeInterval(900)
+        let summary = try XCTUnwrap(CodexPoolPauseSummary.make(accounts: [
+            account(id: "unknown", hourly: 5, weekly: 80, hourlyReserve: 10),
+            account(id: "known", hourly: 6, weekly: 80, hourlyReset: knownReset, hourlyReserve: 10),
+        ]))
+
+        XCTAssertEqual(summary.resetAt, knownReset)
+    }
+
+    func testSummaryRequiresANonEmptyFullyPausedPool() {
+        let blocked = account(id: "blocked", hourly: 5, weekly: 80, hourlyReserve: 10)
+        let usable = account(id: "usable", hourly: 50, weekly: 50)
+
+        XCTAssertNil(CodexPoolPauseSummary.make(accounts: [blocked, usable]))
+        XCTAssertNil(CodexPoolPauseSummary.make(accounts: []))
+    }
+
+    func testBlockCausePrefersExhaustionOverReserve() {
+        let account = account(id: "zero", hourly: 0, weekly: 60, hourlyReserve: 10)
+        XCTAssertEqual(CodexRoutingPlanner.blockCause(account), .hourlyExhausted)
+    }
+}
+
 /// Token accounting and cost math feed the session estimate; a sign error or
 /// a bad cache split produces visibly wrong money.
 final class SessionUsageTests: XCTestCase {

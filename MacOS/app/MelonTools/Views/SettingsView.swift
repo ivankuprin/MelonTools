@@ -123,7 +123,7 @@ struct SettingsView: View {
                             Text("Melon Tools \(appVersion)")
                                 .font(MTTheme.mono(11, weight: .semibold))
                                 .foregroundStyle(MTTheme.textPrimary)
-                            Text(L("A personal console for Fleet and the Codex account pool."))
+                            Text(L("A personal console for the Scheduler and the Codex account pool."))
                                 .font(MTTheme.mono(10))
                                 .foregroundStyle(MTTheme.textSecondary)
                         }
@@ -163,7 +163,6 @@ struct MenuBarView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.openWindow) private var openWindow
 
-    @ObservedObject private var fleet = FleetStore.shared
     @ObservedObject private var codex = CodexStore.shared
     @ObservedObject private var gateway = CodexGatewayService.shared
 
@@ -186,34 +185,6 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(.plain)
                 .help(L("Open window"))
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: MTTheme.s1) {
-                Text(L("Fleet").uppercased())
-                    .font(MTTheme.mono(9, weight: .semibold))
-                    .tracking(1.2)
-                    .foregroundStyle(MTTheme.textSecondary)
-                if fleet.snapshots.isEmpty {
-                    Text(L("no live units"))
-                        .font(MTTheme.mono(10))
-                        .foregroundStyle(MTTheme.textSecondary)
-                } else {
-                    ForEach(fleet.snapshots.prefix(4)) { snap in
-                        HStack(spacing: 6) {
-                            MTStatusDot(status: (snap.active?.isEmpty == false) ? .running : .idle, size: 6)
-                            Text(snap.unit)
-                                .font(MTTheme.mono(10))
-                            if let last = snap.lastEvent {
-                                Text(last.tool ?? "")
-                                    .font(MTTheme.mono(9))
-                                    .foregroundStyle(MTTheme.textSecondary)
-                            }
-                            Spacer()
-                        }
-                    }
-                }
             }
 
             Divider()
@@ -296,7 +267,6 @@ struct MenuBarView: View {
         .padding(MTTheme.s3)
         .frame(width: 300)
         .onAppear {
-            fleet.start()
             codex.load()
             Task { await gateway.healthCheck() }
         }

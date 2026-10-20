@@ -89,7 +89,7 @@ sign_path() {
 }
 
 # Sign nested executable code first (gateway sidecar and app entry point), then
-# the bundle itself. The fleet CLI is JavaScript and ships as data.
+# the bundle itself. The gateway engine is a Go binary embedded as data.
 for dir in \
   "$APP/Contents/MacOS" \
   "$APP/Contents/Resources/bin" \

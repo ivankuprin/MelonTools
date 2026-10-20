@@ -27,18 +27,12 @@ targets:
         excludes:
           - "Info.plist"
       - path: Resources
-        excludes:
-          # The fleet CLI tree ships through the post-build copy script
-          # (from _sources/melon-fleet). Globbing it here duplicates
-          # same-named unit files (adapter.mjs, models.js) in the bundle.
-          - "melon-fleet"
-          - "melon-fleet/**"
     info:
       path: MelonTools/Info.plist
       properties:
         CFBundleDisplayName: Melon Tools
         CFBundleName: Melon Tools
-        CFBundleShortVersionString: "1.7.4"
+        CFBundleShortVersionString: "2.0.2"
         CFBundleVersion: "19"
         CFBundleIconFile: AppIcon
         LSApplicationCategoryType: public.app-category.developer-tools
@@ -47,22 +41,12 @@ targets:
         LSMinimumSystemVersion: "14.0"
         NSAppleEventsUsageDescription: "Melon Tools opens Terminal to launch isolated Codex CLI instances."
     postBuildScripts:
-      - name: Embed fleet CLI and gateway binary
+      - name: Embed gateway binary
         basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
           RES="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
-          FLEET_SRC="$SRCROOT/../_sources/melon-fleet"
           GATEWAY_BIN="$SRCROOT/../build/cliproxyapi"
-          if [ -d "$FLEET_SRC" ]; then
-            # Drop stale fleet bundles from earlier builds (any name we used
-            # before) so only the current copy ships.
-            find "$RES" -maxdepth 1 -type d -name '*-fleet' ! -name 'melon-fleet' -exec rm -rf {} + 2>/dev/null || true
-            rm -rf "$RES/melon-fleet"
-            mkdir -p "$RES/melon-fleet"
-            rsync -a --exclude '.git' --exclude 'test' --exclude 'evals' "$FLEET_SRC/" "$RES/melon-fleet/"
-            echo "embedded melon-fleet CLI -> $RES/melon-fleet"
-          fi
           if [ -f "$GATEWAY_BIN" ]; then
             mkdir -p "$RES/bin"
             cp "$GATEWAY_BIN" "$RES/bin/cliproxyapi"
@@ -77,7 +61,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.melontools.app
-        MARKETING_VERSION: "1.7.4"
+        MARKETING_VERSION: "2.0.2"
         CURRENT_PROJECT_VERSION: "19"
         GENERATE_INFOPLIST_FILE: "NO"
 

@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// Overview: fleet units + codex accounts + gateway, at a glance.
+/// Overview: the Codex account pool and the gateway at a glance.
 struct DashboardView: View {
     @EnvironmentObject private var app: AppState
     @Binding var selection: MTSection
 
-    @ObservedObject private var fleet = FleetStore.shared
     @ObservedObject private var codex = CodexStore.shared
     @ObservedObject private var gateway = CodexGatewayService.shared
 
@@ -18,12 +17,8 @@ struct DashboardView: View {
                     subtitle: L("Dashboard subtitle")
                 )
 
-                HStack(alignment: .top, spacing: MTTheme.s3) {
-                    fleetCard
-                    codexCard
-                }
+                codexCard
                 gatewayCard
-                activityCard
             }
             .padding(MTTheme.s5)
             .frame(maxWidth: 980, alignment: .leading)
@@ -32,53 +27,8 @@ struct DashboardView: View {
         }
         .background(MTTheme.background)
         .onAppear {
-            fleet.start()
             codex.load()
             Task { await gateway.healthCheck() }
-        }
-    }
-
-    private var fleetCard: some View {
-        MTCard(title: L("Fleet"), systemImage: "antenna.radiowaves.left.and.right") {
-            VStack(alignment: .leading, spacing: MTTheme.s2) {
-                if fleet.snapshots.isEmpty {
-                    Text(L("No live units right now."))
-                        .font(MTTheme.mono(11))
-                        .foregroundStyle(MTTheme.textSecondary)
-                } else {
-                    ForEach(fleet.snapshots) { snap in
-                        HStack(spacing: MTTheme.s2) {
-                            MTStatusDot(status: (snap.active?.isEmpty == false) ? .running : .idle, size: 7)
-                            Text(snap.unit)
-                                .font(MTTheme.mono(11, weight: .semibold))
-                                .foregroundStyle(MTTheme.textPrimary)
-                            if let last = snap.lastEvent {
-                                Text(last.tool ?? "")
-                                    .font(MTTheme.mono(10))
-                                    .foregroundStyle(MTTheme.textSecondary)
-                                Spacer()
-                                Text(ISODate.duration(last.durationMs))
-                                    .font(MTTheme.mono(9))
-                                    .foregroundStyle(MTTheme.textSecondary)
-                            } else {
-                                Spacer()
-                            }
-                        }
-                    }
-                }
-                Divider().overlay(MTTheme.borderColor)
-                HStack(spacing: MTTheme.s2) {
-                    if let version = fleet.fleetVersion {
-                        Text(version)
-                            .font(MTTheme.mono(9))
-                            .foregroundStyle(MTTheme.textSecondary)
-                    }
-                    Spacer()
-                    MTSecondaryButton(title: L("Open"), systemImage: "arrow.right") {
-                        selection = .fleet
-                    }
-                }
-            }
         }
     }
 
@@ -165,35 +115,6 @@ struct DashboardView: View {
                 }
                 MTSecondaryButton(title: L("Open"), systemImage: "arrow.right") {
                     selection = .codexAPI
-                }
-            }
-        }
-    }
-
-    private var activityCard: some View {
-        MTCard(title: L("Recent calls"), systemImage: "clock.arrow.circlepath") {
-            if fleet.recentEvents.isEmpty {
-                Text(L("Nothing yet — fleet activity will appear here."))
-                    .font(MTTheme.mono(11))
-                    .foregroundStyle(MTTheme.textSecondary)
-            } else {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(fleet.recentEvents.prefix(8)) { event in
-                        HStack(spacing: MTTheme.s2) {
-                            Text(ISODate.relative(event.ts))
-                                .font(MTTheme.mono(9))
-                                .foregroundStyle(MTTheme.textSecondary)
-                                .frame(width: 70, alignment: .leading)
-                            MTStatusDot(status: event.event == "start" ? .running : (event.status == "ok" ? .ok : event.status == "error" ? .error : .warn), size: 6)
-                            Text(event.unit)
-                                .font(MTTheme.mono(10, weight: .semibold))
-                                .foregroundStyle(MTTheme.textPrimary)
-                            Text(event.tool ?? "")
-                                .font(MTTheme.mono(10))
-                                .foregroundStyle(MTTheme.textSecondary)
-                            Spacer()
-                        }
-                    }
                 }
             }
         }

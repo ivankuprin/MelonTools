@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ModelSourcesStore.shared.syncCatalogIfNeeded()
             CodexStore.shared.load()
             CodexStore.shared.startQuotaScheduler()
-            FleetStore.shared.start()
+            SchedulerStore.shared.start()
             ComposerBridge.shared.start()
             startUpdateTimer()
             let autoStart = UserDefaults.standard.object(forKey: "gatewayAutoStart") as? Bool ?? true

@@ -2,18 +2,12 @@ import Foundation
 import Combine
 import AppKit
 
-/// Global app state: appearance, fleet home path, codex home.
+/// Global app state: appearance and codex home.
 @MainActor
 final class AppState: ObservableObject {
     @Published var appearance: Appearance {
         didSet {
             UserDefaults.standard.set(appearance.rawValue, forKey: "appAppearance")
-        }
-    }
-    @Published var fleetHome: String {
-        didSet {
-            UserDefaults.standard.set(fleetHome, forKey: "fleetHome")
-            AppStateLocator.shared.homePath = NSString(string: fleetHome).expandingTildeInPath
         }
     }
     @Published var codexHome: String {
@@ -22,13 +16,9 @@ final class AppState: ObservableObject {
 
     init() {
         appearance = Appearance(rawValue: UserDefaults.standard.string(forKey: "appAppearance") ?? "") ?? .system
-        fleetHome = UserDefaults.standard.string(forKey: "fleetHome")
-            ?? ProcessInfo.processInfo.environment["MELON_FLEET_HOME"]
-            ?? "~/.melon-fleet"
         codexHome = UserDefaults.standard.string(forKey: "codexHome")
             ?? ProcessInfo.processInfo.environment["CODEX_HOME"]
             ?? "~/.codex"
-        AppStateLocator.shared.homePath = NSString(string: fleetHome).expandingTildeInPath
     }
 
     enum Appearance: String, CaseIterable, Identifiable {
@@ -43,7 +33,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    var fleetHomeURL: URL { URL(fileURLWithPath: fleetHome) }
     var codexHomeURL: URL { URL(fileURLWithPath: codexHome) }
 
     func applyAppearance() {

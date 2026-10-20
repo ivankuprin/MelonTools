@@ -26,6 +26,12 @@ const DICT = {
     current: "текущий", paused: "на паузе", ready: "готов",
     bHourly: "5-часовое окно исчерпано", bWeekly: "недельное окно исчерпано",
     bHourlyReserve: "осталось {r}% ≤ резерва {l}%", bWeeklyReserve: "осталось {r}% ≤ резерва {l}%",
+    poolPauseHourly: "Все аккаунты на паузе по часовому резерву — сброс в {time}",
+    poolPauseWeekly: "Все аккаунты на паузе по недельному резерву — сброс в {time}",
+    poolPauseMixed: "Все аккаунты на паузе — ближайший сброс в {time}",
+    poolPauseExhausted: "Квота исчерпана — сброс в {time}",
+    poolPauseLift: "Снять паузу",
+    poolPauseConfirm: "Снять паузу по резерву? Квота может опуститься до 0%.",
     quotaAge: "квота обновлена", never: "никогда", stale: "устарела",
     history: "История", historyHint: "Остаток квоты по последним обновлениям.",
     notificationsHint: "Тост, когда остаток пересекает резерв аккаунта (или 10%).",
@@ -79,9 +85,21 @@ const DICT = {
     strategyExpiry: "Скоро истекает — выше", strategyCustom: "Ручной порядок", orderUp: "Выше", orderDown: "Ниже", resetOrder: "Сбросить порядок",
     orderCustom: "Включён ручной порядок — шлюз следует списку карточек",
     preferred: "Первый", backup: "Бэкап", recentCalls: "Последние вызовы", noCalls: "пока пусто",
-    fleet: "Fleet", fleetStatus: "Статус", fleetResults: "Результаты", fleetConfig: "Конфиг", fleetCommands: "Команды",
-    fleetHome: "Папка Fleet", fleetCli: "CLI", fleetCliMissing: "не найден в PATH", fleetRun: "Выполнить", fleetOutput: "Вывод",
-    fleetSnapshots: "Снимки", fleetLog: "Журнал", fleetOpenResult: "Открыть", fleetSave: "Сохранить",
+    scheduler: "Планировщик", schedulerSub: "Задачи по расписанию: выполняются, только пока Melon Tools запущен.",
+    schedulerAdd: "Добавить задачу", schedulerAddTitle: "Новая задача", schedulerEditTitle: "Изменить задачу",
+    schedulerName: "Название", schedulerPrompt: "Запрос", schedulerModel: "Модель", schedulerEffort: "Reasoning effort",
+    schedulerEffortDefault: "по умолчанию", schedulerInterval: "Интервал, мин", schedulerEnabled: "Включена",
+    schedulerRunNow: "Выполнить сейчас", schedulerNext: "Следующий запуск", schedulerLast: "Последний запуск",
+    schedulerStatus: "Статус", schedulerResult: "Результат", schedulerNoResult: "Результатов пока нет",
+    schedulerEmpty: "Задач пока нет — добавьте первую.", schedulerDelete: "Удалить", schedulerEdit: "Изменить",
+    schedulerRequired: "Заполните название, запрос и модель", confirmDeleteTask: "Удалить задачу {name}?",
+    schedulerEvery: "каждые {n} мин", schedulerDue: "вот-вот", schedulerRunning: "выполняется…",
+    schedulerOk: "успех", schedulerError: "ошибка", schedulerNever: "не запускалась",
+    schedulerHistory: "История", schedulerFile: "Файл", schedulerClose: "Закрыть",
+    schedulerModelHint: "Модели шлюза из /v1/models.", schedulerModelsFailed: "Список моделей недоступен — запустите шлюз и обновите.",
+    schedulerGatewayOff: "Шлюз не отвечает — выполнять задачи некуда. Запустите API-сервис и повторите.",
+    schedulerTokens: "токены", schedulerDuration: "время", schedulerMinutesShort: "{n} мин",
+    sgGateway: "Шлюз", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", cancel: "Отмена",
     instances: "Инстансы", instanceNew: "Имя нового инстанса", instanceCreate: "Создать", instanceLaunch: "Запустить Codex",
     instanceBind: "Аккаунт", instanceNone: "текущий логин", instanceDelete: "Удалить", instanceHint: "Отдельный CODEX_HOME со своим входом.",
     composer: "Композер", composerHint: "Чипы в композере Codex: аккаунты и квоты прямо в строке ввода.",
@@ -99,6 +117,7 @@ const DICT = {
     onboardingStep3: "Запустите API-сервис и откройте Codex.",
     onboardingDisclaimer: "Используйте только свои аккаунты. Соблюдайте условия провайдеров: за нарушение правил возможна блокировка аккаунта.",
     onboardingAccounts: "Открыть аккаунты", onboardingProviders: "Открыть провайдеров", onboardingDone: "Готово",
+    onboardingClose: "Закрыть",
     diagTitle: "Проверка подключений", diagHint: "только чтение", diagRun: "Проверить подключения",
     diagIdle: "Проверка ещё не запускалась.", diagAt: "проверено", diagProvider: "Провайдер",
     diagAuth: "Авторизация", diagQuota: "Последняя квота", diagCodex: "Аккаунты Codex",
@@ -122,6 +141,12 @@ const DICT = {
     current: "current", paused: "paused", ready: "ready",
     bHourly: "5-hour window exhausted", bWeekly: "weekly window exhausted",
     bHourlyReserve: "{r}% left ≤ {l}% reserve", bWeeklyReserve: "{r}% left ≤ {l}% reserve",
+    poolPauseHourly: "All accounts are paused by the hourly reserve — resets at {time}",
+    poolPauseWeekly: "All accounts are paused by the weekly reserve — resets at {time}",
+    poolPauseMixed: "All accounts are paused — nearest reset at {time}",
+    poolPauseExhausted: "Quota exhausted — resets at {time}",
+    poolPauseLift: "Lift pause",
+    poolPauseConfirm: "Lift the reserve pause? Quota may drop to 0%.",
     quotaAge: "quota updated", never: "never", stale: "stale",
     history: "History", historyHint: "Quota remaining across recent refreshes.",
     notificationsHint: "Toast when remaining crosses an account reserve (or 10%).",
@@ -175,9 +200,21 @@ const DICT = {
     strategyExpiry: "Ending soon first", strategyCustom: "Manual order", orderUp: "Up", orderDown: "Down", resetOrder: "Reset order",
     orderCustom: "Manual order enabled — the gateway follows the card list",
     preferred: "Preferred", backup: "Backup", recentCalls: "Recent calls", noCalls: "empty for now",
-    fleet: "Fleet", fleetStatus: "Status", fleetResults: "Results", fleetConfig: "Config", fleetCommands: "Commands",
-    fleetHome: "Fleet folder", fleetCli: "CLI", fleetCliMissing: "not found in PATH", fleetRun: "Run", fleetOutput: "Output",
-    fleetSnapshots: "Snapshots", fleetLog: "Log", fleetOpenResult: "Open", fleetSave: "Save",
+    scheduler: "Scheduler", schedulerSub: "Scheduled tasks: they run only while Melon Tools is running.",
+    schedulerAdd: "Add task", schedulerAddTitle: "New task", schedulerEditTitle: "Edit task",
+    schedulerName: "Name", schedulerPrompt: "Prompt", schedulerModel: "Model", schedulerEffort: "Reasoning effort",
+    schedulerEffortDefault: "default", schedulerInterval: "Interval, min", schedulerEnabled: "Enabled",
+    schedulerRunNow: "Run now", schedulerNext: "Next run", schedulerLast: "Last run",
+    schedulerStatus: "Status", schedulerResult: "Result", schedulerNoResult: "No results yet",
+    schedulerEmpty: "No tasks yet — add the first one.", schedulerDelete: "Delete", schedulerEdit: "Edit",
+    schedulerRequired: "Fill in the name, prompt and model", confirmDeleteTask: "Delete task {name}?",
+    schedulerEvery: "every {n} min", schedulerDue: "due", schedulerRunning: "running…",
+    schedulerOk: "ok", schedulerError: "error", schedulerNever: "never ran",
+    schedulerHistory: "History", schedulerFile: "File", schedulerClose: "Close",
+    schedulerModelHint: "Gateway models from /v1/models.", schedulerModelsFailed: "Model list unavailable — start the gateway and refresh.",
+    schedulerGatewayOff: "The gateway is not reachable — there is nowhere to run tasks. Start the API service and retry.",
+    schedulerTokens: "tokens", schedulerDuration: "time", schedulerMinutesShort: "{n} min",
+    sgGateway: "Gateway", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", cancel: "Cancel",
     instances: "Instances", instanceNew: "New instance name", instanceCreate: "Create", instanceLaunch: "Launch Codex",
     instanceBind: "Account", instanceNone: "current login", instanceDelete: "Delete", instanceHint: "A separate CODEX_HOME with its own login.",
     composer: "Composer", composerHint: "Chips in the Codex composer: accounts and quotas right in the input row.",
@@ -195,6 +232,7 @@ const DICT = {
     onboardingStep3: "Start the API service and launch Codex.",
     onboardingDisclaimer: "Use only your own accounts. Follow provider terms — accounts can be banned for rule violations.",
     onboardingAccounts: "Open Accounts", onboardingProviders: "Open Providers", onboardingDone: "Done",
+    onboardingClose: "Close",
     diagTitle: "Connection check", diagHint: "read-only", diagRun: "Check connections",
     diagIdle: "The check has not run yet.", diagAt: "checked", diagProvider: "Provider",
     diagAuth: "Auth", diagQuota: "Last quota", diagCodex: "Codex accounts",
@@ -226,9 +264,12 @@ const S = {
   models: null,
   modelsQuery: "",
   diag: null,
-  fleet: null,
-  fleetTab: "status",
-  fleetResult: null,
+  scheduler: null,
+  schedulerError: null,
+  schedulerForm: null,
+  schedulerModels: null,
+  schedulerModelsError: null,
+  schedulerOpen: null,
   instancesData: null,
   deviceLogin: null,
   autostart: false,
@@ -367,12 +408,40 @@ function mock(cmd, args) {
     device_login_poll: { done: false },
     gateway_models: [{ id: "gpt-6.1-sol", owned_by: "openai" }, { id: "opencode/grok-4.7", owned_by: "opencode-go" }],
     gateway_recent_calls: [{ time: "19:19:41", status: "200", duration: "9.743s", method: "POST", path: "/v1/responses" }],
-    fleet_status: { home: "C:\\Users\\you\\.melon-fleet", cli: null, snapshots: [], logTail: [] },
-    fleet_results: [],
-    fleet_read_result: "(demo)",
-    fleet_config_get: { path: "…\\fleet.config.json", text: "{}" },
-    fleet_config_set: { path: "…", text: "{}" },
-    fleet_cli: "(demo output)",
+    scheduler_list: () => demoScheduler(),
+    scheduler_save: (a) => {
+      const demo = demoScheduler();
+      const input = (a && a.task) || {};
+      const now = nowSec;
+      const task = {
+        id: input.id || "demo-task-" + (demo.tasks.length + 1),
+        name: input.name || "",
+        prompt: input.prompt || "",
+        model: input.model || "",
+        reasoningEffort: input.reasoningEffort || null,
+        intervalMinutes: input.intervalMinutes || 60,
+        enabled: input.enabled !== false,
+        createdAt: now,
+        nextRunAt: input.enabled === false ? null : now + (input.intervalMinutes || 60) * 60,
+        lastRunAt: null, lastStatus: "never", lastError: null, lastResult: "", lastDurationMs: null, lastTokens: null,
+      };
+      const index = demo.tasks.findIndex((item) => item.id === task.id);
+      if (index >= 0) demo.tasks[index] = { ...demo.tasks[index], ...task, createdAt: demo.tasks[index].createdAt };
+      else demo.tasks.push(task);
+      return demo;
+    },
+    scheduler_delete: (a) => {
+      const demo = demoScheduler();
+      demo.tasks = demo.tasks.filter((task) => task.id !== (a && a.id));
+      demo.history = demo.history.filter((entry) => entry.taskId !== (a && a.id));
+      return demo;
+    },
+    scheduler_run_now: () => demoScheduler(),
+    scheduler_models: { count: 3, ids: ["gpt-6.1-sol", "claude-opus-5-5", "opencode/grok-4.7"], groups: [
+      { id: "gateway", ids: ["gpt-6.1-sol"] },
+      { id: "claude", ids: ["claude-opus-5-5"] },
+      { id: "opencode", ids: ["opencode/grok-4.7"] },
+    ] },
     instances_list: [],
     instance_create: [],
     instance_delete: [],
@@ -386,6 +455,28 @@ function mock(cmd, args) {
   };
   const entry = mocks[cmd];
   return Promise.resolve(typeof entry === "function" ? entry(args) : entry);
+}
+
+// Browser preview only: a mutable scheduler demo so the page actions work
+// without Tauri (the real app answers from the Rust scheduler).
+let DEMO_SCHEDULER = null;
+function demoScheduler() {
+  if (!DEMO_SCHEDULER) {
+    const now = Date.now() / 1000;
+    const task = {
+      id: "demo-task-1", name: "Ночной отчёт", prompt: "Собери отчёт по изменениям за сутки.",
+      model: "gpt-6.1-sol", reasoningEffort: null, intervalMinutes: 60, enabled: true,
+      createdAt: now - 7200, nextRunAt: now + 1800, lastRunAt: now - 1800,
+      lastStatus: "ok", lastError: null, lastResult: "Отчёт готов: 3 изменения, 2 предупреждения.",
+      lastDurationMs: 4200, lastTokens: 1530,
+    };
+    DEMO_SCHEDULER = {
+      path: "C:\\Users\\you\\AppData\\Roaming\\MelonTools\\scheduler.json",
+      tasks: [task],
+      history: [{ taskId: task.id, at: now - 1800, status: "ok", model: task.model, durationMs: 4200, tokens: 1530, result: task.lastResult, error: null }],
+    };
+  }
+  return DEMO_SCHEDULER;
 }
 
 // MARK: - Formatting
@@ -499,6 +590,110 @@ function blockText(info) {
   }
 }
 
+// Pool-pause preflight: the vault has accounts, but every one is paused by
+// a quota window or by the routing planner.
+function poolPauseBlock(account) {
+  const info = (account && account.blockInfo) || {};
+  const code = String(info.code || "");
+  const remaining = info.remaining === null || info.remaining === undefined ? NaN : Number(info.remaining);
+  const limit = info.limit === null || info.limit === undefined ? NaN : Number(info.limit);
+  let window = null;
+  if (code === "hourly_reserve" || code === "hourly_exhausted") window = "hourly";
+  else if (code === "weekly_reserve" || code === "weekly_exhausted") window = "weekly";
+  const reset = window === "hourly"
+    ? account.hourlyResetAt
+    : window === "weekly"
+      ? account.weeklyResetAt
+      : null;
+  const exhausted = code === "hourly_exhausted" || code === "weekly_exhausted" ||
+    (Number.isFinite(remaining) && remaining <= 0);
+  const liftable = code.endsWith("_reserve") && Number.isFinite(remaining) && remaining > 0 &&
+    Number.isFinite(limit) && limit > 0;
+  return { account, window, reset, exhausted, liftable, code, remaining, limit };
+}
+
+function poolPauseResetTime(unixTs, weekly) {
+  if (!Number.isFinite(unixTs)) return "—";
+  const date = new Date(unixTs * 1000);
+  if (Number.isNaN(date.getTime())) return "—";
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  if (!weekly) return `${hours}:${minutes}`;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}.${month} ${hours}:${minutes}`;
+}
+
+function poolPauseState() {
+  const accounts = S.accounts || [];
+  if (!accounts.length) return null;
+  const blockedIds = new Set(((S.routing && S.routing.blockedIds) || []).map(String));
+  const paused = accounts.filter((account) => account &&
+    (account.blocked || account.blockInfo || blockedIds.has(String(account.id))));
+  if (paused.length !== accounts.length) return null;
+
+  const blocks = paused.map(poolPauseBlock);
+  const allHourly = blocks.every((block) => block.code === "hourly_reserve");
+  const allWeekly = blocks.every((block) => block.code === "weekly_reserve");
+  const allExhausted = blocks.every((block) => block.exhausted);
+  let kind = "mixed";
+  if (allExhausted) kind = "exhausted";
+  else if (allHourly) kind = "hourly";
+  else if (allWeekly) kind = "weekly";
+
+  const relevant = kind === "hourly"
+    ? blocks.filter((block) => block.window === "hourly")
+    : kind === "weekly"
+      ? blocks.filter((block) => block.window === "weekly")
+      : blocks;
+  const timed = relevant.filter((block) => Number.isFinite(block.reset));
+  const nearest = timed.length
+    ? timed.reduce((left, right) => (right.reset < left.reset ? right : left))
+    : null;
+  const weeklyTime = kind === "weekly" || (kind === "mixed" && nearest && nearest.window === "weekly");
+  const time = poolPauseResetTime(nearest ? nearest.reset : null, weeklyTime);
+  let message = fmt(t("poolPauseMixed"), { time });
+  if (kind === "hourly") message = fmt(t("poolPauseHourly"), { time });
+  else if (kind === "weekly") message = fmt(t("poolPauseWeekly"), { time });
+  else if (kind === "exhausted") message = fmt(t("poolPauseExhausted"), { time });
+
+  return { kind, message, blocks, liftable: blocks.some((block) => block.liftable) };
+}
+
+function poolPauseWindows(block) {
+  const windows = new Set();
+  if (block.window && block.code.endsWith("_reserve")) windows.add(block.window);
+  const account = block.account;
+  const hourlyReserve = Number(account.hourlyReservePercent);
+  const weeklyReserve = Number(account.weeklyReservePercent);
+  const hourlyRemaining = Number(account.hourlyRemaining);
+  const weeklyRemaining = Number(account.weeklyRemaining);
+  if (Number.isFinite(hourlyReserve) && hourlyReserve > 0 &&
+      Number.isFinite(hourlyRemaining) && hourlyRemaining > 0 && hourlyRemaining <= hourlyReserve) {
+    windows.add("hourly");
+  }
+  if (Number.isFinite(weeklyReserve) && weeklyReserve > 0 &&
+      Number.isFinite(weeklyRemaining) && weeklyRemaining > 0 && weeklyRemaining <= weeklyReserve) {
+    windows.add("weekly");
+  }
+  return windows;
+}
+
+function poolPauseBanner() {
+  const state = poolPauseState();
+  if (!state) return "";
+  return `<div class="card pool-pause" id="pool-pause-banner" data-kind="${esc(state.kind)}">
+    <div class="row">
+      <span class="pill warn">${esc(t("paused"))}</span>
+      <span>${esc(state.message)}</span>
+      <span class="spacer"></span>
+      ${state.liftable
+        ? `<button class="btn small" id="pool-pause-lift" onclick="A.liftPoolPause()" ${S.busy.poolPause ? "disabled" : ""}>${esc(t("poolPauseLift"))}</button>`
+        : ""}
+    </div>
+  </div>`;
+}
+
 function toast(message, isError = false) {
   const node = document.getElementById("toast");
   node.textContent = message;
@@ -530,14 +725,14 @@ const ICONS = {
   providers: '<svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5ZM3 14l9 5 9-5"/></svg>',
   composer: '<svg viewBox="0 0 24 24"><path d="M4 5h16v10H8l-4 4V5Z"/></svg>',
   instances: '<svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="M8 10h8M8 14h5"/></svg>',
-  fleet: '<svg viewBox="0 0 24 24"><path d="M3 17h18M6 17V9l6-4 6 4v8"/></svg>',
+  scheduler: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>',
   donate: '<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.5-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.5-9 9-9 9Z"/></svg>',
   settings: '<svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.4 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L5 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.6h5l.4-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1Z"/></svg>',
 };
 
 const NAV = [
   { group: "codex", items: ["dashboard", "accounts", "api", "providers", "composer", "instances"] },
-  { group: "general", items: ["fleet", "settings", "donate"] },
+  { group: "general", items: ["scheduler", "settings", "donate"] },
 ];
 
 // MARK: - Render
@@ -553,13 +748,13 @@ function render() {
     providers: providersPage,
     composer: composerPage,
     instances: instancesPage,
-    fleet: fleetPage,
+    scheduler: schedulerPage,
     donate: donatePage,
     settings: settingsPage,
   };
   main.innerHTML = (pages[S.section] || dashboardPage)();
   if (S.section === "donate") renderDonateQr();
-  if (S.section === "fleet" && !S.fleet) A.fleetLoad();
+  if (S.section === "scheduler" && !S.scheduler && !S.schedulerError) A.schedulerLoad();
   if (S.section === "providers" && !S.models) A.modelsLoad();
   if (S.section === "providers" && IS_TAURI && !S.claude && !S.claudeLogin) {
     A.claudeUsageLoad().then(() => {
@@ -836,6 +1031,7 @@ function accountsPage() {
 
   return `
   ${pageHead("codex", t("accounts"), t("accountsSub"))}
+  ${poolPauseBanner()}
   <div class="row">
     <button class="btn" onclick="A.importAuth()">${t("importAuth")}</button>
     <span class="footnote">${t("importHint")}</span>
@@ -1077,6 +1273,7 @@ function providersPage() {
 
   return `
   ${pageHead("codex", t("providers"), t("providersSub"))}
+  ${poolPauseBanner()}
   <div class="grid2">
     <div class="card">
       <h2>${t("openrouter")}</h2>
@@ -1227,11 +1424,6 @@ function settingsPage() {
       </div>
       <div class="footnote" style="margin-top:0">${t("notificationsHint")}</div>
       <div class="row">
-        <label class="field" style="flex:1">${t("fleetHome")}
-          <input type="text" id="set-fleet-home" value="${esc(settings.fleetHome || "")}" placeholder="%USERPROFILE%\\.melon-fleet">
-        </label>
-      </div>
-      <div class="row">
         <button class="btn small" onclick="A.applySettings()">${t("apply")}</button>
         <span class="footnote">${t("autoRefresh")}</span>
       </div>
@@ -1314,73 +1506,172 @@ function instancesPage() {
   </div>`;
 }
 
-function fleetPage() {
-  const fleet = S.fleet;
-  const tab = S.fleetTab || "status";
-  const tabs = [["status", "fleetStatus"], ["results", "fleetResults"], ["config", "fleetConfig"], ["commands", "fleetCommands"]];
-  const tabBar = `<div class="row">${tabs.map(([value, key]) => `<button class="${tab === value ? "btn" : "ghost"} small" onclick="A.fleetTabSet('${value}')">${t(key)}</button>`).join("")}
-    <span class="spacer"></span>
-    <button class="ghost small" onclick="A.fleetLoad()">${t("refresh")}</button></div>`;
+// Scheduled tasks: result bodies are capped server-side (64 KiB); the viewer
+// caps again so a huge answer cannot stall the DOM.
+const RESULT_VIEW_CAP = 20000;
 
-  let body = "";
-  if (!fleet) {
-    body = `<div class="card"><div class="muted">${t("loading")}</div></div>`;
-  } else if (tab === "status") {
-    body = `
-      <div class="card">
-        <h2>${t("fleetCli")}</h2>
-        <table class="kv">
-          <tr><td>${t("fleetHome")}</td><td>${esc(fleet.home || "—")}</td></tr>
-          <tr><td>${t("fleetCli")}</td><td>${fleet.cli ? esc(fleet.cli) : t("fleetCliMissing")}</td></tr>
-        </table>
-      </div>
-      <div class="card">
-        <h2>${t("fleetSnapshots")} <span class="hint">${(fleet.snapshots || []).length}</span></h2>
-        ${(fleet.snapshots || []).map((snap) => `<details><summary class="footnote" style="cursor:pointer">${esc(snap.name)}</summary>
-            <div class="footnote mono" style="white-space:pre-wrap;max-height:240px;overflow:auto">${esc(JSON.stringify(snap.data, null, 2) || "")}</div>
-          </details>`).join("") || `<div class="footnote">${t("noCalls")}</div>`}
-      </div>
-      <div class="card">
-        <h2>${t("fleetLog")}</h2>
-        <div class="footnote mono" style="white-space:pre-wrap;max-height:280px;overflow:auto">${esc((fleet.logTail || []).join("\n")) || "—"}</div>
-      </div>`;
-  } else if (tab === "results") {
-    const items = fleet.results || [];
-    body = `
-      <div class="card">
-        <h2>${t("fleetResults")} <span class="hint">${items.length}</span></h2>
-        ${items.map((item) => `<div class="row" style="padding:3px 0;gap:10px">
-            <span class="pill">${esc(item.unit)}</span>
-            <span class="mono" style="font-size:11px">${esc(item.name)}</span>
-            <span class="muted footnote">${Math.round((item.size || 0) / 1024)} КБ</span>
-            <span class="spacer"></span>
-            <button class="ghost small" onclick="A.fleetOpenResult('${esc(item.path)}')">${t("fleetOpenResult")}</button>
-          </div>`).join("") || `<div class="footnote">${t("noCalls")}</div>`}
-        ${S.fleetResult ? `<div class="footnote mono" style="white-space:pre-wrap;max-height:360px;overflow:auto;margin-top:10px">${esc(S.fleetResult)}</div>` : ""}
-      </div>`;
-  } else if (tab === "config") {
-    body = `
-      <div class="card">
-        <h2>${t("fleetConfig")} <span class="hint">${esc((S.fleetConfig && S.fleetConfig.path) || "")}</span></h2>
-        <textarea id="fleet-config" style="width:100%;min-height:280px;background:var(--soft);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:var(--mono);font-size:12px">${esc((S.fleetConfig && S.fleetConfig.text) || "")}</textarea>
-        <div class="row" style="margin-top:8px">
-          <button class="btn small" onclick="A.fleetSaveConfig()">${t("fleetSave")}</button>
-        </div>
-      </div>`;
-  } else {
-    body = `
-      <div class="card">
-        <h2>${t("fleetCommands")} <span class="hint">melon-fleet</span></h2>
-        <div class="row">
-          <button class="ghost small" onclick="A.fleetRun(['status'])">status</button>
-          <button class="ghost small" onclick="A.fleetRun(['doctor'])">doctor</button>
-          <button class="ghost small" onclick="A.fleetRun(['--version'])">--version</button>
-        </div>
-        ${S.fleetOutput ? `<div class="footnote mono" style="white-space:pre-wrap;max-height:360px;overflow:auto;margin-top:10px">${esc(S.fleetOutput)}</div>` : ""}
-      </div>`;
+function boundedText(text) {
+  const value = String(text || "");
+  return value.length > RESULT_VIEW_CAP ? `${value.slice(0, RESULT_VIEW_CAP)}\n…` : value;
+}
+
+function schedulerNextText(unixTs) {
+  if (!unixTs) return "—";
+  const secs = unixTs - nowRef();
+  if (secs <= 0) return t("schedulerDue");
+  const mins = Math.ceil(secs / 60);
+  if (mins < 60) return fmt(t("schedulerMinutesShort"), { n: mins });
+  const hours = Math.floor(mins / 60);
+  return `${hours} ${unit("h", "ч")} ${mins % 60} ${unit("min", "мин")}`;
+}
+
+function schedulerGroupLabel(id) {
+  switch (id) {
+    case "claude": return t("sgClaude");
+    case "opencode": return t("sgOpenCode");
+    case "openrouter": return t("sgOpenRouter");
+    default: return t("sgGateway");
   }
+}
 
-  return `${pageHead("melon tools", t("fleet"), t("fleetHome"))}${tabBar}${body}`;
+function schedulerStatusPill(task) {
+  switch (task.lastStatus) {
+    case "running": return `<span class="pill gold">${t("schedulerRunning")}</span>`;
+    case "ok": return `<span class="pill ok">${t("schedulerOk")}</span>`;
+    case "error": return `<span class="pill danger">${t("schedulerError")}</span>`;
+    default: return `<span class="pill">${t("schedulerNever")}</span>`;
+  }
+}
+
+function schedulerPage() {
+  const data = S.scheduler;
+  const tasks = (data && data.tasks) || [];
+  const path = (data && data.path) || "";
+  const head = pageHead("melon tools", t("scheduler"), t("schedulerSub"));
+  // Tasks run through the local gateway: a stopped service makes every task
+  // fail, so say it before the list instead of after a failed run.
+  const stopped = S.status && S.status.running === false;
+  const banner = stopped
+    ? `<div class="card"><div class="row"><span class="pill warn">${t("gateway")}</span>
+        <span class="muted">${t("schedulerGatewayOff")}</span></div></div>`
+    : "";
+
+  if (S.schedulerError) {
+    return `${head}
+      <div class="card">
+        <div class="row"><span class="pill danger">${t("error")}</span>
+          <span class="mono" style="font-size:11px">${esc(S.schedulerError)}</span></div>
+        <div class="footnote">${t("schedulerGatewayOff")}</div>
+        <div class="row" style="margin-top:10px">
+          <button class="ghost small" onclick="A.schedulerLoad()">${t("refresh")}</button>
+        </div>
+      </div>
+      ${schedulerModal()}`;
+  }
+  if (!data) {
+    return `${head}${banner}<div class="card"><div class="muted">${t("loading")}</div></div>${schedulerModal()}`;
+  }
+  return `${head}
+    ${banner}
+    <div class="row">
+      <button class="btn small" onclick="A.schedulerEdit()">${t("schedulerAdd")}</button>
+      <button class="ghost small" onclick="A.schedulerLoad()">${t("refresh")}</button>
+      <span class="spacer"></span>
+      ${path ? `<span class="footnote mono" style="margin:0">${esc(path)}</span>` : ""}
+    </div>
+    ${tasks.length
+      ? `<div class="accounts">${tasks.map((task) => schedulerCard(task, data)).join("")}</div>`
+      : `<div class="card"><div class="muted">${t("schedulerEmpty")}</div></div>`}
+    ${schedulerModal()}`;
+}
+
+function schedulerCard(task, data) {
+  const open = S.schedulerOpen === task.id;
+  return `<div class="card">
+    <div class="account-head">
+      <span class="email">${esc(task.name)}</span>
+      ${schedulerStatusPill(task)}
+      <span class="spacer"></span>
+      <label class="row" style="gap:6px;font-size:11px;color:var(--text2)">
+        <input type="checkbox" ${task.enabled ? "checked" : ""} onchange="A.schedulerToggle('${esc(task.id)}', this.checked)">
+        <span>${t("schedulerEnabled")}</span>
+      </label>
+    </div>
+    <div class="task-meta">
+      <span>${t("schedulerModel")}: <span class="val">${esc(task.model || "—")}</span></span>
+      ${task.reasoningEffort ? `<span class="pill gold">${esc(task.reasoningEffort)}</span>` : ""}
+      <span>${fmt(t("schedulerEvery"), { n: task.intervalMinutes || 0 })}</span>
+      <span>${t("schedulerNext")}: <span class="val">${task.enabled ? esc(schedulerNextText(task.nextRunAt)) : "—"}</span></span>
+      <span>${t("schedulerLast")}: <span class="val">${task.lastRunAt ? esc(ageText(task.lastRunAt)) : t("never")}</span></span>
+      ${task.lastDurationMs != null ? `<span>${t("schedulerDuration")}: ${Math.round(task.lastDurationMs / 100) / 10} ${unit("s", "с")}</span>` : ""}
+      ${task.lastTokens != null ? `<span>${t("schedulerTokens")}: ${task.lastTokens}</span>` : ""}
+    </div>
+    ${task.lastError ? `<div class="footnote mono" style="color:var(--danger);white-space:pre-wrap;max-height:140px;overflow:auto">${esc(boundedText(task.lastError))}</div>` : ""}
+    <div class="row" style="margin-top:12px">
+      <button class="ghost small" onclick="A.schedulerRunNow('${esc(task.id)}')" ${S.busy["sched-run-" + task.id] ? "disabled" : ""}>${t("schedulerRunNow")}</button>
+      <button class="ghost small" onclick="A.schedulerEdit('${esc(task.id)}')">${t("schedulerEdit")}</button>
+      <button class="ghost small" onclick="A.schedulerToggleResult('${esc(task.id)}')">${open ? t("schedulerClose") : t("schedulerResult")}</button>
+      <span class="spacer"></span>
+      <button class="ghost small danger" onclick="A.schedulerDelete('${esc(task.id)}')">${t("schedulerDelete")}</button>
+    </div>
+    ${open ? schedulerDetails(task, data) : ""}
+  </div>`;
+}
+
+function schedulerDetails(task, data) {
+  const history = (data.history || [])
+    .filter((entry) => entry.taskId === task.id)
+    .slice(-20)
+    .reverse();
+  return `<div class="result-view">${esc(boundedText(task.lastResult || t("schedulerNoResult")))}</div>
+    ${history.length
+      ? `<div class="footnote" style="margin-top:10px">${t("schedulerHistory")}</div>
+        ${history.map((entry) => `<div class="footnote mono" style="margin-top:2px">
+          ${esc(new Date(entry.at * 1000).toLocaleString())} · ${esc(entry.status)}${entry.tokens != null ? ` · ${entry.tokens} ${t("schedulerTokens")}` : ""} · ${esc(boundedText(String(entry.result || entry.error || "")).slice(0, 240))}
+        </div>`).join("")}`
+      : ""}`;
+}
+
+function schedulerModal() {
+  const form = S.schedulerForm;
+  if (!form) return "";
+  const selected = form.model || "";
+  const covered = new Set();
+  const groups = (S.schedulerModels && S.schedulerModels.groups) || [];
+  const options = groups.map((group) => `<optgroup label="${esc(schedulerGroupLabel(group.id))}">${(group.ids || [])
+    .map((id) => {
+      covered.add(id);
+      return `<option value="${esc(id)}" ${id === selected ? "selected" : ""}>${esc(id)}</option>`;
+    })
+    .join("")}</optgroup>`);
+  // A saved model missing from the current gateway list must stay selectable:
+  // the gateway may be stopped or the pool may have changed since the save.
+  if (selected && !covered.has(selected)) {
+    options.push(`<optgroup label="${esc(t("schedulerModel"))}"><option value="${esc(selected)}" selected>${esc(selected)}</option></optgroup>`);
+  }
+  return `<div class="modal" id="scheduler-modal"><div class="modal-card">
+    <h2>${form.id ? t("schedulerEditTitle") : t("schedulerAddTitle")}</h2>
+    <div class="stack">
+      <label class="field">${t("schedulerName")}<input type="text" id="sched-name" value="${esc(form.name || "")}"></label>
+      <label class="field">${t("schedulerPrompt")}<textarea id="sched-prompt">${esc(form.prompt || "")}</textarea></label>
+      <label class="field">${t("schedulerModel")}<select id="sched-model">${options.join("") || `<option value="">${t("schedulerModelsFailed")}</option>`}</select></label>
+      <label class="field">${t("schedulerEffort")}<select id="sched-effort">
+        <option value="" ${!form.reasoningEffort ? "selected" : ""}>${t("schedulerEffortDefault")}</option>
+        ${["low", "medium", "high", "xhigh", "max"].map((value) => `<option value="${value}" ${form.reasoningEffort === value ? "selected" : ""}>${value}</option>`).join("")}
+      </select></label>
+      <div class="row">
+        <label class="field">${t("schedulerInterval")}<input class="small" type="number" id="sched-interval" min="1" step="1" value="${form.intervalMinutes || 60}"></label>
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:16px">
+          <input type="checkbox" id="sched-enabled" ${form.enabled !== false ? "checked" : ""}><span>${t("schedulerEnabled")}</span>
+        </label>
+      </div>
+      <div class="footnote" style="margin-top:0">${S.schedulerModelsError ? esc(S.schedulerModelsError) : t("schedulerModelHint")}</div>
+      <div class="row" style="justify-content:flex-end">
+        <button class="ghost" onclick="A.schedulerFormClose()">${t("cancel")}</button>
+        <button class="btn" onclick="A.schedulerFormSave()" ${S.busy["sched-save"] ? "disabled" : ""}>${t("save")}</button>
+      </div>
+    </div>
+  </div></div>`;
 }
 
 // MARK: - Refresh guard (M3)
@@ -1412,18 +1703,17 @@ const A = {
     render();
   },
 
+  // Both actions go through dismissOnboarding(): the flag is written, the
+  // node is dropped and the page scroll comes back. Only the two navigation
+  // actions re-render the page.
   onboardingGo(section) {
-    markOnboardingSeen();
-    const modal = document.getElementById("onboarding-modal");
-    if (modal) modal.hidden = true;
+    dismissOnboarding();
     S.section = section;
     render();
   },
 
   onboardingDone() {
-    markOnboardingSeen();
-    const modal = document.getElementById("onboarding-modal");
-    if (modal) modal.hidden = true;
+    dismissOnboarding();
   },
 
   async copy(text) {
@@ -1726,6 +2016,30 @@ const A = {
     });
   },
 
+  liftPoolPause() {
+    const state = poolPauseState();
+    if (!state || !state.liftable) return;
+    if (!window.confirm(t("poolPauseConfirm"))) return;
+    const targets = state.blocks
+      .filter((block) => block.liftable)
+      .map((block) => ({ block, windows: poolPauseWindows(block) }));
+    run("poolPause", async () => {
+      for (const { block, windows } of targets) {
+        const account = block.account;
+        await inv("save_reserves", {
+          id: account.id,
+          hourly: windows.has("hourly") ? null : (account.hourlyReservePercent ?? null),
+          weekly: windows.has("weekly") ? null : (account.weeklyReservePercent ?? null),
+        });
+      }
+      await inv("gateway_sync");
+      await inv("quota_refresh");
+      S.accounts = await inv("vault_list");
+      S.routing = await inv("routing_state");
+      toast(t("done"));
+    });
+  },
+
   saveReserves(id) {
     run("reserves-" + id, async () => {
       const hourly = parseInt(document.getElementById("res-h-" + id).value, 10);
@@ -1955,14 +2269,12 @@ const A = {
       const lang = document.getElementById("set-lang").value;
       const port = parseInt(document.getElementById("set-port").value, 10);
       const quotaInterval = parseInt(document.getElementById("set-interval").value, 10);
-      const fleetHome = (document.getElementById("set-fleet-home") || {}).value || "";
       S.settings = await inv("settings_set", {
         settings: {
           ...S.settings,
           lang,
           port: Number.isFinite(port) ? port : S.settings.port,
           quotaInterval: Number.isFinite(quotaInterval) ? quotaInterval : S.settings.quotaInterval,
-          fleetHome,
         },
       });
       S.lang = lang;
@@ -2137,44 +2449,124 @@ const A = {
     });
   },
 
-  fleetLoad() {
-    run("fleet", async () => {
-      S.fleet = await inv("fleet_status");
-      if (S.fleetTab === "results") {
-        S.fleet.results = await inv("fleet_results", { limit: 100 });
-      }
-      if (S.fleetTab === "config") {
-        S.fleetConfig = await inv("fleet_config_get");
+  schedulerLoad() {
+    run("scheduler", async () => {
+      try {
+        S.scheduler = await inv("scheduler_list");
+        S.schedulerError = null;
+      } catch (error) {
+        // A failed read must not render as "no tasks": the page says why.
+        S.schedulerError = errorText(error);
       }
     });
   },
 
-  fleetTabSet(tab) {
-    S.fleetTab = tab;
-    S.fleetResult = null;
-    S.fleetOutput = null;
-    A.fleetLoad();
+  schedulerModelsLoad() {
+    run("sched-models", async () => {
+      try {
+        S.schedulerModels = await inv("scheduler_models");
+        S.schedulerModelsError = null;
+      } catch (error) {
+        S.schedulerModels = null;
+        S.schedulerModelsError = errorText(error);
+      }
+    });
+  },
+
+  schedulerToggleResult(id) {
+    S.schedulerOpen = S.schedulerOpen === id ? null : id;
     render();
   },
 
-  fleetOpenResult(path) {
-    run("fleet-result", async () => {
-      S.fleetResult = await inv("fleet_read_result", { path });
-    });
+  schedulerEdit(id) {
+    const task = id ? ((S.scheduler && S.scheduler.tasks) || []).find((item) => item.id === id) : null;
+    S.schedulerForm = task
+      ? {
+        id: task.id,
+        name: task.name,
+        prompt: task.prompt,
+        model: task.model,
+        reasoningEffort: task.reasoningEffort || "",
+        intervalMinutes: task.intervalMinutes,
+        enabled: task.enabled,
+      }
+      : { id: "", name: "", prompt: "", model: "", reasoningEffort: "", intervalMinutes: 60, enabled: true };
+    render();
+    if (!S.schedulerModels) A.schedulerModelsLoad();
   },
 
-  fleetSaveConfig() {
-    const area = document.getElementById("fleet-config");
-    if (!area) return;
-    run("fleet-config", async () => {
-      S.fleetConfig = await inv("fleet_config_set", { text: area.value });
+  schedulerFormClose() {
+    S.schedulerForm = null;
+    S.schedulerModelsError = null;
+    render();
+  },
+
+  schedulerFormSave() {
+    const form = S.schedulerForm || {};
+    const value = (id) => {
+      const node = document.getElementById(id);
+      return node && typeof node.value === "string" ? node.value : "";
+    };
+    // Read the fields before run(): its first render rebuilds the modal.
+    const name = value("sched-name").trim();
+    const prompt = value("sched-prompt").trim();
+    const model = value("sched-model").trim();
+    const reasoningEffort = value("sched-effort").trim();
+    const intervalMinutes = parseInt(value("sched-interval"), 10);
+    const enabledNode = document.getElementById("sched-enabled");
+    const enabled = !!(enabledNode && enabledNode.checked);
+    if (!name || !prompt || !model) {
+      toast(t("schedulerRequired"), true);
+      return;
+    }
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes < 1) {
+      toast(t("schedulerInterval"), true);
+      return;
+    }
+    const task = {
+      id: form.id || "",
+      name,
+      prompt,
+      model,
+      reasoningEffort: reasoningEffort || null,
+      intervalMinutes,
+      enabled,
+    };
+    run("sched-save", async () => {
+      S.scheduler = await inv("scheduler_save", { task });
+      S.schedulerError = null;
+      S.schedulerForm = null;
       toast(t("done"));
     });
   },
 
-  fleetRun(args) {
-    run("fleet-run", async () => {
-      S.fleetOutput = await inv("fleet_cli", { args });
+  schedulerToggle(id, enabled) {
+    const task = ((S.scheduler && S.scheduler.tasks) || []).find((item) => item.id === id);
+    if (!task) return;
+    run("sched-toggle-" + id, async () => {
+      S.scheduler = await inv("scheduler_save", { task: { ...task, enabled } });
+      S.schedulerError = null;
+      toast(t("done"));
+    });
+  },
+
+  schedulerRunNow(id) {
+    run("sched-run-" + id, async () => {
+      S.scheduler = await inv("scheduler_run_now", { id });
+      S.schedulerError = null;
+      S.schedulerOpen = id;
+      toast(t("done"));
+    });
+  },
+
+  schedulerDelete(id) {
+    const task = ((S.scheduler && S.scheduler.tasks) || []).find((item) => item.id === id);
+    const name = (task && task.name) || id;
+    if (!window.confirm(fmt(t("confirmDeleteTask"), { name }))) return;
+    run("sched-delete-" + id, async () => {
+      S.scheduler = await inv("scheduler_delete", { id });
+      if (S.schedulerOpen === id) S.schedulerOpen = null;
+      toast(t("done"));
     });
   },
 
@@ -2303,18 +2695,36 @@ document.addEventListener("focusout", (event) => {
 // The modal is injected here instead of index.html so the web UI stays one
 // script plus one stylesheet. The flag is written on any dismissal, so the
 // tour is shown exactly once per webview profile.
+//
+// The buttons do not carry inline onclick attributes: inline handlers are
+// compiled by the webview under the page script policy, and in the Windows
+// webview they were not running at all, which left the welcome window with
+// dead buttons and no way out. Every action is a data-onboarding attribute
+// handled by one delegated listener registered from this script.
 const ONBOARDING_KEY = "onboardingDone";
 
+// Session memory. A dismissal must stick for this launch even when
+// localStorage throws, and the tour must be injected at most once.
+let onboardingDismissed = false;
+let onboardingShown = false;
+
+// Body scroll lock taken while the modal covers the page, restored on close.
+let onboardingScrollLocked = false;
+let onboardingPrevOverflow = "";
+
 function onboardingSeen() {
+  if (onboardingDismissed) return true;
   try {
     return window.localStorage.getItem(ONBOARDING_KEY) === "1";
   } catch {
-    // Storage unavailable (hardened webview): never block the app on a tour.
-    return true;
+    // Storage unavailable (hardened webview): the in-memory flag set on
+    // dismissal still stops the tour from reopening during this launch.
+    return false;
   }
 }
 
 function markOnboardingSeen() {
+  onboardingDismissed = true;
   try {
     window.localStorage.setItem(ONBOARDING_KEY, "1");
   } catch {
@@ -2322,14 +2732,77 @@ function markOnboardingSeen() {
   }
 }
 
+function lockOnboardingScroll() {
+  if (onboardingScrollLocked) return;
+  onboardingScrollLocked = true;
+  onboardingPrevOverflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+}
+
+function unlockOnboardingScroll() {
+  if (!onboardingScrollLocked) return;
+  onboardingScrollLocked = false;
+  document.body.style.overflow = onboardingPrevOverflow;
+  onboardingPrevOverflow = "";
+}
+
+// Single close path: remember the dismissal, drop the node, give the page
+// its scroll back. Reusable from the buttons, Esc and the backdrop.
+function dismissOnboarding() {
+  markOnboardingSeen();
+  const modal = document.getElementById("onboarding-modal");
+  if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+  unlockOnboardingScroll();
+}
+
+// One delegated listener on the modal root. It is bound once per node and
+// survives the innerHTML rewrite below.
+function bindOnboarding(modal) {
+  if (modal._mtOnboardingBound) return;
+  modal._mtOnboardingBound = true;
+  modal.addEventListener("click", (event) => {
+    const target = event.target;
+    // The backdrop is the modal root itself. A click inside the card does
+    // nothing unless it lands on an element that carries an action.
+    if (target === modal) {
+      dismissOnboarding();
+      return;
+    }
+    const action = target && target.closest ? target.closest("[data-onboarding]") : null;
+    if (!action || !modal.contains(action)) return;
+    const name = action.getAttribute("data-onboarding");
+    if (name === "accounts" || name === "providers") {
+      A.onboardingGo(name);
+    } else {
+      // "done" and "close" only close — no render.
+      A.onboardingDone();
+    }
+  });
+}
+
+// Esc closes the tour. Registered once on the document, so it keeps working
+// after the modal node is removed and recreated.
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" && event.key !== "Esc") return;
+  const modal = document.getElementById("onboarding-modal");
+  if (!modal || modal.hidden) return;
+  dismissOnboarding();
+});
+
 function showOnboarding() {
+  // Once per launch, and never again after a dismissal — even when
+  // localStorage is unavailable and the flag cannot be read back.
+  if (onboardingShown) return;
+  onboardingShown = true;
   if (onboardingSeen()) return;
   let modal = document.getElementById("onboarding-modal");
   if (!modal) {
     modal = document.createElement("div");
     modal.id = "onboarding-modal";
     modal.className = "modal";
+    modal.hidden = true;
     document.body.appendChild(modal);
+    bindOnboarding(modal);
   }
   const steps = [
     ["1", "onboardingStep1"],
@@ -2338,8 +2811,14 @@ function showOnboarding() {
   ];
   modal.innerHTML = `
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
-      <div class="kicker">melon tools</div>
-      <h2 id="onboarding-title">${esc(t("onboardingTitle"))}</h2>
+      <div class="modal-head">
+        <div>
+          <div class="kicker">melon tools</div>
+          <h2 id="onboarding-title">${esc(t("onboardingTitle"))}</h2>
+        </div>
+        <button type="button" class="onboarding-close" data-onboarding="close"
+          title="${esc(t("onboardingClose"))}" aria-label="${esc(t("onboardingClose"))}">×</button>
+      </div>
       <div class="subtitle">${esc(t("onboardingWelcome"))}</div>
       <div class="stack" style="margin:14px 0">
         ${steps.map(([number, key]) => `<div class="row" style="align-items:flex-start;gap:10px">
@@ -2351,12 +2830,13 @@ function showOnboarding() {
         ${esc(t("onboardingDisclaimer"))}
       </div>
       <div class="row" style="justify-content:flex-end;margin-top:16px">
-        <button class="ghost small" onclick="A.onboardingGo('accounts')">${esc(t("onboardingAccounts"))}</button>
-        <button class="ghost small" onclick="A.onboardingGo('providers')">${esc(t("onboardingProviders"))}</button>
-        <button class="btn small" onclick="A.onboardingDone()">${esc(t("onboardingDone"))}</button>
+        <button type="button" class="ghost small" data-onboarding="accounts">${esc(t("onboardingAccounts"))}</button>
+        <button type="button" class="ghost small" data-onboarding="providers">${esc(t("onboardingProviders"))}</button>
+        <button type="button" class="btn small" data-onboarding="done">${esc(t("onboardingDone"))}</button>
       </div>
     </div>`;
   modal.hidden = false;
+  lockOnboardingScroll();
 }
 
 // MARK: - Boot

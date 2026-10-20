@@ -1,5 +1,5 @@
 //! Melon Tools for Windows — Codex account pool, local API gateway, chips
-//! bridge and the Fleet/instances tooling. Tauri 2 backend with the same
+//! bridge and the scheduler/instances tooling. Tauri 2 backend with the same
 //! vault and gateway layout as the macOS app.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -11,7 +11,6 @@ mod codex_route;
 mod device_login;
 mod dpapi;
 mod engine;
-mod fleet;
 mod gateway;
 mod history;
 mod instances;
@@ -19,6 +18,7 @@ mod paths;
 mod providers;
 mod quota;
 mod routing;
+mod scheduler;
 mod settings;
 mod updater;
 mod vault;
@@ -79,7 +79,7 @@ fn app_info() -> Value {
         "dataDir": paths::appdata_dir().to_string_lossy(),
         "codexHome": paths::codex_home().to_string_lossy(),
         "enginePath": engine::engine_path().to_string_lossy(),
-        "fleetHome": fleet::path_home_display(&settings::load()),
+        "schedulerPath": scheduler::path().to_string_lossy(),
     })
 }
 
@@ -580,37 +580,35 @@ async fn bridge_launch_codex() -> Result<String, String> {
     bridge::launch_codex_with_debug_port().await
 }
 
-// MARK: - Fleet
+// MARK: - Scheduler
 
 #[tauri::command]
-async fn fleet_status(state: State<'_, AppState>) -> Result<Value, String> {
-    Ok(fleet::status(&state.settings()))
+async fn scheduler_list() -> Result<Value, String> {
+    Ok(scheduler::view())
 }
 
 #[tauri::command]
-async fn fleet_results(state: State<'_, AppState>, limit: Option<usize>) -> Result<Value, String> {
-    Ok(fleet::results(&state.settings(), limit.unwrap_or(100)))
+async fn scheduler_save(task: scheduler::TaskInput) -> Result<Value, String> {
+    scheduler::upsert(task)
 }
 
 #[tauri::command]
-async fn fleet_read_result(path: String) -> Result<String, String> {
-    fleet::read_result(&path)
+async fn scheduler_delete(id: String) -> Result<Value, String> {
+    scheduler::delete(&id)
 }
 
 #[tauri::command]
-async fn fleet_config_get(state: State<'_, AppState>) -> Result<Value, String> {
-    Ok(fleet::config_get(&state.settings()))
+async fn scheduler_run_now(state: State<'_, AppState>, id: String) -> Result<Value, String> {
+    let settings = state.settings();
+    scheduler::run_now(&settings, &id).await
 }
 
+/// Model ids served by the running gateway, grouped by id prefix. The picker
+/// stores the exact id, so an unavailable gateway is a hard error the UI shows.
 #[tauri::command]
-async fn fleet_config_set(state: State<'_, AppState>, text: String) -> Result<Value, String> {
-    fleet::config_set(&state.settings(), &text)?;
-    Ok(fleet::config_get(&state.settings()))
-}
-
-#[tauri::command]
-async fn fleet_cli(state: State<'_, AppState>, args: Vec<String>) -> Result<String, String> {
-    fleet::cli_run(&state.settings(), args).await
+async fn scheduler_models(state: State<'_, AppState>) -> Result<Value, String> {
+    let settings = state.settings();
+    scheduler::models(settings.port, &settings.api_key).await
 }
 
 // MARK: - Instances
@@ -1080,6 +1078,20 @@ fn main() {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 }
             });
+
+            // Scheduler: one due task per 30 s tick, serial with "Run now".
+            // It runs only while this process is alive — no background service.
+            let scheduler_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let settings = {
+                        let state = scheduler_handle.state::<AppState>();
+                        state.settings()
+                    };
+                    scheduler::tick(&settings).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(scheduler::TICK_SECS)).await;
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1113,12 +1125,11 @@ fn main() {
             codex_route_remove,
             bridge_status,
             bridge_launch_codex,
-            fleet_status,
-            fleet_results,
-            fleet_read_result,
-            fleet_config_get,
-            fleet_config_set,
-            fleet_cli,
+            scheduler_list,
+            scheduler_save,
+            scheduler_delete,
+            scheduler_run_now,
+            scheduler_models,
             instances_list,
             instance_create,
             instance_delete,

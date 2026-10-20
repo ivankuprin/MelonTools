@@ -33,8 +33,6 @@ pub struct Settings {
     /// Toast when an hourly/weekly window crosses below its account reserve
     /// (10 % when no reserve is configured).
     pub notify_low_quota: bool,
-    /// Fleet CLI home (snapshots, results, config).
-    pub fleet_home: String,
     /// Unix seconds of the last update check (auto-check is daily).
     pub last_update_check: Option<i64>,
 }
@@ -56,7 +54,6 @@ impl Default for Settings {
             routing_strategy: "auto".to_string(),
             priority_order: Vec::new(),
             notify_low_quota: true,
-            fleet_home: String::new(),
             last_update_check: None,
         }
     }

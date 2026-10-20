@@ -18,15 +18,15 @@ secrets below are absent. It never fails because a signing secret is missing.
 When the secrets exist, the signing steps run and a genuine signing failure
 does fail the release.
 
-## Release artifacts for 1.7.4
+## Release artifacts for 1.6.4
 
 | Artifact | File name | SHA-256 |
 |----------|-----------|---------|
-| macOS DMG | `MelonTools-1.7.4.dmg` | `6c27060e7b8959c1078740f400e71088fff8f8149895a731e118e866d78c4e2c` |
-| Windows x64 | `MelonTools-1.7.4-win-x64.exe` | `4f5dcbb158a9c600dea90c26b6695281b1ab65f38eba6def26ebe5fc3078b810` |
+| macOS DMG | `MelonTools-1.6.4.dmg` | `24bf171292b77722a82d0cf98ecd5a1930225bdd86ae23aa0e6b23825a3febdc` |
+| Windows x64 | `MelonTools-1.6.4-win-x64.exe` | `c58a2fb6472ec78d50bceb948c6d60a29637717ab5658de9fe01c20b472b4385` |
 
 Both files and their `.sha256` siblings are attached to the GitHub release for
-tag `v1.7.4`. The in-app updater accepts only HTTPS GitHub hosts and verifies
+tag `v1.6.4`. The in-app updater accepts only HTTPS GitHub hosts and verifies
 the downloaded file against the release digest or the `.sha256` sibling.
 
 ## Required secrets
@@ -76,7 +76,7 @@ keychain, then calls:
 ```bash
 ./packaging/sign-macos.sh \
   "$HOME/Library/Developer/MelonTools/Build/Products/Release/Melon Tools.app" \
-  "MacOS/build/MelonTools-1.7.4.dmg"
+  "MacOS/build/MelonTools-1.6.4.dmg"
 ```
 
 The script:
@@ -100,7 +100,7 @@ and calls:
 
 ```powershell
 ./packaging/sign-windows.ps1 `
-  -File Windows/dist/MelonTools-1.7.4-win-x64.exe -Require
+  -File Windows/dist/MelonTools-1.6.4-win-x64.exe -Require
 ```
 
 The script locates `signtool.exe` from the Windows SDK, signs with SHA-256 and
@@ -112,7 +112,7 @@ that skip into an error.
 
 The manifest lives at
 [`homebrew/Casks/melon-tools.rb`](homebrew/Casks/melon-tools.rb). It points at
-the DMG for the matching GitHub release and carries the 1.7.4 SHA-256.
+the DMG for the matching GitHub release and carries the 1.6.4 SHA-256.
 
 Local validation and installation:
 
@@ -160,11 +160,11 @@ manifest loses its 64-character SHA-256.
 ## Checksums
 
 ```bash
-shasum -a 256 MacOS/build/MelonTools-1.7.4.dmg
+shasum -a 256 MacOS/build/MelonTools-1.6.4.dmg
 ```
 
 ```powershell
-Get-FileHash .\MelonTools-1.7.4-win-x64.exe -Algorithm SHA256
+Get-FileHash .\MelonTools-1.6.4-win-x64.exe -Algorithm SHA256
 ```
 
 The `.sha256` files published next to each artifact use the standard

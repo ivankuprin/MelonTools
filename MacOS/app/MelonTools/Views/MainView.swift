@@ -2,19 +2,14 @@ import AppKit
 import SwiftUI
 
 enum MTSection: String, CaseIterable, Identifiable {
-    case dashboard, fleet, doctor, config, results, call, rules, codexAccounts, codexAPI, providers, codexComposer, codexInstances, settings, donate
+    case dashboard, scheduler, codexAccounts, codexAPI, providers, codexComposer, codexInstances, settings, donate
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .dashboard: return L("Dashboard")
-        case .fleet: return L("Fleet Status")
-        case .doctor: return L("Doctor")
-        case .config: return L("Fleet Config")
-        case .results: return L("Results")
-        case .call: return L("Call Unit")
-        case .rules: return L("Project Rules")
+        case .scheduler: return L("Scheduler")
         case .codexAccounts: return L("Accounts")
         case .codexAPI: return L("Codex API")
         case .providers: return L("Providers")
@@ -28,12 +23,7 @@ enum MTSection: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .dashboard: return "square.grid.2x2"
-        case .fleet: return "antenna.radiowaves.left.and.right"
-        case .doctor: return "stethoscope"
-        case .config: return "slider.horizontal.3"
-        case .results: return "tray.full"
-        case .call: return "phone.arrow.up.right"
-        case .rules: return "text.badge.checkmark"
+        case .scheduler: return "clock.badge.checkmark"
         case .codexAccounts: return "person.2"
         case .codexAPI: return "network"
         case .providers: return "square.stack.3d.up"
@@ -51,8 +41,8 @@ enum MTSection: String, CaseIterable, Identifiable {
 
     static let groups: [Group] = [
         Group(title: L("Overview"), sections: [.dashboard]),
+        Group(title: L("Scheduler"), sections: [.scheduler]),
         Group(title: L("Codex"), sections: [.codexAccounts, .codexAPI, .providers, .codexComposer, .codexInstances]),
-        Group(title: L("Fleet"), sections: [.fleet, .doctor, .config, .results, .call, .rules]),
         Group(title: L("App"), sections: [.settings, .donate]),
     ]
 }
@@ -76,11 +66,9 @@ struct MainView: View {
         .background(MTTheme.background)
         .onAppear {
             app.applyAppearance()
-            FleetStore.shared.setActive(fleetSectionsActive)
             Task { await updater.check(manual: false) }
         }
         .onChange(of: app.appearance) { app.applyAppearance() }
-        .onChange(of: selection) { FleetStore.shared.setActive(fleetSectionsActive) }
         .sheet(isPresented: $updater.sheetPresented) {
             UpdateSheet()
         }
@@ -110,17 +98,6 @@ struct MainView: View {
                 if !presented { onboardingDone = true }
             }
         )
-    }
-
-    /// Fleet polling runs only while a page that shows fleet data is on
-    /// screen — there is no reason to touch the workspace files otherwise.
-    private var fleetSectionsActive: Bool {
-        switch selection {
-        case .dashboard, .fleet, .doctor, .config, .results, .call, .rules:
-            return true
-        default:
-            return false
-        }
     }
 
     /// Sidebar update control, almost full width: a quiet «Проверить
@@ -218,7 +195,7 @@ struct MainView: View {
                 Text("Melon Tools")
                     .font(MTTheme.body(13, weight: .bold))
                     .foregroundStyle(MTTheme.textPrimary)
-                Text(L("fleet + codex"))
+                Text(L("scheduler + codex"))
                     .font(MTTheme.mono(9))
                     .foregroundStyle(MTTheme.textSecondary)
             }
@@ -309,12 +286,7 @@ private struct GatewayFooter: View {
     private var detail: some View {
         switch selection {
         case .dashboard: DashboardView(selection: $selection)
-        case .fleet: FleetStatusView()
-        case .doctor: FleetDoctorView()
-        case .config: FleetConfigView()
-        case .results: FleetResultsView()
-        case .call: FleetCallView()
-        case .rules: FleetRulesView()
+        case .scheduler: SchedulerView()
         case .codexAccounts: CodexAccountsView(selection: $selection)
         case .codexAPI: CodexAPIView()
         case .providers: CodexProvidersView(selection: $selection)

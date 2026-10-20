@@ -51,6 +51,7 @@
     freeTier: 'Бесплатный тир',
     providerData: 'Данные провайдера',
     sessionModel: 'Модель сессии',
+    lastTurnModel: 'Модель последнего хода',
     keyRemaining: 'Остаток по ключу',
     updated: 'обновлено',
     noData: 'нет данных',
@@ -466,6 +467,15 @@
 
   // ------------------------------------------------------ provider rendering
 
+  /// Model selected in the visible composer; falls back to the last turn's model.
+  function activeModelName() {
+    const status = state.status || {};
+    const active = status.active || {};
+    if (active.model) return String(active.model);
+    const session = status.session || null;
+    return session && session.model ? String(session.model) : '';
+  }
+
   /// Session spend of one provider: the priced part of the thread cost.
   function providerSpend(kind) {
     const session = state.status ? state.status.session : null;
@@ -483,7 +493,18 @@
 
     providerChip.label.textContent = PROVIDERS[kind] || kind;
     providerChip.dot.className = 'melon-dot ' + (kind === 'opencode' ? 'melon-dot-teal' : 'melon-dot-orange');
-    if (spend.amount != null) {
+    const session = status.session || null;
+    const ctx = contextStats(session);
+    const modelName = activeModelName();
+    if (ctx.percent != null) {
+      providerChip.value.textContent = ctx.percent + '%';
+      let title = (modelName ? modelName + ' · ' : '') + LABELS.context + ': ' + (ctx.detail || ctx.percent + '%');
+      if (spend.amount != null) {
+        title += ' · ' + LABELS.sessionSpend + ': ≈' + formatMoney(spend.amount);
+        if (spend.cost && spend.cost.scaled) title += ' ' + LABELS.scaledNote;
+      }
+      providerChip.chip.title = title;
+    } else if (spend.amount != null) {
       providerChip.value.textContent = '≈' + formatMoney(spend.amount);
       let title = LABELS.sessionSpend + ': ' + LABELS.estimatedFrom;
       if (spend.cost && spend.cost.scaled) title += ' ' + LABELS.scaledNote;
@@ -622,7 +643,11 @@
       body.appendChild(popRow(LABELS.output, formatTokens(sessionStats.output)));
       body.appendChild(popRow(LABELS.reasoning, formatTokens(sessionStats.reasoning)));
       body.appendChild(popRow(LABELS.turns, String(sessionStats.turns || 0)));
-      if (session && session.model) body.appendChild(popRow(LABELS.sessionModel, String(session.model)));
+      const activeName = activeModelName();
+      if (activeName) body.appendChild(popRow(LABELS.sessionModel, activeName));
+      if (session && session.model && activeName && String(session.model) !== activeName) {
+        body.appendChild(popRow(LABELS.lastTurnModel, String(session.model)));
+      }
     } else {
       body.appendChild(popRow(LABELS.tokens, LABELS.noData));
     }
@@ -650,7 +675,7 @@
     const updated = stats ? timeOfDay(stats.updatedAt) : null;
     foot.appendChild(el('span', null, updated ? LABELS.updated + ' ' + updated : LABELS.noData));
     foot.appendChild(el('span', 'melon-pop-spacer'));
-    foot.appendChild(el('b', null, session && session.model ? String(session.model) : ''));
+    foot.appendChild(el('b', null, activeModelName()));
   }
 
   function buildPopover() {

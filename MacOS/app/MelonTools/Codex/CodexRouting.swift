@@ -58,6 +58,15 @@ enum CodexRoutingStrategy: String, CaseIterable, Identifiable {
     }
 }
 
+/// Why the planner pauses one account. The cause feeds the localized reason
+/// text and the pool-wide pause banner; `blockReason` stays the display form.
+enum CodexBlockCause: Equatable {
+    case hourlyExhausted
+    case weeklyExhausted
+    case hourlyReserve
+    case weeklyReserve
+}
+
 /// Pure routing planner: accounts in, effective order out. No side effects so
 /// the same result can feed both the gateway priorities and the UI.
 enum CodexRoutingPlanner {
@@ -70,26 +79,49 @@ enum CodexRoutingPlanner {
         var blockReasons: [String: String]
     }
 
+    /// Returns the cause that pauses this account, or nil when it may be used.
+    /// A limit of 0 (or none) means “no limit”. Quota readings older than
+    /// `quotaFreshness` never block — a stale gauge must not park an account.
+    /// Exhaustion wins over a reserve: a reserve can be lifted, a zero window
+    /// cannot.
+    static func blockCause(_ account: CodexAccount) -> CodexBlockCause? {
+        guard let quota = account.quota, quotaIsFresh(account) else { return nil }
+        if let remaining = quota.hourlyRemainingPercent, remaining <= 0 {
+            return .hourlyExhausted
+        }
+        if let remaining = quota.weeklyRemainingPercent, remaining <= 0 {
+            return .weeklyExhausted
+        }
+        if let hourlyLimit = account.hourlyReservePercent, hourlyLimit > 0,
+           let remaining = quota.hourlyRemainingPercent, remaining <= Double(hourlyLimit) {
+            return .hourlyReserve
+        }
+        if let weeklyLimit = account.weeklyReservePercent, weeklyLimit > 0,
+           let remaining = quota.weeklyRemainingPercent, remaining <= Double(weeklyLimit) {
+            return .weeklyReserve
+        }
+        return nil
+    }
+
     /// Returns the reason this account is paused, or nil when it may be used.
     /// A limit of 0 (or none) means “no limit”. Quota readings older than
     /// `quotaFreshness` never block — a stale gauge must not park an account.
     static func blockReason(_ account: CodexAccount) -> String? {
-        guard let quota = account.quota, quotaIsFresh(account) else { return nil }
-        if let remaining = quota.hourlyRemainingPercent, remaining <= 0 {
+        guard let cause = blockCause(account), let quota = account.quota else { return nil }
+        switch cause {
+        case .hourlyExhausted:
             return L("5-hour quota exhausted")
-        }
-        if let remaining = quota.weeklyRemainingPercent, remaining <= 0 {
+        case .weeklyExhausted:
             return L("weekly quota exhausted")
-        }
-        if let hourlyLimit = account.hourlyReservePercent, hourlyLimit > 0,
-           let remaining = quota.hourlyRemainingPercent, remaining <= Double(hourlyLimit) {
+        case .hourlyReserve:
+            guard let remaining = quota.hourlyRemainingPercent,
+                  let hourlyLimit = account.hourlyReservePercent else { return nil }
             return String(format: L("5-hour quota left %d%% ≤ %d%%"), Int(remaining.rounded()), hourlyLimit)
-        }
-        if let weeklyLimit = account.weeklyReservePercent, weeklyLimit > 0,
-           let remaining = quota.weeklyRemainingPercent, remaining <= Double(weeklyLimit) {
+        case .weeklyReserve:
+            guard let remaining = quota.weeklyRemainingPercent,
+                  let weeklyLimit = account.weeklyReservePercent else { return nil }
             return String(format: L("weekly quota left %d%% ≤ %d%%"), Int(remaining.rounded()), weeklyLimit)
         }
-        return nil
     }
 
     /// How long a quota reading stays believable.

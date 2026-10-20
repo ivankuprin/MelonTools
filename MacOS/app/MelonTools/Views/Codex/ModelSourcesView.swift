@@ -235,6 +235,9 @@ struct CodexProvidersView: View {
                     Spacer(minLength: MTTheme.s2)
                     MTStatusPill(text: gateway.status.label, status: gateway.status.pillStatus)
                 }
+                if let pause = store.poolPauseSummary() {
+                    CodexPoolPauseBanner(summary: pause)
+                }
                 quotaRow(title: L("5 h"), fraction: poolQuota(\.hourlyRemainingPercent))
                 quotaRow(title: L("Week"), fraction: poolQuota(\.weeklyRemainingPercent))
                 HStack(spacing: MTTheme.s4) {

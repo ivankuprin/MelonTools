@@ -29,6 +29,10 @@ struct CodexAccountsView: View {
 
                 controls
 
+                if let pause = store.poolPauseSummary() {
+                    CodexPoolPauseBanner(summary: pause)
+                }
+
                 if !store.accounts.isEmpty {
                     selectionBar
                 }
@@ -606,6 +610,94 @@ struct CodexAccountsView: View {
                     .font(MTTheme.mono(10))
                     .foregroundStyle(MTTheme.textSecondary)
             }
+        }
+    }
+}
+
+// MARK: - Pool pause banner
+
+/// Preflight banner for a pool that the routing planner paused completely.
+/// The text and reset come from `CodexPoolPauseSummary`; the lift action is
+/// offered only while a positive reserve pauses an account above zero quota.
+struct CodexPoolPauseBanner: View {
+    let summary: CodexPoolPauseSummary
+
+    @ObservedObject private var store = CodexStore.shared
+    @State private var confirmLift = false
+    @State private var lifting = false
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let dayTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "dd.MM HH:mm"
+        return formatter
+    }()
+
+    var body: some View {
+        HStack(alignment: .center, spacing: MTTheme.s3) {
+            Image(systemName: "pause.circle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(MTTheme.warn)
+            Text(message)
+                .font(MTTheme.mono(11, weight: .medium))
+                .foregroundStyle(MTTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: MTTheme.s2)
+            if summary.canLift {
+                MTSecondaryButton(title: L("Lift pause"), systemImage: "play.circle", isLoading: lifting) {
+                    confirmLift = true
+                }
+                .disabled(lifting)
+            }
+        }
+        .padding(.horizontal, MTTheme.s3)
+        .padding(.vertical, MTTheme.s2)
+        .background(
+            MTTheme.warn.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: MTTheme.rSmall, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MTTheme.rSmall, style: .continuous)
+                .strokeBorder(MTTheme.warn.opacity(0.35), lineWidth: 0.75)
+        )
+        .confirmationDialog(L("Lift the pause?"), isPresented: $confirmLift, titleVisibility: .visible) {
+            Button(L("Lift pause")) {
+                lifting = true
+                Task {
+                    await store.liftPoolPause()
+                    lifting = false
+                }
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: {
+            Text(L("The accounts will resume routing. Quota may run down to 0%."))
+        }
+    }
+
+    private var message: String {
+        let stamp = summary.resetAt.map { reset in
+            (summary.reason == .weeklyReserve ? Self.dayTimeFormatter : Self.timeFormatter).string(from: reset)
+        }
+        switch summary.reason {
+        case .hourlyReserve:
+            guard let stamp else { return L("All accounts are paused by the hourly reserve") }
+            return String(format: L("All accounts are paused by the hourly reserve — reset at %@"), stamp)
+        case .weeklyReserve:
+            guard let stamp else { return L("All accounts are paused by the weekly reserve") }
+            return String(format: L("All accounts are paused by the weekly reserve — reset at %@"), stamp)
+        case .mixed:
+            guard let stamp else { return L("All accounts are paused") }
+            return String(format: L("All accounts are paused — nearest reset at %@"), stamp)
+        case .exhausted:
+            guard let stamp else { return L("Quota is exhausted") }
+            return String(format: L("Quota is exhausted — reset at %@"), stamp)
         }
     }
 }

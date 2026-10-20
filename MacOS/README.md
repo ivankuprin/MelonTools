@@ -1,31 +1,20 @@
 # Melon Tools
 
-A native macOS cockpit for the **Fleet** CLI and the **Codex account pool**.
+A native macOS cockpit for the **Codex account pool**, model providers and **scheduled model tasks**.
 Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Melon Tools                                                │
 │                                                             │
-│  Codex            Fleet                App                  │
-│  ├─ Accounts      ├─ Fleet Status      └─ Settings          │
-│  ├─ API Service   ├─ Doctor                                 │
-│  ├─ Providers     ├─ Fleet Config                           │
-│  ├─ Composer      ├─ Results                                │
-│  └─ Instances     ├─ Call Unit                              │
-│                   └─ Project Rules                          │
+│  Codex            Scheduler            App                  │
+│  ├─ Accounts      ├─ Tasks             └─ Settings          │
+│  ├─ API Service   ├─ Run now                                │
+│  ├─ Providers     ├─ History                                │
+│  ├─ Composer      └─ Results                                │
+│  └─ Instances                                               │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-## What's new in 1.7.4 «Codex catalog compatibility»
-
-- **Codex catalog schema restored.** Generated catalogs now include the required
-  model instruction fields and `experimental_supported_tools`. The app reads
-  local model metadata from `~/.codex/models_cache.json` and falls back safely
-  when it is unavailable. Private prompt text is never bundled with the app.
-- **Manual Apply.** Catalog application is explicit again; Apply and
-  Apply-and-relaunch work with current Codex builds. Image-input support from
-  1.7.1 is retained.
 
 ## What's new in 1.6.3 «Security and data safety»
 
@@ -343,26 +332,18 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 
 ## What it does
 
-### Fleet (melon-fleet integration)
-The app drives the `melon-fleet` CLI (Node.js) and reads its live data:
+### Scheduler
+A small, local task scheduler that runs while Melon Tools is open:
 
-- **Fleet Status** — live status feed (`~/.melon-fleet/status-*.json`) and the
-  append-only log (`fleet-log.ndjson`) with per-call usage.
-- **Doctor** — parses `melon-fleet doctor` into per-unit sections with
-  status inference; raw output toggle; optional `--probe-models` / `--probe-sandbox`.
-- **Fleet Config** — every key of `fleet.config.json` as editable rows; writes go
-  through `melon-fleet set` (the CLI's own validation).
-- **Results** — the full result spool (`~/.melon-fleet/results/<unit>/`), parsed
-  headers, full answer body, copy to clipboard.
-- **Call Unit** — invoke any unit tool (`codex_research`, `gemini_deep_research`,
-  `grok_code_review`, …) via `melon-fleet call` with JSON args, streamed output,
-  and exit-code semantics (2 = tool answered with an error).
-- **Project Rules** — preview or install the fleet operating rules
-  (`.claude/rules`, agents, skills, guard hook) into a project.
-
-The `melon-fleet` source tree is embedded in the app bundle, so no separate
-install is needed. Node.js (≥ 20) must be present — the app detects it and shows
-the exact hint if it is missing.
+- **Tasks** — name, prompt, model (from the local gateway: pool, OpenCode,
+  OpenRouter, Claude, Antigravity), optional reasoning effort and interval.
+- **Run now / enable toggle** — manual runs always work; enabled tasks run on
+  their interval through the local gateway (`/v1/chat/completions`).
+- **Results and history** — the last result, duration and tokens per task, with
+  bounded history (20 entries per task, 200 in total) in
+  `~/Library/Application Support/MelonTools/scheduler.json` (0600).
+- **No background agent** — tasks run only while the app process is alive; a
+  missed run fires once after wake/relaunch, never as a burst.
 
 ### Codex
 Re-implemented from scratch on top of the official OAuth/API endpoints:
@@ -392,14 +373,13 @@ Re-implemented from scratch on top of the official OAuth/API endpoints:
 |--------------|---------------------------------------|-------------------------|
 | macOS 14+    | App baseline                          | —                       |
 | Apple Silicon| arm64 build                           | —                       |
-| Node.js ≥ 20 | Fleet module (runs the fleet CLI)     | `brew install node`     |
 | Codex CLI    | Instances (optional)                  | `npm i -g @openai/codex`|
 | Codex app    | Composer Chips (optional)             | openai.com/codex        |
 
 ## Build from source
 
 Prerequisites: Xcode (27+), XcodeGen (`brew install xcodegen`), Go 1.22+
-(`brew install go`), Node.js ≥ 20. `create-dmg` (`brew install create-dmg`)
+(`brew install go`). `create-dmg` (`brew install create-dmg`)
 is optional — the script falls back to a plain `hdiutil` image.
 
 ```bash
@@ -440,9 +420,9 @@ app/                          XcodeGen project + Swift sources
   MelonTools/
     Core/                     AppState, ShellService (Process wrapper)
     Design/                   MTTheme tokens, MTComponents
-    Fleet/                    Fleet models, CLI wrapper, live store
+    Scheduler/                Task models, store, gateway runner
     Codex/                    Accounts, OAuth/quota service, gateway service
-    Views/                    Dashboard, Fleet views, Codex views, Settings
+    Views/                    Dashboard, Scheduler, Codex views, Settings
   Resources/                  AppIcon.icns, Logo.png (bundled artwork)
 scripts/
   assets/                     icon + logo sources used by build.sh
@@ -450,7 +430,6 @@ scripts/
   make-icon.swift             legacy icon generator (unused)
   test-gateway.py             smoke-test for the gateway config shape
 _sources/
-  melon-fleet/             embedded at build time (MIT)
   CLIProxyAPI/                gateway engine (MIT)
 build/                        artifacts (gateway binary, icon, dmg)
 ```
@@ -463,11 +442,10 @@ build/                        artifacts (gateway binary, icon, dmg)
 | Gateway config        | `~/Library/Application Support/MelonTools/gateway/config.yaml` |
 | Gateway account files | `…/gateway/auths/codex-*.json`                    |
 | Instances             | `…/MelonTools/instances/<name>/codex-home/`       |
-| Fleet data            | `~/.melon-fleet` (status, log, results, config)   |
+| Scheduler tasks       | `…/MelonTools/scheduler.json` (0600)              |
 
 ## Licensing notes
 
-- `melon-fleet` is embedded as source (MIT).
 - The gateway engine is **CLIProxyAPI** (MIT), built from source.
 - The Codex flows are a clean-room re-implementation of visible behavior
   against public endpoints; no cockpit-tools code was copied.
@@ -477,5 +455,4 @@ build/                        artifacts (gateway binary, icon, dmg)
 
 | Component      | Version | Commit                                    |
 |----------------|---------|-------------------------------------------|
-| melon-fleet | 1.7.1   | `318529e7dff40a3996edcb4d39893b53fb273950` |
 | CLIProxyAPI    | v8 tree | `e7003d2a3e2cee2d45f9950c067bf8e02a2ac0f8` |

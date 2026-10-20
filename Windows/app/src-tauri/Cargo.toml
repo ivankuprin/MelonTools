@@ -1,6 +1,6 @@
 [package]
 name = "melontools"
-version = "1.7.4"
+version = "2.0.2"
 description = "Melon Tools for Windows — Codex account pool and local API gateway"
 edition = "2021"
 rust-version = "1.77"

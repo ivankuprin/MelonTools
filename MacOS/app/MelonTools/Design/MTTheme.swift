@@ -159,7 +159,7 @@ extension Color {
     }
 }
 
-/// Status semantic used across fleet doctor, codex quotas, gateway health.
+/// Status semantic used across provider diagnostics, codex quotas, gateway health.
 enum MTStatus: String, Codable {
     case ok, warn, error, absent, running, idle, info
     var color: Color {

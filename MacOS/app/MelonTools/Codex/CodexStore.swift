@@ -140,6 +140,96 @@ enum QuotaNotificationPolicy {
     }
 }
 
+// MARK: - Pool pause (preflight banner)
+
+/// Pool-wide pause state: the pool is not empty and the routing planner pauses
+/// every account. Pure, so the banner text, the reset countdown and the lift
+/// action share one classification.
+struct CodexPoolPauseSummary: Equatable {
+    enum Reason: Equatable {
+        /// Every pause is caused by the hourly reserve.
+        case hourlyReserve
+        /// Every pause is caused by the weekly reserve.
+        case weeklyReserve
+        /// Hourly/weekly reserves and/or exhausted windows are mixed.
+        case mixed
+        /// Every blocked window has no quota left; no reserve can be lifted.
+        case exhausted
+    }
+
+    /// Blocked account id → planner cause.
+    let causes: [String: CodexBlockCause]
+    let reason: Reason
+    /// Earliest reset of the windows that caused the pause.
+    let resetAt: Date?
+    /// At least one pause is a positive reserve with quota still left.
+    let canLift: Bool
+
+    /// Builds the summary when (and only when) every account is paused.
+    static func make(accounts: [CodexAccount]) -> CodexPoolPauseSummary? {
+        guard !accounts.isEmpty else { return nil }
+        let resolution = CodexRoutingPlanner.resolve(
+            accounts: accounts,
+            strategy: .auto,
+            manualOrder: []
+        )
+        guard resolution.blocked.count == accounts.count else { return nil }
+
+        var causes: [String: CodexBlockCause] = [:]
+        for account in accounts {
+            guard let cause = CodexRoutingPlanner.blockCause(account) else { return nil }
+            causes[account.id] = cause
+        }
+
+        let reserveCauses = causes.values.filter {
+            $0 == .hourlyReserve || $0 == .weeklyReserve
+        }
+        let reason: Reason
+        if reserveCauses.isEmpty {
+            reason = .exhausted
+        } else if reserveCauses.count == causes.count,
+                  causes.values.allSatisfy({ $0 == .hourlyReserve }) {
+            reason = .hourlyReserve
+        } else if reserveCauses.count == causes.count,
+                  causes.values.allSatisfy({ $0 == .weeklyReserve }) {
+            reason = .weeklyReserve
+        } else {
+            reason = .mixed
+        }
+
+        var resets: [Date] = []
+        var canLift = false
+        for account in accounts {
+            guard let cause = causes[account.id], let quota = account.quota else { continue }
+            switch cause {
+            case .hourlyReserve:
+                if let reset = quota.hourlyResetAt { resets.append(reset) }
+                if (quota.hourlyRemainingPercent ?? 0) > 0,
+                   (account.hourlyReservePercent ?? 0) > 0 {
+                    canLift = true
+                }
+            case .weeklyReserve:
+                if let reset = quota.weeklyResetAt { resets.append(reset) }
+                if (quota.weeklyRemainingPercent ?? 0) > 0,
+                   (account.weeklyReservePercent ?? 0) > 0 {
+                    canLift = true
+                }
+            case .hourlyExhausted:
+                if let reset = quota.hourlyResetAt { resets.append(reset) }
+            case .weeklyExhausted:
+                if let reset = quota.weeklyResetAt { resets.append(reset) }
+            }
+        }
+
+        return CodexPoolPauseSummary(
+            causes: causes,
+            reason: reason,
+            resetAt: resets.min(),
+            canLift: canLift
+        )
+    }
+}
+
 /// Codex account management: import, switch, quotas — one shared store for the whole app.
 /// Account vault lives in ~/Library/Application Support/MelonTools/codex/accounts.json (0600).
 @MainActor
@@ -275,6 +365,50 @@ final class CodexStore: ObservableObject {
     /// what the gateway’s “fill-first” mode uses first.
     func effectivePriorities() -> [String: Int] {
         CodexRoutingPlanner.priorities(from: routingResolution().orderedIds)
+    }
+
+    /// Banner state: non-nil only while the pool is non-empty and every
+    /// account is paused by the routing planner.
+    func poolPauseSummary() -> CodexPoolPauseSummary? {
+        CodexPoolPauseSummary.make(accounts: accounts)
+    }
+
+    /// Lifts reserve pauses that still have quota left: clears the reserve
+    /// that causes each pause, saves the vault, hot-syncs a running gateway
+    /// and refreshes quotas. Accounts whose window is at 0 stay paused.
+    func liftPoolPause() async {
+        guard let summary = poolPauseSummary(), summary.canLift else { return }
+        var changed = false
+        for (id, cause) in summary.causes {
+            guard let index = accounts.firstIndex(where: { $0.id == id }) else { continue }
+            switch cause {
+            case .hourlyReserve:
+                guard (accounts[index].quota?.hourlyRemainingPercent ?? 0) > 0 else { continue }
+                accounts[index].hourlyReservePercent = nil
+                changed = true
+            case .weeklyReserve:
+                guard (accounts[index].quota?.weeklyRemainingPercent ?? 0) > 0 else { continue }
+                accounts[index].weeklyReservePercent = nil
+                changed = true
+            case .hourlyExhausted, .weeklyExhausted:
+                continue
+            }
+        }
+        guard changed else { return }
+
+        save()
+
+        let priorities = effectivePriorities()
+        let gateway = CodexGatewayService.shared
+        if gateway.isRunning {
+            gateway.syncAccountsLive(accounts, priorities: priorities)
+            appliedRoutingSignature = routingSignature(priorities: priorities)
+        } else {
+            appliedRoutingSignature = ""
+        }
+
+        await refreshAllQuotas()
+        applyRoutingIfNeeded(reason: L("pool pause lifted"))
     }
 
     /// Saves per-account routing preferences and re-applies the pool order.

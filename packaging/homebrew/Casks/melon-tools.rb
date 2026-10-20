@@ -1,10 +1,10 @@
 cask "melon-tools" do
-  version "1.7.4"
-  sha256 "6c27060e7b8959c1078740f400e71088fff8f8149895a731e118e866d78c4e2c"
+  version "1.6.4"
+  sha256 "24bf171292b77722a82d0cf98ecd5a1930225bdd86ae23aa0e6b23825a3febdc"
 
   url "https://github.com/ivankuprin/MelonTools/releases/download/v#{version}/MelonTools-#{version}.dmg"
   name "Melon Tools"
-  desc "Codex account pool, local gateway, and Fleet workflows"
+  desc "Codex account pool, local gateway, and scheduled model tasks"
   homepage "https://github.com/ivankuprin/MelonTools"
 
   livecheck do

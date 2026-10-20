@@ -1,30 +1,31 @@
-# Melon Tools 1.7.4
+# Melon Tools 2.0.2
 
-- **1.7.1 route behavior restored.** Automatic catalog apply, the relaunch
-  banner, hourly model-list refresh and per-model reasoning/tool capability
-  overrides are removed; Apply is manual again. Image support from 1.7.1 is
-  kept.
-- **Codex catalog schema is now valid.** At generation time the app reads
-  `~/.codex/models_cache.json` and injects the required
-  `model_messages.instructions_template` (or `base_instructions`) and
-  `experimental_supported_tools` into every entry, with a safe fallback. Prompt
-  text is never bundled in the app; it stays local to the generated catalog.
-- Apply/Apply-and-relaunch are safe again with current Codex builds.
+- **Clear pool-pause banner.** When every Codex account is paused, Accounts and
+  Providers now explain why and show the nearest reset: hourly reserve, weekly
+  reserve, mixed, or fully exhausted (no action offered).
+- **«Снять паузу».** If accounts still have quota left, the button (with a
+  confirmation warning) clears only the reserve that caused the pause, saves the
+  vault, syncs the running gateway and refreshes quotas.
 
 ## Downloads
 
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.7.4.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows x64 app](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-1.7.4-win-x64.exe) — WebView2 Runtime required.
-
-Both files include SHA-256 checksum assets on the release page.
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.2.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.2-setup.exe) — WebView2 Runtime required; custom install path.
+- [Windows portable exe](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.0.2-win-x64.exe)
 
 ## Earlier fixes
 
+- **2.0.1:** Windows installer with path selection; fixed welcome modal; scheduler polish.
+- **2.0.0:** Fleet removed; task scheduler with model selection added.
+- **1.7.4:** Codex catalog schema fix (instructions + experimental tools from
+  the local cache), 1.7.1 route behavior restored, images supported.
 - **1.7.3:** Preserved `experimental_supported_tools` in generated catalogs.
-- **1.7.2:** Automatic catalog apply, relaunch banner, and per-model capability
-  metadata (superseded by 1.7.4).
-- **1.7.1:** Image support for provider models, with an Images toggle and
-  backfill for saved models.
+- **1.7.2:** (superseded) automatic catalog apply and capability metadata.
+- **1.7.1:** Images work for provider models.
+- **1.7.2:** Automatic catalog apply + relaunch banner; per-model reasoning/tool
+  capabilities; hourly model-list refresh on macOS.
+- **1.7.1:** Images work for provider models (catalog declares text+image for
+  vision models, Images toggle, backfill for saved models).
 - **1.7.0:** Security (DPAPI v2, CDP gating, CSP extras, SHA-pinned CI),
   reliability (6h update checks, macOS rollback), UX (onboarding, diagnostics,
   quota sparklines, low-quota notifications), packaging/docs.

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 PackageIdentifier: ivankuprin.MelonTools
-PackageVersion: 1.7.4
+PackageVersion: 1.6.4
 PackageLocale: en-US
 Publisher: Ivan Kuprin
 PublisherUrl: https://github.com/ivankuprin
@@ -12,19 +12,19 @@ PackageUrl: https://github.com/ivankuprin/MelonTools
 License: MIT
 LicenseUrl: https://github.com/ivankuprin/MelonTools/blob/main/LICENSE
 Copyright: Copyright (c) 2026 Melon Tools
-ShortDescription: Codex account pool, local OpenAI-compatible gateway, and Fleet workflows.
+ShortDescription: Codex account pool, local OpenAI-compatible gateway, and scheduled model tasks.
 Description: >-
   Melon Tools is a desktop companion for Codex accounts and model providers.
   It keeps ChatGPT accounts in a local vault, runs a loopback OpenAI-compatible
   gateway, connects Claude, Google Antigravity, OpenRouter, and OpenCode, and
   shows account and quota chips inside the Codex composer. The Windows build
-  also includes core Fleet CLI views.
+  also includes the task scheduler.
 Tags:
   - codex
   - openai
   - gateway
   - developer-tools
   - ai
-ReleaseNotesUrl: https://github.com/ivankuprin/MelonTools/releases/tag/v1.7.4
+ReleaseNotesUrl: https://github.com/ivankuprin/MelonTools/releases/tag/v1.6.4
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

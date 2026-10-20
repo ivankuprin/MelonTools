@@ -374,6 +374,31 @@ table.diag td:first-child { font-weight: 600; white-space: nowrap; }
   overflow: auto;
 }
 .modal-card h2 { margin: 0 0 var(--s2); font-size: 15px; }
+
+/* Onboarding card header: kicker + title on the left, close button right. */
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+.onboarding-close {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  background: var(--soft);
+  color: var(--text2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.onboarding-close:hover { color: var(--text); border-color: var(--gold); }
 .notes {
   white-space: pre-wrap;
   font-size: 12px;
@@ -385,4 +410,46 @@ table.diag td:first-child { font-weight: 600; white-space: nowrap; }
   border-radius: var(--r-small);
   padding: 10px 12px;
   margin-top: 10px;
+}
+
+/* ---------- Scheduler ---------- */
+
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  padding: 7px 9px;
+  outline: none;
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+}
+textarea:focus { border-color: var(--gold); }
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text2);
+}
+.task-meta .val { color: var(--text); }
+
+.result-view {
+  margin-top: var(--s3);
+  padding: 10px 12px;
+  border-radius: var(--r-small);
+  background: var(--soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+  user-select: text;
 }

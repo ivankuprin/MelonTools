@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
 PackageIdentifier: ivankuprin.MelonTools
-PackageVersion: 1.7.4
+PackageVersion: 1.6.4
 InstallerLocale: en-US
 MinimumOSVersion: 10.0.17763.0
 Architecture: x64
@@ -10,8 +10,8 @@ Commands:
 Installers:
   - Architecture: x64
     InstallerType: portable
-    InstallerUrl: https://github.com/ivankuprin/MelonTools/releases/download/v1.7.4/MelonTools-1.7.4-win-x64.exe
-    InstallerSha256: 4F5DCBB158A9C600DEA90C26B6695281B1AB65F38EBA6DEF26EBE5FC3078B810
+    InstallerUrl: https://github.com/ivankuprin/MelonTools/releases/download/v1.6.4/MelonTools-1.6.4-win-x64.exe
+    InstallerSha256: C58A2FB6472EC78D50BCEB948C6D60A29637717AB5658DE9FE01C20B472B4385
     Commands:
       - melontools
 ManifestType: installer
