@@ -11,6 +11,8 @@ permissions:
 jobs:
   macos:
     name: macOS DMG
+    env:
+      HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERT_P12 != '' && secrets.APPLE_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
     runs-on: macos-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -51,7 +53,7 @@ jobs:
       # Signing is optional. The job must not fail when the repository has no
       # Apple secrets yet: it then publishes the usual ad-hoc signed DMG.
       - name: Import the Apple signing certificate
-        if: ${{ secrets.APPLE_CERT_P12 != '' && secrets.APPLE_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+        if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
         env:
           APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -72,7 +74,7 @@ jobs:
 
       - name: Sign and notarize the DMG
         id: sign
-        if: ${{ secrets.APPLE_CERT_P12 != '' && secrets.APPLE_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+        if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -105,6 +107,8 @@ jobs:
 
   windows:
     name: Windows executable
+    env:
+      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERT_PFX != '' && secrets.WINDOWS_CERT_PASSWORD != '' }}
     runs-on: windows-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -152,7 +156,7 @@ jobs:
 
       - name: Sign the executable
         id: sign
-        if: ${{ secrets.WINDOWS_CERT_PFX != '' && secrets.WINDOWS_CERT_PASSWORD != '' }}
+        if: ${{ env.HAS_WINDOWS_CERT == 'true' }}
         shell: pwsh
         env:
           WINDOWS_CERT_PFX: ${{ runner.temp }}\melontools-cert.pfx
