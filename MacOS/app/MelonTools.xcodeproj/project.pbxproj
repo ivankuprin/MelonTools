@@ -37,6 +37,7 @@
 		60F62DEF12F331D2025F9A38 /* ProviderDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185C46A347C8DBA9271F1A57 /* ProviderDiagnostics.swift */; };
 		620CDA5833964937BD9EB056 /* MTScrollMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49370FA7B0D3BE7C9C77DD3F /* MTScrollMemory.swift */; };
 		67FCC88A8AE0E1767FBF9B1B /* MelonToolsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5F2432BAABE944A58797826 /* MelonToolsApp.swift */; };
+		6B4D1C41EB09C3A285A8ED8A /* BackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1BB95213E754D8D3EF63DA /* BackupTests.swift */; };
 		6D0D6F32C375BDA877E61CE8 /* MTComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACD01EC0F82F6F7D0B4D401 /* MTComponents.swift */; };
 		70092A4A70BBD78D1B57CAED /* TerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FB7C6A30E71A442B95A2E9 /* TerminalLauncher.swift */; };
 		74ED531633757BFE48EB4A23 /* CodexControlCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D186C2A1693BC0D3B187FF3 /* CodexControlCard.swift */; };
@@ -44,6 +45,7 @@
 		798017E7C1267EE56940D2F4 /* QuotaHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72018307FC3E927D21E062D1 /* QuotaHistoryTests.swift */; };
 		94D871780AD7A084BDEC52BA /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44B370D20064EDBC82BF5CDA /* L10n.swift */; };
 		A5B3029C23DB0CB85B948FC6 /* ClaudeAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63C34F0C33E0120C3357320 /* ClaudeAuthService.swift */; };
+		A6F46806E903C83442A84E8F /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1DAD6CCDB82CBCEB8A2405C /* BackupService.swift */; };
 		A77D820996E3E1B0B11ECCB4 /* UpdateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95A0F4F35FD6AB8669B2F08 /* UpdateSheet.swift */; };
 		AAD2AD17F425ABFC31E3EA77 /* SchedulerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1966C2E2515E0EF037D43F /* SchedulerModels.swift */; };
 		AB2680DD5873DFCF56CB5D39 /* CodexModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 747248C3C8AE60381B934643 /* CodexModels.swift */; };
@@ -125,11 +127,13 @@
 		B1C69B678951C7A01AABD656 /* CodexRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRouting.swift; sourceTree = "<group>"; };
 		B5D5481EBF3A71A36794564E /* composer-chips.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "composer-chips.js"; sourceTree = "<group>"; };
 		BE57D8A8328B28070AE73B3C /* CodexRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRoutingTests.swift; sourceTree = "<group>"; };
+		C1DAD6CCDB82CBCEB8A2405C /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
 		C1EE785A557ED470937D1D38 /* CodexComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexComposerView.swift; sourceTree = "<group>"; };
 		C81F865BDC52620AD9ED0191 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		D5F2432BAABE944A58797826 /* MelonToolsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MelonToolsApp.swift; sourceTree = "<group>"; };
 		D9E8EF91D2DDDB89B093FB19 /* UpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterTests.swift; sourceTree = "<group>"; };
 		D9F5A5F4EAADF5CEAB6FB641 /* ComposerBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerBridge.swift; sourceTree = "<group>"; };
+		DB1BB95213E754D8D3EF63DA /* BackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupTests.swift; sourceTree = "<group>"; };
 		E80C892F082A1D4524173B74 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		E8FB7C6A30E71A442B95A2E9 /* TerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLauncher.swift; sourceTree = "<group>"; };
 		F65439F46A80ADE0BE55882F /* SchedulerRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulerRunner.swift; sourceTree = "<group>"; };
@@ -249,6 +253,7 @@
 			isa = PBXGroup;
 			children = (
 				94A12DE6C0489C0163639BCE /* AntigravityAuthTests.swift */,
+				DB1BB95213E754D8D3EF63DA /* BackupTests.swift */,
 				2F826140BEDB6A5D7ABAE63A /* ClaudeAuthTests.swift */,
 				3AEA90D89352DD60C34910A8 /* CodexAuthFileTests.swift */,
 				47529E0DB527DA9405074E30 /* CodexModelCatalogTests.swift */,
@@ -276,6 +281,7 @@
 			isa = PBXGroup;
 			children = (
 				55304F692A547242AA3220F1 /* AppState.swift */,
+				C1DAD6CCDB82CBCEB8A2405C /* BackupService.swift */,
 				9E4F7622B54B974672276242 /* SecureFile.swift */,
 				6122C219EB9D610DECD893A7 /* ShellService.swift */,
 				E8FB7C6A30E71A442B95A2E9 /* TerminalLauncher.swift */,
@@ -403,6 +409,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3EC5FC54DCC7A79071678844 /* AntigravityAuthTests.swift in Sources */,
+				6B4D1C41EB09C3A285A8ED8A /* BackupTests.swift in Sources */,
 				0A6FD711E033E51224DD1A5E /* ClaudeAuthTests.swift in Sources */,
 				FD1B231CB13438110C05CB2B /* CodexAuthFileTests.swift in Sources */,
 				5F0462D21FD58B3E437252E6 /* CodexModelCatalogTests.swift in Sources */,
@@ -421,6 +428,7 @@
 			files = (
 				06E6BC70649ECDFABF6C0745 /* AntigravityAuthService.swift in Sources */,
 				0C6967B388B7D4D4B1EA679A /* AppState.swift in Sources */,
+				A6F46806E903C83442A84E8F /* BackupService.swift in Sources */,
 				E7B641E90F70BD1A91F3F232 /* CDPSession.swift in Sources */,
 				A5B3029C23DB0CB85B948FC6 /* ClaudeAuthService.swift in Sources */,
 				B2FB786CFC1FFB46F4EBB75D /* CodexAPIView.swift in Sources */,
@@ -655,7 +663,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.3;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.app;
 				SDKROOT = macosx;
 			};
@@ -673,7 +681,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.3;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.melontools.app;
 				SDKROOT = macosx;
 			};

@@ -43,6 +43,32 @@ pub fn settings_path() -> PathBuf {
     appdata_dir().join("settings.json")
 }
 
+/// Portable model-source definitions (shared with the macOS layout).
+pub fn model_sources_path() -> PathBuf {
+    appdata_dir().join("model-sources.json")
+}
+
+/// Timestamp of the last successful backup export.
+pub fn backup_state_path() -> PathBuf {
+    appdata_dir().join("backup-state.json")
+}
+
+/// Default export directory: `%USERPROFILE%\Downloads`, with the appdata
+/// directory as the last-resort fallback when the profile is unknown.
+pub fn downloads_dir() -> PathBuf {
+    if let Ok(profile) = env::var("USERPROFILE") {
+        if !profile.trim().is_empty() {
+            return PathBuf::from(profile).join("Downloads");
+        }
+    }
+    if let Ok(home) = env::var("HOME") {
+        if !home.trim().is_empty() {
+            return PathBuf::from(home).join("Downloads");
+        }
+    }
+    appdata_dir()
+}
+
 pub fn codex_home() -> PathBuf {
     if let Ok(profile) = env::var("USERPROFILE") {
         return PathBuf::from(profile).join(".codex");

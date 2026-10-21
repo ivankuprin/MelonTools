@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod antigravity;
+mod backup;
 mod bridge;
 mod claude;
 mod codex_route;
@@ -739,6 +740,44 @@ async fn scheduler_run_now(
 /// Model ids served by the running gateway, grouped by id prefix. The picker
 /// stores the exact id, so an unavailable gateway is a hard error the UI shows.
 #[tauri::command]
+async fn scheduler_cancel() -> Result<Value, String> {
+    Ok(scheduler::cancel())
+}
+
+// MARK: - Backup
+
+#[tauri::command]
+async fn backup_export(password: String) -> Result<Value, String> {
+    backup::export(&password)
+}
+
+#[tauri::command]
+async fn backup_import(
+    state: State<'_, AppState>,
+    content: String,
+    password: String,
+) -> Result<Value, String> {
+    let result = backup::import(&content, &password)?;
+    // The restored settings.json may use another port/key. The running app
+    // must not keep the pre-restore snapshot in memory.
+    let restored = settings::load();
+    if let Ok(mut guard) = state.settings.lock() {
+        *guard = restored;
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+async fn backup_last() -> Result<Value, String> {
+    Ok(serde_json::json!({ "createdAt": backup::last_backup_at() }))
+}
+
+#[tauri::command]
+async fn scheduler_queue() -> Result<Value, String> {
+    Ok(scheduler::queue_snapshot())
+}
+
+#[tauri::command]
 async fn scheduler_models(state: State<'_, AppState>) -> Result<Value, String> {
     let settings = state.settings();
     scheduler::models(settings.port, &settings.api_key).await
@@ -1410,7 +1449,12 @@ fn main() {
             scheduler_save,
             scheduler_delete,
             scheduler_run_now,
+            scheduler_cancel,
+            scheduler_queue,
             scheduler_models,
+            backup_export,
+            backup_import,
+            backup_last,
             instances_list,
             instance_create,
             instance_delete,

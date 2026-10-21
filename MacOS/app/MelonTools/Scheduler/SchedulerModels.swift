@@ -39,7 +39,7 @@ enum SchedulerScheduleKind: String, Codable, CaseIterable, Identifiable {
 }
 
 enum SchedulerTaskStatus: String, Codable, CaseIterable {
-    case never, ok, error, running
+    case never, ok, error, running, cancelled
 
     var title: String {
         switch self {
@@ -47,6 +47,7 @@ enum SchedulerTaskStatus: String, Codable, CaseIterable {
         case .ok: return L("ok")
         case .error: return L("error")
         case .running: return L("running")
+        case .cancelled: return L("cancelled")
         }
     }
 }
@@ -63,6 +64,21 @@ struct SchedulerTask: Codable, Identifiable, Equatable {
     var prompt: String
     var model: String
     var reasoningEffort: String?
+    /// Optional working directory for repository-aware tasks.
+    var workingDirectory: String?
+    /// Append bounded `git status`, log and diff output to the prompt.
+    var includeGitContext: Bool
+    /// Optional completion cap forwarded as `max_tokens`.
+    var maxTokens: Int?
+    /// Optional cap on tokens spent by this task per calendar day. When
+    /// today's history reaches it, the run is skipped without a request.
+    var dailyTokenLimit: Int?
+    /// Failures retried before the normal schedule resumes.
+    var retryLimit: Int
+    /// Delay between retries, in minutes.
+    var retryDelayMinutes: Int
+    /// Current retry attempt, reset after a successful run.
+    var retryAttempt: Int
     var intervalMinutes: Int
     var scheduleKind: SchedulerScheduleKind
     var cronExpression: String?
@@ -82,6 +98,8 @@ struct SchedulerTask: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, prompt, model, reasoningEffort, intervalMinutes
+        case workingDirectory, includeGitContext, maxTokens, retryLimit, retryDelayMinutes, retryAttempt
+        case dailyTokenLimit
         case scheduleKind, cronExpression, timeZoneIdentifier
         case enabled, createdAt, nextRunAt, lastRunAt, lastStatus, lastError
         case lastResult, lastDurationMs, lastTokens
@@ -93,6 +111,13 @@ struct SchedulerTask: Codable, Identifiable, Equatable {
         prompt: String = "",
         model: String = "",
         reasoningEffort: String? = nil,
+        workingDirectory: String? = nil,
+        includeGitContext: Bool = false,
+        maxTokens: Int? = nil,
+        dailyTokenLimit: Int? = nil,
+        retryLimit: Int = 0,
+        retryDelayMinutes: Int = 5,
+        retryAttempt: Int = 0,
         intervalMinutes: Int = SchedulerLimits.defaultIntervalMinutes,
         scheduleKind: SchedulerScheduleKind = .interval,
         cronExpression: String? = nil,
@@ -112,6 +137,13 @@ struct SchedulerTask: Codable, Identifiable, Equatable {
         self.prompt = prompt
         self.model = model
         self.reasoningEffort = reasoningEffort
+        self.workingDirectory = workingDirectory
+        self.includeGitContext = includeGitContext
+        self.maxTokens = maxTokens
+        self.dailyTokenLimit = dailyTokenLimit
+        self.retryLimit = retryLimit
+        self.retryDelayMinutes = retryDelayMinutes
+        self.retryAttempt = retryAttempt
         self.intervalMinutes = intervalMinutes
         self.scheduleKind = scheduleKind
         self.cronExpression = cronExpression
@@ -134,6 +166,13 @@ struct SchedulerTask: Codable, Identifiable, Equatable {
         prompt = try container.decode(String.self, forKey: .prompt)
         model = try container.decode(String.self, forKey: .model)
         reasoningEffort = try container.decodeIfPresent(String.self, forKey: .reasoningEffort)
+        workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
+        includeGitContext = try container.decodeIfPresent(Bool.self, forKey: .includeGitContext) ?? false
+        maxTokens = try container.decodeIfPresent(Int.self, forKey: .maxTokens)
+        dailyTokenLimit = try container.decodeIfPresent(Int.self, forKey: .dailyTokenLimit)
+        retryLimit = try container.decodeIfPresent(Int.self, forKey: .retryLimit) ?? 0
+        retryDelayMinutes = try container.decodeIfPresent(Int.self, forKey: .retryDelayMinutes) ?? 5
+        retryAttempt = try container.decodeIfPresent(Int.self, forKey: .retryAttempt) ?? 0
         intervalMinutes = try container.decode(Int.self, forKey: .intervalMinutes)
         // Unknown raw values (a newer file) fall back to interval instead of
         // failing the whole file.
@@ -172,6 +211,31 @@ struct SchedulerTask: Codable, Identifiable, Equatable {
             intervalMinutes: intervalMinutes
         )
     }
+
+    /// Context/guardrail fields are validated separately so they stay
+    /// backward-compatible with old tasks.
+    var contextValidationError: String? {
+        if let maxTokens, !(1...32_768).contains(maxTokens) {
+            return L("Max tokens must be between 1 and 32768.")
+        }
+        if let dailyTokenLimit, !(1...1_000_000).contains(dailyTokenLimit) {
+            return L("Daily token limit must be between 1 and 1000000.")
+        }
+        if !(0...10).contains(retryLimit) {
+            return L("Retry limit must be between 0 and 10.")
+        }
+        if !(1...1440).contains(retryDelayMinutes) {
+            return L("Retry delay must be between 1 and 1440 minutes.")
+        }
+        if let workingDirectory,
+           !workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !FileManager.default.fileExists(atPath: workingDirectory) {
+            return L("Working directory does not exist.")
+        }
+        return nil
+    }
+
+    var validationError: String? { scheduleValidationError ?? contextValidationError }
 
     static func scheduleValidationError(
         scheduleKind: SchedulerScheduleKind,
@@ -482,6 +546,20 @@ struct SchedulerCron: Equatable {
     }
 }
 
+/// Today's token usage for one task against its optional daily limit.
+/// Pure value: the store computes it before every manual or scheduled run.
+struct SchedulerDailyTokenUsage: Equatable {
+    var used: Int
+    var limit: Int
+
+    var isReached: Bool { used >= limit }
+
+    /// Stable, user-facing reason recorded on the task and in history.
+    var message: String {
+        String(format: L("Daily token limit reached (%d/%d)"), used, limit)
+    }
+}
+
 /// Pure scheduling decisions. Every function takes `now`, so the due policy
 /// is testable without a live clock.
 enum SchedulerPolicy {
@@ -554,6 +632,44 @@ enum SchedulerPolicy {
             if kept.count >= SchedulerLimits.historyGlobal { break }
         }
         return kept
+    }
+
+    /// Sum of `tokens` in today's history entries for one task. Entries from
+    /// other tasks and other calendar days are ignored; missing tokens count
+    /// as zero. The calendar is injected so the day boundary is testable.
+    static func tokensUsedToday(
+        taskID: String,
+        history: [SchedulerHistoryEntry],
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Int {
+        history.reduce(0) { total, entry in
+            guard entry.taskId == taskID else { return total }
+            let date = Date(timeIntervalSince1970: entry.at)
+            guard calendar.isDate(date, inSameDayAs: now) else { return total }
+            return total + max(0, entry.tokens ?? 0)
+        }
+    }
+
+    /// `nil` when the task has no daily limit. Otherwise reports today's
+    /// usage and the limit; the caller must skip the request when
+    /// `isReached` is true.
+    static func dailyTokenUsage(
+        task: SchedulerTask,
+        history: [SchedulerHistoryEntry],
+        now: Date,
+        calendar: Calendar = .current
+    ) -> SchedulerDailyTokenUsage? {
+        guard let limit = task.dailyTokenLimit else { return nil }
+        return SchedulerDailyTokenUsage(
+            used: tokensUsedToday(
+                taskID: task.id,
+                history: history,
+                now: now,
+                calendar: calendar
+            ),
+            limit: limit
+        )
     }
 }
 

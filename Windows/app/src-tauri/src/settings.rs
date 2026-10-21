@@ -81,14 +81,18 @@ impl Default for Settings {
 }
 
 pub fn load() -> Settings {
-    let path = paths::settings_path();
-    let raw = std::fs::read_to_string(&path).ok();
+    load_from(&paths::settings_path())
+}
+
+/// Same as [`load`] for an explicit path (backup export / tests).
+pub fn load_from(path: &std::path::Path) -> Settings {
+    let raw = std::fs::read_to_string(path).ok();
     let mut s: Settings = raw
         .as_deref()
         .and_then(|text| serde_json::from_str(text).ok())
         .unwrap_or_else(|| {
             if raw.as_deref().map(|text| !text.trim().is_empty()).unwrap_or(false) {
-                let _ = paths::quarantine(&path);
+                let _ = paths::quarantine(path);
             }
             Settings::default()
         });
@@ -107,27 +111,32 @@ pub fn load() -> Settings {
     }
     if s.api_key.is_empty() {
         s.api_key = generate_api_key();
-        let _ = save(&s);
+        let _ = save_to(path, &s);
     }
     if s.management_secret.is_empty() {
         s.management_secret = generate_management_secret();
-        let _ = save(&s);
+        let _ = save_to(path, &s);
     }
     s
 }
 
 pub fn save(s: &Settings) -> Result<(), String> {
+    save_to(&paths::settings_path(), s)
+}
+
+/// Same as [`save`] for an explicit path (backup import / tests).
+pub fn save_to(path: &std::path::Path, s: &Settings) -> Result<(), String> {
     // Secrets are encrypted on disk only; the in-memory Settings stays
     // plaintext for the engine config and management calls.
     let mut stored = s.clone();
     protect_secrets(&mut stored)?;
-    let dir = paths::appdata_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
     let data = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;
-    let path = paths::settings_path();
-    let tmp = paths::tmp_path(&path);
+    let tmp = paths::tmp_path(path);
     std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 /// The secrets stored in `settings.json`. Vault tokens use the same helpers.

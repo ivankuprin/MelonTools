@@ -100,6 +100,22 @@ struct SchedulerView: View {
                         .font(MTTheme.mono(9))
                         .foregroundStyle(MTTheme.textTertiary)
                     Spacer(minLength: 0)
+                    if store.isRunning {
+                        if let name = runningTaskName {
+                            Text(String(format: L("Running: %@"), name))
+                                .font(MTTheme.mono(9, weight: .semibold))
+                                .foregroundStyle(MTTheme.gold)
+                                .lineLimit(1)
+                        }
+                        MTSecondaryButton(
+                            title: store.isCancelling ? L("Cancelling…") : L("Cancel current"),
+                            systemImage: "xmark.circle",
+                            isLoading: store.isCancelling
+                        ) {
+                            store.cancelCurrent()
+                        }
+                        .help(L("Stop the active run and clear the queue"))
+                    }
                 }
 
                 if store.tasks.isEmpty {
@@ -161,6 +177,9 @@ struct SchedulerView: View {
                     .foregroundStyle(MTTheme.textPrimary)
                     .lineLimit(1)
                 MTStatusPill(text: isRunning ? L("running") : task.lastStatus.title, status: status)
+                if store.queuedTaskIDs.contains(task.id) {
+                    MTStatusPill(text: L("Queued"), status: .info)
+                }
                 Spacer(minLength: MTTheme.s2)
                 Toggle("", isOn: Binding(
                     get: { task.enabled },
@@ -188,6 +207,14 @@ struct SchedulerView: View {
                 Text(L("Next run") + ": " + nextRunText(task))
                     .font(MTTheme.mono(10))
                     .foregroundStyle(MTTheme.textSecondary)
+                if let dailyLimit = task.dailyTokenLimit {
+                    Text("·")
+                        .foregroundStyle(MTTheme.textTertiary)
+                    Text(String(format: L("Daily limit: %d"), dailyLimit))
+                        .font(MTTheme.mono(10))
+                        .foregroundStyle(MTTheme.textSecondary)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 0)
             }
 
@@ -215,7 +242,7 @@ struct SchedulerView: View {
                 ) {
                     Task { await store.runNow(id: task.id) }
                 }
-                .disabled(store.isRunning)
+                .help(L("Run now: queues while another task is running"))
 
                 MTSecondaryButton(title: L("Result"), systemImage: "doc.text.magnifyingglass") {
                     resultTarget = task
@@ -280,6 +307,13 @@ struct SchedulerView: View {
         return ISODate.until(Date(timeIntervalSince1970: next))
     }
 
+    /// Display name of the task behind `runningTaskID`, for the cancel
+    /// control in the tasks card header.
+    private var runningTaskName: String? {
+        guard let id = store.runningTaskID else { return nil }
+        return store.tasks.first { $0.id == id }?.name
+    }
+
     // MARK: - History
 
     private var historyCard: some View {
@@ -323,6 +357,8 @@ private extension SchedulerTaskStatus {
         case .ok: return .ok
         case .error: return .error
         case .running: return .running
+        // Cancelled by the user: distinct from both `.ok` and the gray `.never`.
+        case .cancelled: return .info
         }
     }
 }
@@ -346,6 +382,12 @@ private struct SchedulerEditorSheet: View {
     @State private var timeZoneIdentifier: String
     @State private var variableValues: [String: String]
     @State private var enabled: Bool
+    @State private var workingDirectory: String
+    @State private var includeGitContext: Bool
+    @State private var maxTokens: Int
+    @State private var dailyTokenLimitText: String
+    @State private var retryLimit: Int
+    @State private var retryDelayMinutes: Int
 
     init(task: SchedulerTask?, template: SchedulerTaskTemplate? = nil) {
         self.task = task
@@ -372,6 +414,12 @@ private struct SchedulerEditorSheet: View {
             )
         )
         _enabled = State(initialValue: task?.enabled ?? true)
+        _workingDirectory = State(initialValue: task?.workingDirectory ?? "")
+        _includeGitContext = State(initialValue: task?.includeGitContext ?? false)
+        _maxTokens = State(initialValue: task?.maxTokens ?? 0)
+        _dailyTokenLimitText = State(initialValue: task?.dailyTokenLimit.map(String.init) ?? "")
+        _retryLimit = State(initialValue: task?.retryLimit ?? 0)
+        _retryDelayMinutes = State(initialValue: task?.retryDelayMinutes ?? 5)
     }
 
     var body: some View {
@@ -427,6 +475,59 @@ private struct SchedulerEditorSheet: View {
                                     .foregroundStyle(MTTheme.textTertiary)
                             }
                         }
+                    }
+
+                    field(L("Working directory")) {
+                        HStack(spacing: MTTheme.s2) {
+                            TextField(L("Optional path for repository context"), text: $workingDirectory)
+                                .textFieldStyle(.roundedBorder)
+                                .font(MTTheme.mono(10))
+                            MTSecondaryButton(title: L("Choose…"), systemImage: "folder") {
+                                chooseWorkingDirectory()
+                            }
+                        }
+                    }
+
+                    Toggle(L("Include git status, log and diff in the prompt"), isOn: $includeGitContext)
+                        .toggleStyle(.switch)
+                        .font(MTTheme.body(11))
+
+                    HStack(spacing: MTTheme.s3) {
+                        field(L("Max tokens (0 = default)")) {
+                            TextField("", value: $maxTokens, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 90)
+                        }
+                        field(L("Retries")) {
+                            TextField("", value: $retryLimit, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 60)
+                        }
+                        field(L("Retry delay, min")) {
+                            TextField("", value: $retryDelayMinutes, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 70)
+                        }
+                    }
+
+                    field(L("Daily token limit (0 = no limit)")) {
+                        HStack(alignment: .firstTextBaseline, spacing: MTTheme.s2) {
+                            TextField("", text: $dailyTokenLimitText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(MTTheme.mono(11))
+                                .frame(width: 110)
+                            Text(L("Tokens per calendar day. The run is skipped without a request when the limit is reached."))
+                                .font(MTTheme.mono(9))
+                                .foregroundStyle(MTTheme.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }
+
+                    if let contextError {
+                        Text(contextError)
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.danger)
                     }
 
                     field(L("Model")) {
@@ -559,6 +660,49 @@ private struct SchedulerEditorSheet: View {
         )
     }
 
+    /// `nil` for empty input or `0` — the task then has no daily cap.
+    private var dailyTokenLimitValue: Int? {
+        let text = dailyTokenLimitText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let value = Int(text), value != 0 else { return nil }
+        return value
+    }
+
+    /// Empty and `0` mean "no limit"; any other value must be a whole number
+    /// in 1...1,000,000. Non-numeric text reports the same range message.
+    private var dailyTokenLimitError: String? {
+        let text = dailyTokenLimitText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        guard let value = Int(text) else {
+            return L("Daily token limit must be between 1 and 1000000.")
+        }
+        if value == 0 { return nil }
+        guard (1...1_000_000).contains(value) else {
+            return L("Daily token limit must be between 1 and 1000000.")
+        }
+        return nil
+    }
+
+    private var contextError: String? {
+        if maxTokens < 0 || maxTokens > 32_768 {
+            return L("Max tokens must be between 1 and 32768.")
+        }
+        if let dailyTokenLimitError {
+            return dailyTokenLimitError
+        }
+        if retryLimit < 0 || retryLimit > 10 {
+            return L("Retry limit must be between 0 and 10.")
+        }
+        if retryDelayMinutes < 1 || retryDelayMinutes > 1440 {
+            return L("Retry delay must be between 1 and 1440 minutes.")
+        }
+        let directory = workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !directory.isEmpty,
+           !FileManager.default.fileExists(atPath: (directory as NSString).expandingTildeInPath) {
+            return L("Working directory does not exist.")
+        }
+        return nil
+    }
+
     private var templateError: String? {
         guard task == nil, let template else { return nil }
         return SchedulerTemplates.validationError(template, values: variableValues)
@@ -574,6 +718,7 @@ private struct SchedulerEditorSheet: View {
             && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && scheduleError == nil
+            && contextError == nil
             && templateError == nil
     }
 
@@ -591,6 +736,16 @@ private struct SchedulerEditorSheet: View {
             get: { variableValues[variable] ?? "" },
             set: { variableValues[variable] = $0 }
         )
+    }
+
+    private func chooseWorkingDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            workingDirectory = url.path
+        }
     }
 
     private func save() {
@@ -611,6 +766,12 @@ private struct SchedulerEditorSheet: View {
                 reasoningEffort: selectedEffort,
                 intervalMinutes: intervalMinutes,
                 enabled: enabled,
+                workingDirectory: workingDirectory,
+                includeGitContext: includeGitContext,
+                maxTokens: maxTokens > 0 ? maxTokens : nil,
+                dailyTokenLimit: dailyTokenLimitValue,
+                retryLimit: retryLimit,
+                retryDelayMinutes: retryDelayMinutes,
                 scheduleKind: scheduleKind,
                 cronExpression: scheduleKind == .cron ? cronExpression : nil,
                 timeZoneIdentifier: normalizedTimeZone
@@ -623,6 +784,12 @@ private struct SchedulerEditorSheet: View {
                 reasoningEffort: selectedEffort,
                 intervalMinutes: intervalMinutes,
                 enabled: enabled,
+                workingDirectory: workingDirectory,
+                includeGitContext: includeGitContext,
+                maxTokens: maxTokens > 0 ? maxTokens : nil,
+                dailyTokenLimit: dailyTokenLimitValue,
+                retryLimit: retryLimit,
+                retryDelayMinutes: retryDelayMinutes,
                 scheduleKind: scheduleKind,
                 cronExpression: scheduleKind == .cron ? cronExpression : nil,
                 timeZoneIdentifier: normalizedTimeZone

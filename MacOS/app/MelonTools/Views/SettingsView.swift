@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import ServiceManagement
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject private var app: AppState
@@ -17,6 +18,12 @@ struct SettingsView: View {
     @AppStorage(DashboardWidgetKey.scheduler) private var showScheduler = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginItemError: String?
+
+    @State private var backupPassword = ""
+    @State private var backupNotice: String?
+    @State private var backupNoticeIsError = false
+    @State private var backupRefresh = 0
+    @State private var pendingImportURL: URL?
 
     var body: some View {
         ScrollView {
@@ -138,6 +145,59 @@ struct SettingsView: View {
                     }
                 }
 
+                MTCard(title: L("Backup"), systemImage: "externaldrive.badge.timemachine") {
+                    VStack(alignment: .leading, spacing: MTTheme.s3) {
+                        Text(L("Encrypted backup of the scheduler, settings, accounts with auth files and model sources. Logs and gateway keys are not included."))
+                            .font(MTTheme.mono(10))
+                            .foregroundStyle(MTTheme.textSecondary)
+                        HStack(spacing: MTTheme.s3) {
+                            Text(L("Backup password"))
+                                .font(MTTheme.mono(11))
+                                .foregroundStyle(MTTheme.textSecondary)
+                                .frame(width: 130, alignment: .leading)
+                            SecureField(L("Password"), text: $backupPassword)
+                                .textFieldStyle(.roundedBorder)
+                                .font(MTTheme.mono(11))
+                                .frame(width: 240)
+                        }
+                        HStack(spacing: MTTheme.s2) {
+                            MTPrimaryButton(title: L("Export backup…"), systemImage: "square.and.arrow.up") {
+                                exportBackup()
+                            }
+                            MTSecondaryButton(title: L("Import backup…"), systemImage: "square.and.arrow.down") {
+                                chooseBackupToImport()
+                            }
+                        }
+                        Text(lastBackupText)
+                            .font(MTTheme.mono(10))
+                            .foregroundStyle(MTTheme.textTertiary)
+                        if let backupNotice {
+                            Text(backupNotice)
+                                .font(MTTheme.mono(10))
+                                .foregroundStyle(backupNoticeIsError ? MTTheme.danger : MTTheme.ok)
+                        }
+                    }
+                }
+                .onAppear { backupRefresh += 1 }
+                .alert(
+                    L("Restore backup?"),
+                    isPresented: Binding(
+                        get: { pendingImportURL != nil },
+                        set: { if !$0 { pendingImportURL = nil } }
+                    ),
+                    presenting: pendingImportURL
+                ) { url in
+                    Button(L("Import"), role: .destructive) {
+                        pendingImportURL = nil
+                        importBackup(from: url)
+                    }
+                    Button(L("Cancel"), role: .cancel) {
+                        pendingImportURL = nil
+                    }
+                } message: { url in
+                    Text(String(format: L("The live scheduler, settings, accounts and auth files will be replaced by “%@”."), url.lastPathComponent))
+                }
+
                 MTCard(title: L("About"), systemImage: "info.circle") {
                     HStack(alignment: .center, spacing: MTTheme.s3) {
                         Image(nsImage: MelonAssets.logo)
@@ -179,6 +239,93 @@ struct SettingsView: View {
             loginItemError = L("Launch at login failed") + ": \(error.localizedDescription)"
             launchAtLogin = SMAppService.mainApp.status == .enabled
         }
+    }
+
+    // MARK: - Backup
+
+    /// Last export time. Reading `backupRefresh` ties the value to a state
+    /// the card bumps after every export/import and on appear, so the date
+    /// re-renders without a store.
+    private var lastBackupText: String {
+        _ = backupRefresh
+        guard let date = BackupService.lastBackupAt else { return L("No backup yet") }
+        return String(format: L("Last backup: %@"), date.formatted(date: .abbreviated, time: .shortened))
+    }
+
+    private func exportBackup() {
+        let password = backupPassword
+        guard !password.isEmpty else {
+            backupNoticeIsError = true
+            backupNotice = L("Enter a backup password.")
+            return
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.data, .json]
+        panel.nameFieldStringValue = "MelonTools-backup-\(Self.backupDateFormatter.string(from: Date())).melon"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // The panel may append its own allowed extension to the ".melon"
+        // default; keep the melon suffix unless the user picked another one.
+        let destination = url.pathExtension.lowercased() == "melon"
+            ? url
+            : url.deletingPathExtension().appendingPathExtension("melon")
+        do {
+            let summary = try BackupService.export(to: destination, password: password)
+            backupNoticeIsError = false
+            backupNotice = L("Backup exported") + " — " + Self.backupSummaryText(summary)
+            backupRefresh += 1
+        } catch {
+            backupNoticeIsError = true
+            backupNotice = L("Backup export failed") + ": \(error.localizedDescription)"
+        }
+    }
+
+    private func chooseBackupToImport() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.data, .json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        pendingImportURL = url
+    }
+
+    private func importBackup(from url: URL) {
+        let password = backupPassword
+        guard !password.isEmpty else {
+            backupNoticeIsError = true
+            backupNotice = L("Enter a backup password.")
+            return
+        }
+        do {
+            let summary = try BackupService.`import`(from: url, password: password)
+            backupNoticeIsError = false
+            backupNotice = L("Backup imported") + " — " + Self.backupSummaryText(summary)
+            backupRefresh += 1
+            Task { await BackupService.reloadAfterRestore() }
+        } catch {
+            backupNoticeIsError = true
+            backupNotice = L("Backup import failed") + ": \(error.localizedDescription)"
+        }
+    }
+
+    private static let backupDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static func backupSummaryText(_ summary: BackupSummary) -> String {
+        let modelSources = summary.modelSourcesIncluded ? L("included") : L("not included")
+        return String(
+            format: L("Tasks %d · history %d · accounts %d · auth files %d · model sources %@ · settings %d"),
+            summary.schedulerTasks,
+            summary.schedulerHistory,
+            summary.accounts,
+            summary.authFiles,
+            modelSources,
+            summary.settingsKeys
+        )
     }
 }
 

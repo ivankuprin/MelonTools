@@ -1,6 +1,40 @@
 import XCTest
 @testable import MelonTools
 
+/// One-shot async gate: the first request suspends until the test opens it, so
+/// a second `runNow` call observes a busy store.
+private final class SchedulerTestGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            install(continuation)
+        }
+    }
+
+    func open() {
+        lock.lock()
+        opened = true
+        let pending = waiters
+        waiters = []
+        lock.unlock()
+        pending.forEach { $0.resume() }
+    }
+
+    private func install(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        if opened {
+            lock.unlock()
+            continuation.resume()
+            return
+        }
+        waiters.append(continuation)
+        lock.unlock()
+    }
+}
+
 /// Scheduler contract tests: due policy, serial/no-burst execution, run-now,
 /// persistence, history caps and the HTTP runner. All clock-sensitive checks
 /// receive an explicit `now`; the network is replaced by an injected transport.
@@ -72,6 +106,20 @@ final class SchedulerTests: XCTestCase {
     private func seed(_ tasks: [SchedulerTask]) throws {
         let file = SchedulerFile(tasks: tasks, history: [])
         try SecureFile.write(JSONEncoder().encode(file), to: fileURL)
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2,
+        _ condition: @MainActor () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() >= deadline {
+                XCTFail("Condition not met within \(timeout)s")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
     }
 
     // MARK: - Due policy
@@ -213,6 +261,149 @@ final class SchedulerTests: XCTestCase {
         XCTAssertEqual(store.tasks[0].lastStatus, .ok)
         // A manual run of a disabled task must not arm a schedule.
         XCTAssertNil(store.tasks[0].nextRunAt)
+    }
+
+    func testSecondRunNowQueuesAndDrainsAfterTheActiveRun() async {
+        let gate = SchedulerTestGate()
+        let counter = Counter()
+        let runner = SchedulerRunner { request in
+            counter.value += 1
+            if counter.value == 1 { await gate.wait() }
+            let data = try JSONSerialization.data(withJSONObject: [
+                "choices": [["message": ["content": "done"]]],
+                "usage": ["total_tokens": 1],
+            ])
+            return (data, HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: nil
+            )!)
+        }
+        let store = makeStore(runner: runner, gatewayRunning: true)
+        let first = store.addTask(
+            name: "first",
+            prompt: "p",
+            model: "m",
+            reasoningEffort: nil,
+            intervalMinutes: 60,
+            enabled: true
+        )
+        let second = store.addTask(
+            name: "second",
+            prompt: "p",
+            model: "m",
+            reasoningEffort: nil,
+            intervalMinutes: 60,
+            enabled: false
+        )
+
+        let firstRun = Task { await store.runNow(id: first.id) }
+        await waitUntil { store.runningTaskID == first.id }
+
+        // Busy: the call returns at once and the request is queued.
+        await store.runNow(id: second.id)
+        await store.runNow(id: second.id)
+        await store.runNow(id: "missing")
+        XCTAssertEqual(store.queuedTaskIDs, [second.id], "queued ids are deduplicated")
+        XCTAssertEqual(store.tasks.first { $0.id == second.id }?.lastStatus, .never)
+
+        gate.open()
+        await firstRun.value
+
+        XCTAssertEqual(counter.value, 2, "queued run executes after the active one")
+        XCTAssertTrue(store.queuedTaskIDs.isEmpty)
+        XCTAssertNil(store.runningTaskID)
+        let queued = store.tasks.first { $0.id == second.id }
+        XCTAssertEqual(queued?.lastStatus, .ok)
+        XCTAssertFalse(queued?.enabled ?? true, "queued manual run does not enable the task")
+    }
+
+    func testCancelCurrentStopsActiveRunAndClearsQueue() async {
+        let counter = Counter()
+        let runner = SchedulerRunner { _ in
+            counter.value += 1
+            try await Task.sleep(nanoseconds: 5_000_000_000)
+            throw URLError(.badServerResponse)
+        }
+        let store = makeStore(runner: runner, gatewayRunning: true)
+        let first = store.addTask(
+            name: "cancelled",
+            prompt: "p",
+            model: "m",
+            reasoningEffort: nil,
+            intervalMinutes: 60,
+            enabled: true
+        )
+        let second = store.addTask(
+            name: "queued",
+            prompt: "p",
+            model: "m",
+            reasoningEffort: nil,
+            intervalMinutes: 60,
+            enabled: true
+        )
+
+        let run = Task { await store.runNow(id: first.id) }
+        await waitUntil { store.runningTaskID == first.id }
+
+        await store.runNow(id: second.id)
+        XCTAssertEqual(store.queuedTaskIDs, [second.id])
+
+        store.cancelCurrent()
+        XCTAssertTrue(store.queuedTaskIDs.isEmpty, "cancel clears the queue")
+        XCTAssertTrue(store.isCancelling)
+        await run.value
+
+        let updated = store.tasks.first { $0.id == first.id }
+        XCTAssertEqual(updated?.lastStatus, .cancelled)
+        XCTAssertEqual(updated?.lastError, SchedulerRunner.cancelledMessage)
+        XCTAssertNil(updated?.lastTokens)
+        XCTAssertEqual(updated?.retryAttempt, 0, "cancellation is not retried")
+        XCTAssertNotNil(updated?.nextRunAt, "normal schedule is kept")
+        XCTAssertEqual(store.history.first?.status, .cancelled)
+        XCTAssertEqual(store.history.first?.error, SchedulerRunner.cancelledMessage)
+        XCTAssertNil(store.runningTaskID)
+        XCTAssertFalse(store.isCancelling)
+        XCTAssertEqual(counter.value, 1, "the cancelled queue never drains")
+        XCTAssertEqual(store.tasks.first { $0.id == second.id }?.lastStatus, .never)
+    }
+
+    func testDailyTokenLimitBlocksTheNextRun() async throws {
+        let stub = SchedulerTask(
+            name: "budget",
+            prompt: "p",
+            model: "m",
+            dailyTokenLimit: 10,
+            intervalMinutes: 60,
+            nextRunAt: Date().addingTimeInterval(3600).timeIntervalSince1970
+        )
+        try seed([stub])
+        let counter = Counter()
+        let store = makeStore(
+            runner: okRunner(tokens: 42, counter: counter),
+            gatewayRunning: true
+        )
+        store.load()
+
+        await store.runNow(id: stub.id)
+        XCTAssertEqual(counter.value, 1)
+        XCTAssertEqual(store.history.first?.tokens, 42)
+
+        await store.runNow(id: stub.id)
+        XCTAssertEqual(counter.value, 1, "daily limit reached: no request")
+        let updated = try XCTUnwrap(store.tasks.first)
+        let expected = String(format: L("Daily token limit reached (%d/%d)"), 42, 10)
+        XCTAssertEqual(updated.lastStatus, .error)
+        XCTAssertEqual(updated.lastError, expected)
+        XCTAssertEqual(updated.lastDurationMs, 0)
+        XCTAssertNil(updated.lastTokens)
+        XCTAssertEqual(updated.retryAttempt, 0)
+        XCTAssertNotNil(updated.nextRunAt)
+        XCTAssertEqual(store.history.count, 2)
+        XCTAssertEqual(store.history[0].status, .error)
+        XCTAssertEqual(store.history[0].error, expected)
+        XCTAssertNil(store.history[0].tokens)
     }
 
     func testFailureStaysEnabledAndKeepsErrorVerbatim() async {
@@ -688,6 +879,98 @@ final class SchedulerTests: XCTestCase {
         XCTAssertEqual(task.scheduleKind, .interval)
         XCTAssertNil(task.cronExpression)
         XCTAssertNil(task.timeZoneIdentifier)
+        XCTAssertNil(task.dailyTokenLimit)
+    }
+
+    // MARK: - Context, guardrails, retry
+
+    func testRunnerIncludesRepositoryContextAndMaxTokens() async throws {
+        let repo = directory.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        func git(_ args: [String]) {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            p.arguments = args
+            p.currentDirectoryURL = repo
+            try? p.run()
+            p.waitUntilExit()
+        }
+        git(["init", "-q"])
+        git(["config", "user.email", "test@example.com"])
+        git(["config", "user.name", "Test"])
+        try "hello\n".write(to: repo.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        git(["add", "README.md"])
+        git(["commit", "-qm", "initial"])
+        try "changed\n".write(to: repo.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        var captured: [String: Any] = [:]
+        let runner = SchedulerRunner { request in
+            let body = try XCTUnwrap(request.httpBody)
+            captured = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let data = try JSONSerialization.data(withJSONObject: [
+                "choices": [["message": ["content": "ok"]]],
+                "usage": ["total_tokens": 3],
+            ])
+            return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let task = SchedulerTask(
+            name: "context",
+            prompt: "Review this",
+            model: "m",
+            workingDirectory: repo.path,
+            includeGitContext: true,
+            maxTokens: 123,
+            intervalMinutes: 60
+        )
+        let result = await runner.run(task: task, gateway: gateway)
+        XCTAssertEqual(result.status, .ok)
+        XCTAssertEqual(captured["max_tokens"] as? Int, 123)
+        let messages = try XCTUnwrap(captured["messages"] as? [[String: Any]])
+        let content = try XCTUnwrap(messages.first?["content"] as? String)
+        XCTAssertTrue(content.contains("Repository context (read-only)"))
+        XCTAssertTrue(content.contains("git status --short"))
+        XCTAssertTrue(content.contains("README.md"))
+    }
+
+    func testFailedRunRetriesBeforeNormalSchedule() async {
+        let runner = SchedulerRunner { _ in
+            throw URLError(.timedOut)
+        }
+        let store = makeStore(runner: runner, gatewayRunning: true)
+        let task = store.addTask(
+            name: "retry",
+            prompt: "p",
+            model: "m",
+            reasoningEffort: nil,
+            intervalMinutes: 60,
+            enabled: true,
+            retryLimit: 2,
+            retryDelayMinutes: 1
+        )
+        let before = Date().timeIntervalSince1970
+        await store.runNow(id: task.id)
+        let updated = store.tasks[0]
+        XCTAssertEqual(updated.retryAttempt, 1)
+        XCTAssertTrue(updated.lastError?.contains("retry 1/2") == true)
+        XCTAssertGreaterThanOrEqual(updated.nextRunAt ?? 0, before + 55)
+        XCTAssertLessThanOrEqual(updated.nextRunAt ?? 0, Date().timeIntervalSince1970 + 65)
+    }
+
+    func testPoolGuardBlocksScheduledTick() async throws {
+        let past = Date().addingTimeInterval(-60).timeIntervalSince1970
+        try seed([SchedulerTask(name: "blocked", model: "m", intervalMinutes: 60, nextRunAt: past)])
+        let counter = Counter()
+        let store = SchedulerStore(
+            fileURL: fileURL,
+            runner: okRunner(counter: counter),
+            gateway: gateway,
+            isGatewayRunning: true,
+            notifications: .disabled,
+            poolGuard: { _ in false }
+        )
+        store.load()
+        await store.tick()
+        XCTAssertEqual(counter.value, 0)
     }
 
     // MARK: - Templates

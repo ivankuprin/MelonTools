@@ -413,6 +413,8 @@ struct DashboardView: View {
             MTStatusPill(text: L("error"), status: .error)
         case .running:
             MTStatusPill(text: L("running"), status: .running)
+        case .cancelled:
+            MTStatusPill(text: L("cancelled"), status: .absent)
         case .never, .none:
             MTStatusPill(text: L("Never"), status: .absent)
         }

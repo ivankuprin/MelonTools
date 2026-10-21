@@ -68,6 +68,16 @@ const DICT = {
     settingsSub: "Язык, порт шлюза, интервал обновления квот.",
     language: "Язык", quotaInterval: "Обновлять квоты, сек", apply: "Применить", about: "О приложении", version: "Версия", platform: "Платформа",
     codexHome: "Папка Codex",
+    backupCard: "Резервная копия",
+    backupCardSub: "Шифрованная копия планировщика, настроек, аккаунтов и файлов входа, а также источников моделей. Логи и ключи шлюза не включаются. Пароль не сохраняется.",
+    backupPassword: "Пароль", backupExport: "Экспорт", backupImport: "Импорт",
+    backupLast: "Последняя копия", backupNone: "Копий ещё нет",
+    backupPasswordRequired: "Введите пароль",
+    backupExported: "Резервная копия сохранена: {path} ({bytes} байт)",
+    backupImportConfirm: "Импортировать копию? Задачи планировщика, настройки, аккаунты и файлы входа будут заменены данными из копии.",
+    backupImported: "Импортировано: задач {tasks}, аккаунтов {accounts}, файлов входа {auths}, настроек {settings}",
+    backupImportModels: " · источники моделей включены",
+    backupImportRestartFailed: "Импорт завершён, но шлюз не перезапустился — запустите API-сервис вручную",
     donateSub: "Поддержать Melon Tools — USDT (TRC20).",
     donateAddress: "Адрес кошелька", donateNote: "Сеть TRON (TRC20). Спасибо за поддержку! 🍉",
     warnNoAccounts: "Пул пуст — импортируйте текущий вход Codex или добавьте аккаунт в macOS-версии и скопируйте vault.",
@@ -100,6 +110,8 @@ const DICT = {
     schedulerGatewayOff: "Шлюз не отвечает — выполнять задачи некуда. Запустите API-сервис и повторите.",
     schedulerTokens: "токены", schedulerDuration: "время", schedulerMinutesShort: "{n} мин",
     schedulerTemplate: "Шаблон", schedulerTemplateNone: "Без шаблона", schedulerFromTemplate: "Из шаблона",
+    schedulerWorkingDirectory: "Рабочая папка (необязательно)", schedulerGitContext: "Добавлять git status, log и diff в запрос",
+    schedulerMaxTokens: "Max tokens (0 = по умолчанию)", schedulerRetries: "Повторы", schedulerRetryDelay: "Пауза повтора, мин",
     schedulerScheduleType: "Тип расписания", schedulerScheduleInterval: "Интервал", schedulerScheduleCron: "Cron",
     schedulerCron: "Cron-выражение", schedulerCronHint: "Минута час день месяц день недели",
     schedulerCronExamples: "*/15 * * * * · 0 9 * * 1-5 · 0 */6 * * * · 0 0 1 * *",
@@ -112,6 +124,12 @@ const DICT = {
     schedulerTplWeekly: "Недельная сводка репозитория", schedulerTplWeeklyDesc: "Слитые изменения, активные ветки и риски за неделю.",
     schedulerTplLogs: "Проверка логов", schedulerTplLogsDesc: "Поиск ошибок и предупреждений в свежих логах каждые шесть часов.",
     schedulerTplSpend: "Отчёт о расходе за день", schedulerTplSpendDesc: "Расход токенов, дорогие модели и необычные всплески за день.",
+    schedulerQueued: "в очереди", schedulerQueuedCount: "в очереди: {n}", schedulerRunQueued: "{name} — в очереди, запустится после текущего",
+    schedulerCancelCurrent: "Отменить текущую", schedulerCancelling: "отменяется…",
+    schedulerCancelDone: "Отмена запрошена — очередь очищена", schedulerCancelIdle: "Активных запусков нет",
+    schedulerCancelled: "отменено", schedulerSkipped: "пропущено",
+    schedulerDailyTokenLimit: "Дневной лимит токенов (0 = без лимита)", schedulerDailyLimit: "Лимит токенов в день",
+    schedulerDailyLimitNone: "без лимита", schedulerDailyLimitInvalid: "Дневной лимит: 0 или от 1 до 1 000 000",
     sgGateway: "Шлюз", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", cancel: "Отмена",
     instances: "Инстансы", instanceNew: "Имя нового инстанса", instanceCreate: "Создать", instanceLaunch: "Запустить Codex",
     instanceBind: "Аккаунт", instanceNone: "текущий логин", instanceDelete: "Удалить", instanceHint: "Отдельный CODEX_HOME со своим входом.",
@@ -131,6 +149,16 @@ const DICT = {
     onboardingDisclaimer: "Используйте только свои аккаунты. Соблюдайте условия провайдеров: за нарушение правил возможна блокировка аккаунта.",
     onboardingAccounts: "Открыть аккаунты", onboardingProviders: "Открыть провайдеров", onboardingDone: "Готово",
     onboardingClose: "Закрыть",
+    onboardingHealth: "Проверка окружения", onboardingHealthSub: "Живой статус без отправки запросов.",
+    onboardingPass: "ОК", onboardingWarn: "ВНИМ.", onboardingFail: "ОШИБКА",
+    onboardingGateway: "API-сервис", onboardingGatewayOn: "Шлюз запущен и доступен", onboardingGatewayOff: "Шлюз не запущен",
+    onboardingAccount: "Аккаунт", onboardingAccountsCount: "Аккаунтов: {n}", onboardingNoAccounts: "Нет добавленных аккаунтов",
+    onboardingModels: "Модели", onboardingModelsCount: "Доступно моделей: {n}", onboardingNoModels: "Каталог моделей пуст",
+    onboardingScheduler: "Планировщик", onboardingTasksCount: "Задач: {n}", onboardingNextRun: "Ближайший запуск: {time}", onboardingNoTasks: "Задач пока нет",
+    onboardingBackup: "Резервная копия", onboardingBackupAt: "Последняя копия: {time}", onboardingNoBackup: "Копий ещё нет",
+    onboardingOpen: "Открыть", onboardingRunHealth: "Проверить", onboardingDemoTask: "Создать демо-задачу",
+    onboardingDemoName: "Демо-задача", onboardingDemoPrompt: "Кратко опиши состояние этого рабочего пространства.",
+    onboardingDemoCreated: "Демо-задача создана и выключена",
     diagTitle: "Проверка подключений", diagHint: "список моделей + короткий платный запрос", diagRun: "Проверить подключения",
     diagIdle: "Проверка ещё не запускалась.", diagAt: "проверено", diagProvider: "Провайдер",
     diagAuth: "Авторизация", diagQuota: "Последняя квота", diagCodex: "Аккаунты Codex",
@@ -210,6 +238,16 @@ const DICT = {
     settingsSub: "Language, gateway port, quota refresh interval.",
     language: "Language", quotaInterval: "Refresh quotas, sec", apply: "Apply", about: "About", version: "Version", platform: "Platform",
     codexHome: "Codex home",
+    backupCard: "Backup",
+    backupCardSub: "An encrypted copy of the scheduler, settings, accounts and auth files, plus model sources. Logs and gateway keys are not included. The password is not stored.",
+    backupPassword: "Password", backupExport: "Export", backupImport: "Import",
+    backupLast: "Last backup", backupNone: "No backup yet",
+    backupPasswordRequired: "Enter a password",
+    backupExported: "Backup saved: {path} ({bytes} bytes)",
+    backupImportConfirm: "Import the backup? Scheduler tasks, settings, accounts and auth files will be replaced by the backup contents.",
+    backupImported: "Imported: {tasks} tasks, {accounts} accounts, {auths} auth files, {settings} settings",
+    backupImportModels: " · model sources included",
+    backupImportRestartFailed: "Import finished, but the gateway did not restart — start the API service manually",
     donateSub: "Support Melon Tools — USDT (TRC20).",
     donateAddress: "Wallet address", donateNote: "TRON network (TRC20). Thanks for the support! 🍉",
     warnNoAccounts: "The pool is empty — import the current Codex login or copy the vault from the macOS app.",
@@ -242,6 +280,8 @@ const DICT = {
     schedulerGatewayOff: "The gateway is not reachable — there is nowhere to run tasks. Start the API service and retry.",
     schedulerTokens: "tokens", schedulerDuration: "time", schedulerMinutesShort: "{n} min",
     schedulerTemplate: "Template", schedulerTemplateNone: "No template", schedulerFromTemplate: "From template",
+    schedulerWorkingDirectory: "Working directory (optional)", schedulerGitContext: "Append git status, log and diff to the prompt",
+    schedulerMaxTokens: "Max tokens (0 = default)", schedulerRetries: "Retries", schedulerRetryDelay: "Retry delay, min",
     schedulerScheduleType: "Schedule type", schedulerScheduleInterval: "Interval", schedulerScheduleCron: "Cron",
     schedulerCron: "Cron expression", schedulerCronHint: "Minute hour day month weekday",
     schedulerCronExamples: "*/15 * * * * · 0 9 * * 1-5 · 0 */6 * * * · 0 0 1 * *",
@@ -254,6 +294,12 @@ const DICT = {
     schedulerTplWeekly: "Weekly repo summary", schedulerTplWeeklyDesc: "Merged work, active branches and open risks for the week.",
     schedulerTplLogs: "Log check", schedulerTplLogsDesc: "Scan recent logs for errors and warnings every six hours.",
     schedulerTplSpend: "Daily spend report", schedulerTplSpendDesc: "Token spend, expensive models and unusual spikes for the day.",
+    schedulerQueued: "queued", schedulerQueuedCount: "queued: {n}", schedulerRunQueued: "{name} — queued, it runs after the current one",
+    schedulerCancelCurrent: "Cancel current", schedulerCancelling: "cancelling…",
+    schedulerCancelDone: "Cancel requested — the queue is cleared", schedulerCancelIdle: "No active runs",
+    schedulerCancelled: "cancelled", schedulerSkipped: "skipped",
+    schedulerDailyTokenLimit: "Daily token limit (0 = no limit)", schedulerDailyLimit: "Daily token limit",
+    schedulerDailyLimitNone: "no limit", schedulerDailyLimitInvalid: "Daily token limit: 0 or 1 to 1,000,000",
     sgGateway: "Gateway", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", cancel: "Cancel",
     instances: "Instances", instanceNew: "New instance name", instanceCreate: "Create", instanceLaunch: "Launch Codex",
     instanceBind: "Account", instanceNone: "current login", instanceDelete: "Delete", instanceHint: "A separate CODEX_HOME with its own login.",
@@ -273,6 +319,16 @@ const DICT = {
     onboardingDisclaimer: "Use only your own accounts. Follow provider terms — accounts can be banned for rule violations.",
     onboardingAccounts: "Open Accounts", onboardingProviders: "Open Providers", onboardingDone: "Done",
     onboardingClose: "Close",
+    onboardingHealth: "Environment health", onboardingHealthSub: "Live status without sending a request.",
+    onboardingPass: "PASS", onboardingWarn: "WARN", onboardingFail: "FAIL",
+    onboardingGateway: "API service", onboardingGatewayOn: "Gateway is running and reachable", onboardingGatewayOff: "Gateway is not running",
+    onboardingAccount: "Account", onboardingAccountsCount: "{n} accounts", onboardingNoAccounts: "No accounts added",
+    onboardingModels: "Models", onboardingModelsCount: "{n} models available", onboardingNoModels: "Model catalog is empty",
+    onboardingScheduler: "Scheduler", onboardingTasksCount: "{n} tasks", onboardingNextRun: "Next run: {time}", onboardingNoTasks: "No tasks yet",
+    onboardingBackup: "Backup", onboardingBackupAt: "Last backup: {time}", onboardingNoBackup: "No backup yet",
+    onboardingOpen: "Open", onboardingRunHealth: "Run health check", onboardingDemoTask: "Create demo task",
+    onboardingDemoName: "Demo task", onboardingDemoPrompt: "Briefly describe the state of this workspace.",
+    onboardingDemoCreated: "Demo task created and disabled",
     diagTitle: "Connection check", diagHint: "model list + a small paid probe", diagRun: "Check connections",
     diagIdle: "The check has not run yet.", diagAt: "checked", diagProvider: "Provider",
     diagAuth: "Auth", diagQuota: "Last quota", diagCodex: "Codex accounts",
@@ -325,9 +381,14 @@ const S = {
   schedulerModels: null,
   schedulerModelsError: null,
   schedulerOpen: null,
+  // Live `scheduler_queue` snapshot: running id, queued ids, cancelling flag.
+  queue: null,
   instancesData: null,
   deviceLogin: null,
   autostart: false,
+  // Unix seconds of the last successful export; null = none yet (or unknown).
+  backupLast: null,
+  backupLastLoaded: false,
   busy: {},
   // M3 refresh guard: pending edits keep the full re-render deferred.
   dirtyInput: false,
@@ -482,6 +543,10 @@ function mock(cmd, args) {
         createdAt: now,
         nextRunAt: input.enabled === false ? null : now + (input.intervalMinutes || 60) * 60,
         lastRunAt: null, lastStatus: "never", lastError: null, lastResult: "", lastDurationMs: null, lastTokens: null,
+        maxTokens: input.maxTokens || null,
+        dailyTokenLimit: input.dailyTokenLimit || null,
+        retryLimit: input.retryLimit || 0,
+        retryDelayMinutes: input.retryDelayMinutes || 5,
       };
       const index = demo.tasks.findIndex((item) => item.id === task.id);
       if (index >= 0) demo.tasks[index] = { ...demo.tasks[index], ...task, createdAt: demo.tasks[index].createdAt };
@@ -494,7 +559,20 @@ function mock(cmd, args) {
       demo.history = demo.history.filter((entry) => entry.taskId !== (a && a.id));
       return demo;
     },
-    scheduler_run_now: () => demoScheduler(),
+    scheduler_run_now: (a) => demoRunNow(a && a.id),
+    scheduler_queue: () => ({
+      queued: DEMO_QUEUE.queued.slice(),
+      running: DEMO_QUEUE.running,
+      cancelling: DEMO_QUEUE.cancelling,
+    }),
+    scheduler_cancel: () => {
+      DEMO_QUEUE.queued = [];
+      if (DEMO_QUEUE.running) {
+        DEMO_QUEUE.cancelling = true;
+        return { status: "cancelling", queued: [], running: DEMO_QUEUE.running };
+      }
+      return { status: "idle", queued: [], running: null };
+    },
     scheduler_models: { count: 3, ids: ["gpt-6.1-sol", "claude-opus-5-5", "opencode/grok-4.7"], groups: [
       { id: "gateway", ids: ["gpt-6.1-sol"] },
       { id: "claude", ids: ["claude-opus-5-5"] },
@@ -507,6 +585,12 @@ function mock(cmd, args) {
     instance_launch: "C:\\Users\\you\\AppData\\Roaming\\MelonTools\\instances\\demo",
     autostart_get: false,
     autostart_set: true,
+    backup_last: () => ({ createdAt: DEMO_BACKUP_LAST }),
+    backup_export: (a) => {
+      DEMO_BACKUP_LAST = Math.floor(Date.now() / 1000);
+      return { path: "C:\\Users\\you\\Downloads\\MelonTools-backup-demo.melon", bytes: 20480, createdAt: DEMO_BACKUP_LAST };
+    },
+    backup_import: (a) => ({ schedulerTasks: 1, schedulerHistory: 3, accounts: 2, authFiles: 2, modelSourcesIncluded: true, settingsKeys: 14 }),
     update_check: { skipped: false, version: "1.4.8", tag: "v1.4.8", newer: false, notes: "", assetName: "", assetURL: "", digest: null },
     update_apply: { ok: true },
     open_url: null,
@@ -518,6 +602,11 @@ function mock(cmd, args) {
 // Browser preview only: a mutable scheduler demo so the page actions work
 // without Tauri (the real app answers from the Rust scheduler).
 let DEMO_SCHEDULER = null;
+let DEMO_BACKUP_LAST = null;
+// Browser preview only: one demo run at a time, later requests wait in the
+// queue — the same shape the Rust scheduler reports through `scheduler_queue`.
+const DEMO_RUN_MS = 4000;
+let DEMO_QUEUE = { queued: [], running: null, cancelling: false };
 function demoScheduler() {
   if (!DEMO_SCHEDULER) {
     const now = Date.now() / 1000;
@@ -525,7 +614,7 @@ function demoScheduler() {
       id: "demo-task-1", name: "Ночной отчёт", prompt: "Собери отчёт по изменениям за сутки.",
       model: "gpt-6.1-sol", reasoningEffort: null,
       scheduleKind: "cron", cronExpression: "0 9 * * 1-5", timeZone: null,
-      intervalMinutes: 60, enabled: true,
+      intervalMinutes: 60, enabled: true, dailyTokenLimit: 150000,
       createdAt: now - 7200, nextRunAt: now + 1800, lastRunAt: now - 1800,
       lastStatus: "ok", lastError: null, lastResult: "Отчёт готов: 3 изменения, 2 предупреждения.",
       lastDurationMs: 4200, lastTokens: 1530,
@@ -541,6 +630,54 @@ function demoScheduler() {
     };
   }
   return DEMO_SCHEDULER;
+}
+
+function demoMarkRunning(id) {
+  const task = demoScheduler().tasks.find((item) => item.id === id);
+  if (task) task.lastStatus = "running";
+}
+
+// A started run resolves like the Rust command: after the batch finishes.
+// A busy scheduler answers at once with `{status:"queued"}` instead.
+function demoRunNow(id) {
+  const demo = demoScheduler();
+  if (!demo.tasks.some((task) => task.id === id)) return Promise.reject("задача не найдена");
+  if (DEMO_QUEUE.running) {
+    if (DEMO_QUEUE.queued.indexOf(id) < 0) DEMO_QUEUE.queued.push(id);
+    return Promise.resolve({
+      status: "queued", id, queued: DEMO_QUEUE.queued.slice(), running: DEMO_QUEUE.running,
+    });
+  }
+  DEMO_QUEUE = { queued: [], running: id, cancelling: false };
+  demoMarkRunning(id);
+  return new Promise((resolve) => setTimeout(() => resolve(demoFinishRun(id)), DEMO_RUN_MS));
+}
+
+function demoFinishRun(id) {
+  if (DEMO_QUEUE.running !== id) return null;
+  const cancelled = DEMO_QUEUE.cancelling;
+  const demo = demoScheduler();
+  const task = demo.tasks.find((item) => item.id === id);
+  if (task) {
+    const at = Date.now() / 1000;
+    task.lastRunAt = at;
+    task.lastStatus = cancelled ? "cancelled" : "ok";
+    task.lastError = cancelled ? "Cancelled by user" : null;
+    task.lastDurationMs = cancelled ? null : DEMO_RUN_MS;
+    task.lastTokens = cancelled ? null : 840;
+    demo.history.unshift({
+      taskId: id, at, status: task.lastStatus, model: task.model,
+      durationMs: task.lastDurationMs, tokens: task.lastTokens,
+      result: cancelled ? "" : "демо-результат", error: task.lastError,
+    });
+  }
+  const next = cancelled ? null : DEMO_QUEUE.queued.shift();
+  DEMO_QUEUE = { queued: DEMO_QUEUE.queued, running: next, cancelling: false };
+  if (next) {
+    demoMarkRunning(next);
+    setTimeout(() => demoFinishRun(next), DEMO_RUN_MS);
+  }
+  return demo;
 }
 
 // MARK: - Formatting
@@ -1112,6 +1249,9 @@ const NAV = [
 
 function render() {
   document.documentElement.lang = S.lang || "ru";
+  // The queue poll lives and dies with the scheduler page: it starts on entry
+  // and is cleared on exit, before any DOM work.
+  schedulerQueueSync();
   // Polling must not wipe an input the user is editing. User actions move
   // focus to their button first, so navigation and save operations still
   // render normally.
@@ -1145,6 +1285,7 @@ function render() {
     }).catch(() => {});
   }
   if (S.section === "instances" && !S.instancesData) A.instancesLoad();
+  if (S.section === "settings" && !S.backupLastLoaded) A.backupLastLoad();
 }
 
 function renderNav() {
@@ -1840,6 +1981,22 @@ function settingsPage() {
   ${dashboardCardToggles(settings)}
 
   <div class="card">
+    <h2>${t("backupCard")}</h2>
+    <div class="stack">
+      <div class="footnote" style="margin-top:0">${t("backupCardSub")}</div>
+      <div class="row" style="align-items:flex-end">
+        <label class="field">${t("backupPassword")}
+          <input type="password" id="backup-password" autocomplete="new-password">
+        </label>
+        <button class="btn small" onclick="A.backupExport()">${t("backupExport")}</button>
+        <button class="btn small" onclick="A.backupImportPick()">${t("backupImport")}</button>
+        <input type="file" id="backup-file" accept=".melon,.json,application/json" hidden onchange="A.backupImportFile(this)">
+      </div>
+      <div class="footnote">${t("backupLast")}: ${S.backupLast ? esc(new Date(S.backupLast * 1000).toLocaleString()) : esc(t("backupNone"))}</div>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>${t("about")}</h2>
     <table class="kv">
       <tr><td>${t("version")}</td><td>${esc(info.version || "—")}</td></tr>
@@ -1943,11 +2100,132 @@ function schedulerGroupLabel(id) {
   }
 }
 
+// MARK: - Scheduler queue (live running/queued state)
+
+const SCHEDULER_QUEUE_MS = 2500;
+let queuePollTimer = null;
+let queuePollBusy = false;
+
+function schedulerQueuedIds(queue) {
+  const source = queue === undefined ? S.queue : queue;
+  return source && Array.isArray(source.queued) ? source.queued : [];
+}
+
+// A snapshot is "busy" while a run is active or requests wait. The `cancelling`
+// flag alone is not: the backend keeps it set until the next run starts.
+function schedulerQueueActive(queue) {
+  if (!queue || typeof queue !== "object") return false;
+  return !!queue.running || schedulerQueuedIds(queue).length > 0;
+}
+
+function schedulerIsQueued(id) {
+  return schedulerQueuedIds().indexOf(id) >= 0;
+}
+
+function schedulerTaskName(data, id) {
+  const task = ((data && data.tasks) || []).find((item) => item.id === id);
+  return (task && task.name) || id;
+}
+
+// Compact running/queued strip above the task list, with "Cancel current".
+function schedulerQueueBar() {
+  const queue = S.queue;
+  if (!schedulerQueueActive(queue)) return "";
+  const running = queue.running || null;
+  const queued = schedulerQueuedIds(queue);
+  const cancelling = !!queue.cancelling && !!running;
+  return `<div class="card" id="scheduler-queue">
+    <div class="row">
+      ${running
+        ? `<span class="pill gold">${t("schedulerRunning")}</span>
+           <span class="muted">${esc(schedulerTaskName(S.scheduler, running))}</span>`
+        : ""}
+      ${queued.length ? `<span class="pill">${fmt(t("schedulerQueuedCount"), { n: queued.length })}</span>` : ""}
+      <span class="spacer"></span>
+      ${cancelling
+        ? `<span class="footnote" style="margin:0">${t("schedulerCancelling")}</span>`
+        : `<button class="ghost small danger" onclick="A.schedulerCancel()" ${S.busy["sched-cancel"] ? "disabled" : ""}>${t("schedulerCancelCurrent")}</button>`}
+    </div>
+  </div>`;
+}
+
+// Quiet list reload: used when a watched batch ends, so the cards pick up the
+// new status/result without a toast or a spinner.
+async function schedulerListQuiet() {
+  try {
+    S.scheduler = await inv("scheduler_list");
+    S.schedulerError = null;
+  } catch (error) {
+    S.schedulerError = errorText(error);
+  }
+  if (S.section === "scheduler") render();
+}
+
+async function schedulerQueuePoll() {
+  if (queuePollBusy) return;
+  queuePollBusy = true;
+  let queue = null;
+  try {
+    queue = await inv("scheduler_queue");
+  } catch (error) {
+    // Transient read failure: the last snapshot stays on screen.
+    queue = null;
+  } finally {
+    queuePollBusy = false;
+  }
+  if (!queue || typeof queue !== "object") return;
+  // The page owns the snapshot: a late answer after leaving must not leave a
+  // stale "running" marker behind.
+  if (S.section !== "scheduler") return;
+  const wasActive = schedulerQueueActive(S.queue);
+  S.queue = queue;
+  // The batch ended: reload the list so the rows show the fresh statuses.
+  if (wasActive && !schedulerQueueActive(queue)) {
+    schedulerListQuiet();
+    return;
+  }
+  render();
+}
+
+// Polling runs only while the scheduler page is on screen. render() is the
+// single place the section changes, so it starts and stops the timer.
+function schedulerQueueSync() {
+  if (S.section !== "scheduler") {
+    if (queuePollTimer) {
+      clearInterval(queuePollTimer);
+      queuePollTimer = null;
+    }
+    // Off the page the snapshot cannot be kept fresh, and a stale
+    // "running" pill on the dashboard would be a lie.
+    S.queue = null;
+    return;
+  }
+  if (queuePollTimer) return;
+  schedulerQueuePoll();
+  queuePollTimer = setInterval(() => {
+    if (S.section !== "scheduler") {
+      clearInterval(queuePollTimer);
+      queuePollTimer = null;
+      return;
+    }
+    schedulerQueuePoll();
+  }, SCHEDULER_QUEUE_MS);
+}
+
 function schedulerStatusPill(task) {
-  switch (task.lastStatus) {
+  const id = task && task.id;
+  // Live state first: `scheduler_queue` reports the active run and the
+  // waiting requests before the persisted `lastStatus` does.
+  if (id && S.queue) {
+    if (S.queue.running === id) return `<span class="pill gold">${t("schedulerRunning")}</span>`;
+    if (schedulerIsQueued(id)) return `<span class="pill">${t("schedulerQueued")}</span>`;
+  }
+  switch ((task && task.lastStatus) || "") {
     case "running": return `<span class="pill gold">${t("schedulerRunning")}</span>`;
     case "ok": return `<span class="pill ok">${t("schedulerOk")}</span>`;
     case "error": return `<span class="pill danger">${t("schedulerError")}</span>`;
+    case "cancelled": return `<span class="pill warn">${t("schedulerCancelled")}</span>`;
+    case "skipped": return `<span class="pill">${t("schedulerSkipped")}</span>`;
     default: return `<span class="pill">${t("schedulerNever")}</span>`;
   }
 }
@@ -2038,6 +2316,7 @@ function schedulerPage() {
   }
   return `${head}
     ${banner}
+    ${schedulerQueueBar()}
     <div class="footnote" style="margin-top:0">${t("schedulerTrayHint")}</div>
     <div class="row">
       <button class="btn small" onclick="A.schedulerEdit()">${t("schedulerAdd")}</button>
@@ -2074,10 +2353,11 @@ function schedulerCard(task, data) {
       <span>${t("schedulerLast")}: <span class="val">${task.lastRunAt ? esc(ageText(task.lastRunAt)) : t("never")}</span></span>
       ${task.lastDurationMs != null ? `<span>${t("schedulerDuration")}: ${Math.round(task.lastDurationMs / 100) / 10} ${unit("s", "с")}</span>` : ""}
       ${task.lastTokens != null ? `<span>${t("schedulerTokens")}: ${task.lastTokens}</span>` : ""}
+      <span>${t("schedulerDailyLimit")}: <span class="val">${(task.dailyTokenLimit || 0) > 0 ? Number(task.dailyTokenLimit) : esc(t("schedulerDailyLimitNone"))}</span></span>
     </div>
     ${task.lastError ? `<div class="footnote mono" style="color:var(--danger);white-space:pre-wrap;max-height:140px;overflow:auto">${esc(boundedText(task.lastError))}</div>` : ""}
     <div class="row" style="margin-top:12px">
-      <button class="ghost small" onclick="A.schedulerRunNow('${esc(task.id)}')" ${S.busy["sched-run-" + task.id] ? "disabled" : ""}>${t("schedulerRunNow")}</button>
+      <button class="ghost small" onclick="A.schedulerRunNow('${esc(task.id)}')" ${S.busy["sched-run-" + task.id] || schedulerIsQueued(task.id) ? "disabled" : ""}>${t("schedulerRunNow")}</button>
       <button class="ghost small" onclick="A.schedulerEdit('${esc(task.id)}')">${t("schedulerEdit")}</button>
       <button class="ghost small" onclick="A.schedulerToggleResult('${esc(task.id)}')">${open ? t("schedulerClose") : t("schedulerResult")}</button>
       <span class="spacer"></span>
@@ -2130,6 +2410,17 @@ function schedulerModal() {
         <label class="field">${esc(schedulerVariableLabel(variable))}<input type="text" id="sched-var-${esc(variable)}" value="${esc(form.variables[variable] || "")}" oninput="A.schedulerVarInput('${esc(variable)}', this.value)"></label>`).join("")}</div>
         <div class="footnote" style="margin-top:0">${t("schedulerVariables")}: ${Object.keys(form.variables).map((variable) => `{{${esc(variable)}}}`).join(" · ")}</div>` : ""}
       <label class="field">${t("schedulerPrompt")}<textarea id="sched-prompt">${esc(form.prompt || "")}</textarea></label>
+      <label class="field">${t("schedulerWorkingDirectory")}<input type="text" id="sched-workdir" class="mono" value="${esc(form.workingDirectory || "")}" placeholder="C:\\Projects\\repo"></label>
+      <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+        <input type="checkbox" id="sched-git-context" ${form.includeGitContext ? "checked" : ""}>
+        <span>${t("schedulerGitContext")}</span>
+      </label>
+      <div class="row">
+        <label class="field">${t("schedulerMaxTokens")}<input class="small" type="number" id="sched-max-tokens" min="0" max="32768" value="${form.maxTokens || 0}"></label>
+        <label class="field">${t("schedulerRetries")}<input class="small" type="number" id="sched-retries" min="0" max="10" value="${form.retryLimit || 0}"></label>
+        <label class="field">${t("schedulerRetryDelay")}<input class="small" type="number" id="sched-retry-delay" min="1" max="1440" value="${form.retryDelayMinutes || 5}"></label>
+        <label class="field">${t("schedulerDailyTokenLimit")}<input class="small" type="number" id="sched-daily-limit" min="0" max="1000000" step="1" value="${form.dailyTokenLimit || 0}"></label>
+      </div>
       <label class="field">${t("schedulerModel")}<select id="sched-model">${options.join("") || `<option value="">${t("schedulerModelsFailed")}</option>`}</select></label>
       <label class="field">${t("schedulerEffort")}<select id="sched-effort">
         <option value="" ${!form.reasoningEffort ? "selected" : ""}>${t("schedulerEffortDefault")}</option>
@@ -2200,6 +2491,56 @@ const A = {
 
   onboardingDone() {
     dismissOnboarding();
+  },
+
+  async onboardingHealthRefresh() {
+    const read = async (fn) => {
+      try { await fn(); } catch { /* keep the last snapshot */ }
+    };
+    await read(async () => { S.status = await inv("gateway_status"); });
+    await read(async () => { S.scheduler = await inv("scheduler_list"); });
+    await read(async () => { S.schedulerModels = await inv("scheduler_models"); });
+    await read(async () => {
+      const result = await inv("backup_last");
+      S.backupLast = result && result.createdAt ? result.createdAt : null;
+      S.backupLastLoaded = true;
+    });
+    const node = document.getElementById("onboarding-health");
+    if (node) node.innerHTML = onboardingHealthRows();
+  },
+
+  async onboardingDemoTask() {
+    try {
+      if (!S.schedulerModels) S.schedulerModels = await inv("scheduler_models");
+      const model = ((S.schedulerModels && S.schedulerModels.ids) || [])[0] || "";
+      if (!model) {
+        toast(t("schedulerModelsFailed"), true);
+        return;
+      }
+      const task = {
+        id: "",
+        name: t("onboardingDemoName"),
+        prompt: t("onboardingDemoPrompt"),
+        model,
+        reasoningEffort: null,
+        scheduleKind: "interval",
+        cronExpression: null,
+        timeZone: null,
+        workingDirectory: null,
+        includeGitContext: false,
+        maxTokens: null,
+        retryLimit: 0,
+        retryDelayMinutes: 5,
+        dailyTokenLimit: null,
+        intervalMinutes: 60,
+        enabled: false,
+      };
+      S.scheduler = await inv("scheduler_save", { task });
+      toast(t("onboardingDemoCreated"));
+      await A.onboardingHealthRefresh();
+    } catch (error) {
+      toast(String(error && error.message ? error.message : error), true);
+    }
   },
 
   async copy(text) {
@@ -2788,6 +3129,92 @@ const A = {
     });
   },
 
+  async backupLastLoad() {
+    if (S.backupLastLoaded) return;
+    S.backupLastLoaded = true;
+    try {
+      const result = await inv("backup_last");
+      S.backupLast = result && result.createdAt ? result.createdAt : null;
+      if (S.section === "settings") render();
+    } catch {
+      // Keep the card usable even if the state file cannot be read.
+    }
+  },
+
+  backupExport() {
+    const passwordNode = document.getElementById("backup-password");
+    const password = passwordNode ? passwordNode.value : "";
+    if (!password) {
+      toast(t("backupPasswordRequired"), true);
+      return;
+    }
+    run("backup-export", async () => {
+      const result = await inv("backup_export", { password });
+      S.backupLast = result && result.createdAt ? result.createdAt : null;
+      S.backupLastLoaded = true;
+      toast(fmt(t("backupExported"), {
+        path: result.path || "",
+        bytes: result.bytes || 0,
+      }));
+    });
+  },
+
+  backupImportPick() {
+    const input = document.getElementById("backup-file");
+    if (input) input.click();
+  },
+
+  backupImportFile(input) {
+    const file = input && input.files ? input.files[0] : null;
+    if (input) input.value = "";
+    if (!file) return;
+    const passwordNode = document.getElementById("backup-password");
+    const password = passwordNode ? passwordNode.value : "";
+    if (!password) {
+      toast(t("backupPasswordRequired"), true);
+      return;
+    }
+    if (!window.confirm(t("backupImportConfirm"))) return;
+    run("backup-import", async () => {
+      const content = await file.text();
+      // Stop the engine before replacing vault/auth files: Windows cannot
+      // rename over files the gateway still has open, and a running engine
+      // would keep stale credentials. Always try to start it again.
+      try {
+        await inv("gateway_stop");
+      } catch {
+        // It may already be stopped; the import remains safe.
+      }
+      let summary;
+      try {
+        summary = await inv("backup_import", { content, password });
+      } finally {
+        try {
+          await inv("gateway_start");
+        } catch {
+          toast(t("backupImportRestartFailed"), true);
+        }
+      }
+      let message = fmt(t("backupImported"), {
+        tasks: summary.schedulerTasks || 0,
+        accounts: summary.accounts || 0,
+        auths: summary.authFiles || 0,
+        settings: summary.settingsKeys || 0,
+      });
+      if (summary.modelSourcesIncluded) message += t("backupImportModels");
+      toast(message);
+      S.backupLast = Math.floor(Date.now() / 1000);
+      S.backupLastLoaded = true;
+      try {
+        S.settings = await inv("settings_get");
+        S.lang = (S.settings && S.settings.lang) === "en" ? "en" : "ru";
+        await A.refreshStatus();
+      } catch {
+        // The import itself succeeded; the next refresh will resync state.
+      }
+    });
+  },
+
   applySettings() {
     // Read fields before run() rebuilds the page.
     const langNode = document.getElementById("set-lang");
@@ -3037,11 +3464,19 @@ const A = {
         scheduleKind: task.scheduleKind || "interval",
         cronExpression: task.cronExpression || "",
         timeZone: task.timeZone || "",
+        workingDirectory: task.workingDirectory || "",
+        includeGitContext: !!task.includeGitContext,
+        maxTokens: task.maxTokens || 0,
+        retryLimit: task.retryLimit || 0,
+        retryDelayMinutes: task.retryDelayMinutes || 5,
+        dailyTokenLimit: task.dailyTokenLimit || 0,
         enabled: task.enabled,
       }
       : {
         id: "", name: "", prompt: "", model: "", reasoningEffort: "", intervalMinutes: 60,
-        scheduleKind: "interval", cronExpression: "", timeZone: "", enabled: true,
+        scheduleKind: "interval", cronExpression: "", timeZone: "",
+        workingDirectory: "", includeGitContext: false, maxTokens: 0,
+        retryLimit: 0, retryDelayMinutes: 5, dailyTokenLimit: 0, enabled: true,
         templateId: "", variables: null,
       };
     render();
@@ -3109,6 +3544,16 @@ const A = {
     const cronExpression = value("sched-cron").trim().replace(/\s+/g, " ");
     const timeZone = value("sched-timezone").trim();
     const intervalMinutes = parseInt(value("sched-interval"), 10) || 60;
+    const workingDirectory = value("sched-workdir").trim();
+    const gitNode = document.getElementById("sched-git-context");
+    const includeGitContext = !!(gitNode && gitNode.checked);
+    const maxTokens = parseInt(value("sched-max-tokens"), 10) || 0;
+    const retryLimit = parseInt(value("sched-retries"), 10) || 0;
+    const retryDelayMinutes = parseInt(value("sched-retry-delay"), 10) || 5;
+    // 0 means "no limit"; anything else must be a whole 1..1,000,000 value.
+    // A cleared field is not a valid limit: the user has to type 0.
+    const dailyLimitRaw = value("sched-daily-limit").trim();
+    const dailyTokenLimit = dailyLimitRaw === "" ? NaN : Number(dailyLimitRaw);
     const enabledNode = document.getElementById("sched-enabled");
     const enabled = !!(enabledNode && enabledNode.checked);
     if (!name || !prompt || !model) {
@@ -3121,6 +3566,10 @@ const A = {
     }
     if (scheduleKind === "cron" && cronExpression.split(" ").filter(Boolean).length !== 5) {
       toast(t("schedulerCronInvalid"), true);
+      return;
+    }
+    if (!Number.isInteger(dailyTokenLimit) || dailyTokenLimit < 0 || dailyTokenLimit > 1000000) {
+      toast(t("schedulerDailyLimitInvalid"), true);
       return;
     }
     // A template is rendered in the renderer: the backend stores the final
@@ -3148,6 +3597,12 @@ const A = {
       scheduleKind,
       cronExpression: scheduleKind === "cron" ? cronExpression : null,
       timeZone: timeZone || null,
+      workingDirectory: workingDirectory || null,
+      includeGitContext,
+      maxTokens: maxTokens > 0 ? maxTokens : null,
+      retryLimit,
+      retryDelayMinutes,
+      dailyTokenLimit: dailyTokenLimit > 0 ? dailyTokenLimit : null,
       intervalMinutes,
       enabled,
     };
@@ -3171,7 +3626,17 @@ const A = {
 
   schedulerRunNow(id) {
     run("sched-run-" + id, async () => {
-      S.scheduler = await inv("scheduler_run_now", { id });
+      const name = schedulerTaskName(S.scheduler, id);
+      const result = await inv("scheduler_run_now", { id });
+      // A busy scheduler queues the request instead of starting it right away:
+      // the snapshot goes to the queue bar, the task list stays untouched.
+      if (result && result.status === "queued") {
+        S.queue = result;
+        toast(fmt(t("schedulerRunQueued"), { name }));
+        schedulerQueuePoll();
+        return;
+      }
+      S.scheduler = result;
       S.schedulerError = null;
       S.schedulerOpen = id;
       toast(t("done"));
@@ -3194,7 +3659,14 @@ const A = {
       S.section = "scheduler";
       S.busy["sched-run-" + task.id] = true;
       try {
-        S.scheduler = await inv("scheduler_run_now", { id: task.id });
+        const result = await inv("scheduler_run_now", { id: task.id });
+        if (result && result.status === "queued") {
+          S.queue = result;
+          toast(fmt(t("schedulerRunQueued"), { name: task.name }));
+          schedulerQueuePoll();
+          return;
+        }
+        S.scheduler = result;
         S.schedulerError = null;
         S.schedulerAt = Date.now();
         S.schedulerOpen = task.id;
@@ -3202,6 +3674,29 @@ const A = {
       } finally {
         S.busy["sched-run-" + task.id] = false;
       }
+    });
+  },
+
+  // Stops the active run and drops every waiting request. The command answers
+  // with `{status:"cancelling"|"idle"}` plus the new queue contents.
+  schedulerCancel() {
+    run("sched-cancel", async () => {
+      const wasActive = schedulerQueueActive(S.queue);
+      const result = await inv("scheduler_cancel");
+      const snapshot = result && typeof result === "object" ? result : null;
+      if (snapshot) {
+        S.queue = {
+          queued: Array.isArray(snapshot.queued) ? snapshot.queued : [],
+          running: snapshot.running || null,
+          cancelling: snapshot.status === "cancelling" || !!snapshot.cancelling,
+        };
+      }
+      const cancelled = S.queue
+        ? !!S.queue.cancelling || !!S.queue.running || schedulerQueuedIds(S.queue).length > 0
+        : wasActive;
+      toast(t(cancelled ? "schedulerCancelDone" : "schedulerCancelIdle"));
+      schedulerQueuePoll();
+      schedulerListQuiet();
     });
   },
 
@@ -3470,8 +3965,12 @@ function bindOnboarding(modal) {
     const action = target && target.closest ? target.closest("[data-onboarding]") : null;
     if (!action || !modal.contains(action)) return;
     const name = action.getAttribute("data-onboarding");
-    if (name === "accounts" || name === "providers") {
+    if (["accounts", "providers", "api", "scheduler", "settings"].includes(name)) {
       A.onboardingGo(name);
+    } else if (name === "health") {
+      A.onboardingHealthRefresh();
+    } else if (name === "demo") {
+      A.onboardingDemoTask();
     } else {
       // "done" and "close" only close — no render.
       A.onboardingDone();
@@ -3487,6 +3986,39 @@ document.addEventListener("keydown", (event) => {
   if (!modal || modal.hidden) return;
   dismissOnboarding();
 });
+
+// Compact PASS/WARN/FAIL rows for onboarding 2.0. Reads only the snapshots
+// loaded at boot; "Run health check" refreshes them without re-rendering the
+// modal underneath the user.
+function onboardingHealthRows() {
+  const gateway = !!(S.status && S.status.running);
+  const accounts = Array.isArray(S.accounts) ? S.accounts.length : 0;
+  const models = ((S.schedulerModels && S.schedulerModels.ids) || []).length;
+  const tasks = (S.scheduler && Array.isArray(S.scheduler.tasks)) ? S.scheduler.tasks : [];
+  const next = tasks
+    .filter((task) => task && task.enabled && task.nextRunAt)
+    .map((task) => task.nextRunAt)
+    .sort((a, b) => a - b)[0];
+  const backup = S.backupLast ? new Date(S.backupLast * 1000).toLocaleString() : "";
+  const row = (state, title, detail, action, actionKey) => `
+    <div class="row" style="align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border)">
+      <span class="pill ${state === "ok" ? "ok" : state === "warn" ? "warn" : "danger"}">${esc(t(state === "ok" ? "onboardingPass" : state === "warn" ? "onboardingWarn" : "onboardingFail"))}</span>
+      <div style="flex:1;min-width:0">
+        <strong>${esc(title)}</strong>
+        <div class="footnote" style="margin:0">${esc(detail)}</div>
+      </div>
+      <button type="button" class="ghost small" data-onboarding="${action}">${esc(t(actionKey))}</button>
+    </div>`;
+  return [
+    row(gateway ? "ok" : "fail", t("onboardingGateway"), gateway ? t("onboardingGatewayOn") : t("onboardingGatewayOff"), "api", "onboardingOpen"),
+    row(accounts > 0 ? "ok" : "fail", t("onboardingAccount"), accounts > 0 ? fmt(t("onboardingAccountsCount"), { n: accounts }) : t("onboardingNoAccounts"), "accounts", "onboardingOpen"),
+    row(models > 0 ? "ok" : "warn", t("onboardingModels"), models > 0 ? fmt(t("onboardingModelsCount"), { n: models }) : t("onboardingNoModels"), "providers", "onboardingOpen"),
+    row(tasks.length > 0 ? "ok" : "warn", t("onboardingScheduler"), tasks.length > 0
+      ? (next ? fmt(t("onboardingNextRun"), { time: new Date(next * 1000).toLocaleString() }) : fmt(t("onboardingTasksCount"), { n: tasks.length }))
+      : t("onboardingNoTasks"), "scheduler", "onboardingOpen"),
+    row(backup ? "ok" : "warn", t("onboardingBackup"), backup ? fmt(t("onboardingBackupAt"), { time: backup }) : t("onboardingNoBackup"), "settings", "onboardingOpen"),
+  ].join("");
+}
 
 function showOnboarding() {
   // Once per launch, and never again after a dismissal — even when
@@ -3524,6 +4056,17 @@ function showOnboarding() {
           <span class="pill gold">${number}</span>
           <span>${esc(t(key))}</span>
         </div>`).join("")}
+      </div>
+      <div class="card" style="margin:14px 0;padding:12px">
+        <div class="row" style="align-items:center">
+          <strong>${esc(t("onboardingHealth"))}</strong>
+          <span class="footnote" style="margin:0;flex:1">${esc(t("onboardingHealthSub"))}</span>
+        </div>
+        <div id="onboarding-health">${onboardingHealthRows()}</div>
+        <div class="row" style="margin-top:10px">
+          <button type="button" class="ghost small" data-onboarding="health">${esc(t("onboardingRunHealth"))}</button>
+          <button type="button" class="ghost small" data-onboarding="demo">${esc(t("onboardingDemoTask"))}</button>
+        </div>
       </div>
       <div class="footnote" style="color:var(--warn);border-top:1px solid var(--border);padding-top:10px">
         ${esc(t("onboardingDisclaimer"))}

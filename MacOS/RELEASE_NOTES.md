@@ -1,32 +1,38 @@
-# Melon Tools 2.2.4
+# Melon Tools 2.3.0
 
-- **Full audit remediation.** Hardened Windows instance deletion against path
-  traversal, isolated macOS tests from the live vault/gateway/Codex config,
-  removed real-token `/tmp` residue, and fixed the Windows settings/key/reserve
-  saves.
-- **Release and update safety.** Release workflow checks the requested tag,
-  runs tests, verifies all assets, and signs the portable before building the
-  installer. The Windows updater now uses a UTF-8 PowerShell swap with backup
-  and rollback; the installer removes autostart and stops a running app.
-- **Runtime fixes.** Windows quotas and notifications run in Rust while in the
-  tray; corrupt stores are quarantined; the Chrome DevTools bridge validates
-  loopback targets; quota refresh is single-flight; scheduler corruption and
-  interrupted runs are handled; API-key rotation updates the Codex route;
-  Antigravity emails are masked in the composer; the Codex catalog handles
-  ownership, schema and shared model names correctly.
-- **UI fixes.** Equal dashboard tiles, provider-aware composer chips, safer
-  Codex relaunch behavior, accessibility labels/contrast, preserved section on
-  language switch, and the Antigravity Google-verification warning.
+- **Workspace-aware scheduler.** Tasks can use a working directory and append
+  bounded `git status`, recent log and diff stat to the prompt. Optional
+  `max_tokens` caps each completion.
+- **Guardrails.** Scheduled runs pause when the Codex pool has no usable
+  account, and an optional daily token limit skips a task before any request
+  when today's budget is spent. Provider-namespaced models stay independent.
+- **Queue, cancel and retries.** `Run now` while busy is queued visibly; the
+  active request can be cancelled; failures retry with a bounded delay and
+  resume the normal schedule afterwards.
+- **Encrypted backup / export / import.** One portable AES-256-GCM backup
+  (PBKDF2-HMAC-SHA256, 210,000 rounds) covers scheduler tasks and history,
+  settings, accounts and auth files, and model sources. Logs and gateway keys
+  are excluded. Restore validates and decrypts before replacing live data.
+- **Onboarding 2.0.** A live health check covers the gateway, accounts, model
+  catalog, scheduler and last backup. Each failed row links to the relevant
+  screen, and a disabled demo task can be created without sending a request.
+- **Release hygiene.** Version metadata is aligned at 2.3.0 on macOS and
+  Windows. Builds remain ad-hoc signed on macOS and unsigned on Windows.
 
 ## Downloads
 
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.2.4.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.2.4-setup.exe) — custom install path, WebView2 required.
-- [Windows portable](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.2.4-win-x64-portable.exe) — single file, no install.
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.0.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.0-setup.exe) — custom install path, WebView2 required.
+- [Windows portable](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.0-win-x64-portable.exe) — single file, no install.
 
 ## Earlier fixes
 
-- **2.2.3:** Equal dashboard tiles, provider-aware composer, Antigravity verification diagnostics.
+- **2.2.4:** Full audit remediation: security and data handling, updater
+  hardening, scheduler corruption handling, logs/CDP/quota protections, Windows
+  Rust quota loop, equal dashboard tiles, provider-aware composer, Antigravity
+  verification diagnostics.
+- **2.2.3:** Equal dashboard tiles, provider-aware composer, Antigravity
+  verification diagnostics.
 - **2.2.2:** macOS refreshes the Codex model catalog on launch.
 - **2.2.1:** Shared models stay visible under every provider.
 - **2.2.0:** Cron schedules, task templates, menu-bar/tray background execution.

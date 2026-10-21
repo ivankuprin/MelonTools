@@ -6,8 +6,10 @@
 //! the main window to the tray leaves the process and this runner alive.
 
 use std::collections::HashSet;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use chrono::{
@@ -18,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri_plugin_notification::NotificationExt;
 
-use crate::{gateway, paths, settings};
+use crate::{gateway, paths, settings, vault};
 
 /// How often the runner looks for a due task.
 pub const TICK_SECS: u64 = 30;
@@ -38,8 +40,19 @@ pub const SCHEDULE_INTERVAL: &str = "interval";
 pub const SCHEDULE_CRON: &str = "cron";
 pub const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
-/// 500 ms polls while a "Run now" waits for the scheduled run to finish.
-const WAIT_ATTEMPTS: u64 = RUN_TIMEOUT_SECS * 4;
+/// Outcome status strings. Only `error` is retried; `cancelled` and `skipped`
+/// keep the normal schedule.
+pub const STATUS_OK: &str = "ok";
+pub const STATUS_ERROR: &str = "error";
+pub const STATUS_CANCELLED: &str = "cancelled";
+pub const STATUS_SKIPPED: &str = "skipped";
+/// Recorded for a user-cancelled run instead of a transport error.
+pub const CANCELLED_MESSAGE: &str = "Cancelled by user";
+/// Bounds of the optional per-task daily token budget.
+pub const MIN_DAILY_TOKEN_LIMIT: i64 = 1;
+pub const MAX_DAILY_TOKEN_LIMIT: i64 = 1_000_000;
+/// How often an in-flight request checks the cancellation flag.
+pub const CANCEL_POLL_MS: u64 = 200;
 
 pub fn now_secs() -> i64 {
     chrono::Utc::now().timestamp()
@@ -59,6 +72,14 @@ pub struct Task {
     pub prompt: String,
     pub model: String,
     pub reasoning_effort: Option<String>,
+    pub working_directory: Option<String>,
+    pub include_git_context: bool,
+    pub max_tokens: Option<i64>,
+    /// Optional daily token budget; `None` means unlimited.
+    pub daily_token_limit: Option<i64>,
+    pub retry_limit: i64,
+    pub retry_delay_minutes: i64,
+    pub retry_attempt: i64,
     /// `"interval"` or `"cron"`. Older files omit it and default to interval.
     pub schedule_kind: String,
     pub cron_expression: Option<String>,
@@ -83,6 +104,13 @@ impl Default for Task {
             prompt: String::new(),
             model: String::new(),
             reasoning_effort: None,
+            working_directory: None,
+            include_git_context: false,
+            max_tokens: None,
+            daily_token_limit: None,
+            retry_limit: 0,
+            retry_delay_minutes: 5,
+            retry_attempt: 0,
             schedule_kind: SCHEDULE_INTERVAL.to_string(),
             cron_expression: None,
             time_zone: None,
@@ -129,6 +157,13 @@ pub struct TaskInput {
     pub prompt: String,
     pub model: String,
     pub reasoning_effort: Option<String>,
+    pub working_directory: Option<String>,
+    pub include_git_context: bool,
+    pub max_tokens: Option<i64>,
+    /// Optional daily token budget; `None` means unlimited.
+    pub daily_token_limit: Option<i64>,
+    pub retry_limit: i64,
+    pub retry_delay_minutes: i64,
     pub schedule_kind: String,
     pub cron_expression: Option<String>,
     pub time_zone: Option<String>,
@@ -144,6 +179,12 @@ impl Default for TaskInput {
             prompt: String::new(),
             model: String::new(),
             reasoning_effort: None,
+            working_directory: None,
+            include_git_context: false,
+            max_tokens: None,
+            daily_token_limit: None,
+            retry_limit: 0,
+            retry_delay_minutes: 5,
             schedule_kind: SCHEDULE_INTERVAL.to_string(),
             cron_expression: None,
             time_zone: None,
@@ -160,6 +201,12 @@ struct Validated {
     prompt: String,
     model: String,
     effort: Option<String>,
+    working_directory: Option<String>,
+    include_git_context: bool,
+    max_tokens: Option<i64>,
+    daily_token_limit: Option<i64>,
+    retry_limit: i64,
+    retry_delay_minutes: i64,
     schedule_kind: String,
     cron_expression: Option<String>,
     time_zone: Option<String>,
@@ -171,7 +218,7 @@ struct Validated {
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Outcome {
-    /// `ok` or `error`.
+    /// `ok`, `error`, `cancelled` or `skipped`.
     pub status: String,
     pub result: String,
     pub error: Option<String>,
@@ -229,6 +276,32 @@ fn save_to(target: &std::path::Path, store: &Store) -> Result<(), String> {
     let mut clean = store.clone();
     clamp_store(&mut clean);
     let data = serde_json::to_string_pretty(&clean).map_err(|e| e.to_string())?;
+    let tmp = paths::tmp_path(target);
+    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, target).map_err(|e| e.to_string())
+}
+
+/// Raw scheduler JSON object, unknown keys preserved. `None` when the file is
+/// missing, unreadable or not a JSON object — a backup export then omits the
+/// component instead of shipping a corrupt/empty replacement.
+pub fn load_raw_at(target: &std::path::Path) -> Option<Value> {
+    let text = std::fs::read_to_string(target).ok()?;
+    match serde_json::from_str::<Value>(&text).ok()? {
+        Value::Object(object) => Some(Value::Object(object)),
+        _ => None,
+    }
+}
+
+/// Validate a raw scheduler object against the typed store, then replace the
+/// file atomically. Validation happens before the write so a damaged backup
+/// cannot destroy the live schedule.
+pub fn save_raw_at(target: &std::path::Path, value: &Value) -> Result<(), String> {
+    serde_json::from_value::<Store>(value.clone())
+        .map_err(|error| format!("scheduler: {error}"))?;
+    if let Some(dir) = target.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let data = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
     let tmp = paths::tmp_path(target);
     std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, target).map_err(|e| e.to_string())
@@ -592,6 +665,40 @@ pub fn due_task(store: &Store, now: i64) -> Option<&Task> {
         .find(|task| task.enabled && task.next_run_at.map(|at| at <= now).unwrap_or(false))
 }
 
+// MARK: - Daily token budget (clock injected)
+
+/// Local calendar day of an epoch timestamp. The clock is local because the
+/// editor speaks in the user's day, not UTC.
+fn local_day(at: i64) -> Option<NaiveDate> {
+    Local
+        .timestamp_opt(at, 0)
+        .single()
+        .map(|value| value.date_naive())
+}
+
+/// Sum of today's history tokens for one task. Other tasks, other local
+/// calendar days and entries without tokens are ignored; negative values
+/// (never written by this runner) cannot lower the sum.
+pub fn tokens_used_today(task_id: &str, history: &[HistoryEntry], at: i64) -> i64 {
+    let Some(today) = local_day(at) else {
+        return 0;
+    };
+    history
+        .iter()
+        .filter(|entry| entry.task_id == task_id)
+        .filter(|entry| local_day(entry.at) == Some(today))
+        .map(|entry| entry.tokens.unwrap_or(0).max(0))
+        .sum()
+}
+
+/// `Some(reason)` when the daily budget is already spent, so the caller must
+/// not send a request. `None` without a limit or while budget remains.
+pub fn daily_limit_message(task: &Task, history: &[HistoryEntry], at: i64) -> Option<String> {
+    let limit = task.daily_token_limit?;
+    let used = tokens_used_today(&task.id, history, at);
+    (used >= limit).then(|| format!("Daily token limit reached ({}/{})", used, limit))
+}
+
 // MARK: - CRUD
 
 pub fn view() -> Value {
@@ -638,6 +745,36 @@ fn validate(input: &TaskInput) -> Result<Validated, String> {
         None
     };
     let time_zone = normalize_time_zone(input.time_zone.as_deref())?;
+    let working_directory = input
+        .working_directory
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if let Some(directory) = &working_directory {
+        if !std::path::Path::new(directory).is_dir() {
+            return Err("рабочая папка не существует".to_string());
+        }
+    }
+    if let Some(max_tokens) = input.max_tokens {
+        if !(1..=32_768).contains(&max_tokens) {
+            return Err("max tokens: от 1 до 32768".to_string());
+        }
+    }
+    if let Some(limit) = input.daily_token_limit {
+        if !(MIN_DAILY_TOKEN_LIMIT..=MAX_DAILY_TOKEN_LIMIT).contains(&limit) {
+            return Err(format!(
+                "дневной лимит токенов: от {} до {}",
+                MIN_DAILY_TOKEN_LIMIT, MAX_DAILY_TOKEN_LIMIT
+            ));
+        }
+    }
+    if !(0..=10).contains(&input.retry_limit) {
+        return Err("retry limit: от 0 до 10".to_string());
+    }
+    if !(1..=1440).contains(&input.retry_delay_minutes) {
+        return Err("retry delay: от 1 до 1440 минут".to_string());
+    }
     if schedule_kind == SCHEDULE_INTERVAL
         && (input.interval_minutes < 1 || input.interval_minutes > MAX_INTERVAL_MINUTES)
     {
@@ -673,6 +810,12 @@ fn validate(input: &TaskInput) -> Result<Validated, String> {
         prompt: prompt.to_string(),
         model: model.to_string(),
         effort,
+        working_directory,
+        include_git_context: input.include_git_context,
+        max_tokens: input.max_tokens,
+        daily_token_limit: input.daily_token_limit,
+        retry_limit: input.retry_limit,
+        retry_delay_minutes: input.retry_delay_minutes,
         schedule_kind,
         cron_expression,
         time_zone,
@@ -693,6 +836,12 @@ fn apply_input(task: &mut Task, input: &Validated, now: i64) {
     task.prompt = input.prompt.clone();
     task.model = input.model.clone();
     task.reasoning_effort = input.effort.clone();
+    task.working_directory = input.working_directory.clone();
+    task.include_git_context = input.include_git_context;
+    task.max_tokens = input.max_tokens;
+    task.daily_token_limit = input.daily_token_limit;
+    task.retry_limit = input.retry_limit;
+    task.retry_delay_minutes = input.retry_delay_minutes;
     task.interval_minutes = input.interval_minutes;
     task.schedule_kind = input.schedule_kind.clone();
     task.cron_expression = input.cron_expression.clone();
@@ -759,6 +908,13 @@ pub fn delete(id: &str) -> Result<Value, String> {
 /// Process-wide claim: exactly one completion runs at a time, whether the tick
 /// or "Run now" started it.
 static RUNNING: AtomicBool = AtomicBool::new(false);
+/// Manual "Run now" requests waiting for the active run, in arrival order.
+/// Memory only: an app restart drops the queue by design.
+static QUEUE: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Task id owned by the active run, reported by `scheduler_queue`.
+static CURRENT: Mutex<Option<String>> = Mutex::new(None);
+/// Set by `cancel`, polled by `execute`, reset at the start of every run.
+static CANCEL: AtomicBool = AtomicBool::new(false);
 
 struct RunGuard;
 
@@ -773,43 +929,181 @@ impl RunGuard {
 
 impl Drop for RunGuard {
     fn drop(&mut self) {
+        // Clear the claim under the queue lock: `claim_or_enqueue` either sees
+        // an active runner (and queues) or takes the claim itself, so a manual
+        // request can never land in the gap and wait forever.
+        let _queue = queue_lock();
         RUNNING.store(false, Ordering::SeqCst);
     }
 }
 
-/// `wait=false` skips a busy runner (the tick will retry in 30 s); `wait=true`
-/// queues "Run now" behind the current run, bounded by twice the timeout.
-async fn acquire(wait: bool) -> Option<RunGuard> {
-    if let Some(guard) = RunGuard::try_acquire() {
-        return Some(guard);
+/// How a manual run is admitted: it starts now, or it waits in the queue.
+enum Claim {
+    Started(RunGuard),
+    Queued,
+}
+
+/// The queue lock. A poisoned lock is recovered: the vector holds only ids and
+/// cannot be left half-written.
+fn queue_lock() -> MutexGuard<'static, Vec<String>> {
+    QUEUE.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+/// Append an id unless it is already waiting. Empty ids never enter.
+fn push_queued(queue: &mut Vec<String>, id: &str) -> bool {
+    if id.trim().is_empty() || queue.iter().any(|queued| queued == id) {
+        return false;
     }
-    if !wait {
-        return None;
-    }
-    for _ in 0..WAIT_ATTEMPTS {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        if let Some(guard) = RunGuard::try_acquire() {
-            return Some(guard);
+    queue.push(id.to_string());
+    true
+}
+
+/// Oldest queued id that still resolves to a task. Deleted and unknown ids are
+/// dropped; a disabled task still runs because the request was explicit.
+fn pop_known_task(queue: &mut Vec<String>, tasks: &[Task]) -> Option<Task> {
+    while !queue.is_empty() {
+        let id = queue.remove(0);
+        if let Some(task) = tasks.iter().find(|task| task.id == id) {
+            return Some(task.clone());
         }
     }
     None
 }
 
+/// Take the claim when the runner is idle; otherwise append the id (deduped)
+/// and report it as queued. The check and the append share the queue lock with
+/// the release below, so no request can be stranded.
+fn claim_or_enqueue(id: &str) -> Claim {
+    let mut queue = queue_lock();
+    if !RUNNING.load(Ordering::SeqCst) {
+        if let Some(guard) = RunGuard::try_acquire() {
+            return Claim::Started(guard);
+        }
+    }
+    push_queued(&mut queue, id);
+    Claim::Queued
+}
+
+/// Next queued run, or `None` after releasing the claim. The empty check and
+/// the release share one critical section with `claim_or_enqueue`.
+fn next_queued_or_finish() -> Option<Task> {
+    let mut queue = queue_lock();
+    let store = load();
+    let next = pop_known_task(&mut queue, &store.tasks);
+    if next.is_none() {
+        RUNNING.store(false, Ordering::SeqCst);
+    }
+    next
+}
+
+/// Stop a batch after a cancel: drop the queue and release the claim together.
+fn finish_batch() {
+    let mut queue = queue_lock();
+    queue.clear();
+    RUNNING.store(false, Ordering::SeqCst);
+}
+
+fn set_current(id: Option<&str>) {
+    let mut current = CURRENT.lock().unwrap_or_else(|error| error.into_inner());
+    *current = id.map(str::to_string);
+}
+
+/// Queued manual runs, oldest first.
+pub fn queued_ids() -> Vec<String> {
+    queue_lock().clone()
+}
+
+/// Task id of the active run, if any.
+pub fn current_task_id() -> Option<String> {
+    CURRENT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
+}
+
+/// Scheduler state for the UI: queued ids, the running id and whether a cancel
+/// is pending. Never persisted.
+pub fn queue_snapshot() -> Value {
+    json!({
+        "queued": queued_ids(),
+        "running": current_task_id(),
+        "cancelling": CANCEL.load(Ordering::SeqCst),
+    })
+}
+
+/// "Cancel current": drop every queued manual run and abort the in-flight
+/// request. The cancelled task keeps its normal schedule and is never retried.
+pub fn cancel() -> Value {
+    let mut queue = queue_lock();
+    queue.clear();
+    let running = RUNNING.load(Ordering::SeqCst);
+    if running {
+        CANCEL.store(true, Ordering::SeqCst);
+    }
+    drop(queue);
+    json!({
+        "status": if running { "cancelling" } else { "idle" },
+        "queued": Vec::<String>::new(),
+        "running": current_task_id(),
+    })
+}
+
+/// Run one task, then every queued manual request, one at a time. The claim is
+/// held for the whole batch and released by `next_queued_or_finish` or
+/// `finish_batch`, so the schedule and the queue never overlap.
+async fn run_batch(
+    settings: &settings::Settings,
+    app: &tauri::AppHandle,
+    first: Task,
+    guard: RunGuard,
+) {
+    let mut next = Some(first);
+    while let Some(task) = next {
+        let outcome = run_and_record(settings, &task).await;
+        notify_outcome(app, settings, &task.name, &outcome);
+        if CANCEL.load(Ordering::SeqCst) {
+            // The user asked for everything to stop: no drain, no schedule.
+            finish_batch();
+            break;
+        }
+        next = next_queued_or_finish();
+    }
+    drop(guard);
+}
+
 /// One scheduler tick: at most one due task, serial with every other run.
 pub async fn tick(settings: &settings::Settings, app: &tauri::AppHandle) {
-    let Some(_guard) = acquire(false).await else {
+    // A queued manual run has priority: the schedule must not start while the
+    // queue is waiting.
+    if !queue_lock().is_empty() {
+        return;
+    }
+    let Some(guard) = RunGuard::try_acquire() else {
         return;
     };
     let store = load();
     let Some(task) = due_task(&store, now_secs()).cloned() else {
         return;
     };
-    let outcome = run_and_record(settings, &task).await;
-    notify_outcome(app, settings, &task.name, &outcome);
+    if !pool_allows(&task) {
+        return;
+    }
+    run_batch(settings, app, task, guard).await;
+}
+
+/// Account-pool models need at least one usable Codex account. Namespaced
+/// provider models route independently.
+fn pool_allows(task: &Task) -> bool {
+    if task.model.contains('/') || task.model.starts_with("claude-") {
+        return true;
+    }
+    let accounts = vault::accounts();
+    accounts.is_empty() || accounts.iter().any(|account| !account.is_blocked())
 }
 
 /// "Run now" runs whatever the task state is (disabled included) and advances
-/// the schedule; it waits for a scheduled run to finish first.
+/// the schedule. When a run is already active the request joins the queue and
+/// the call returns at once, so the UI never blocks on a 300 s run.
 pub async fn run_now(
     settings: &settings::Settings,
     id: &str,
@@ -820,17 +1114,34 @@ pub async fn run_now(
         .into_iter()
         .find(|task| task.id == id)
         .ok_or_else(|| "задача не найдена".to_string())?;
-    let _guard = acquire(true)
-        .await
-        .ok_or_else(|| "планировщик занят — повторите позже".to_string())?;
-    let outcome = run_and_record(settings, &task).await;
-    notify_outcome(app, settings, &task.name, &outcome);
-    Ok(view())
+    match claim_or_enqueue(&task.id) {
+        Claim::Started(guard) => {
+            run_batch(settings, app, task, guard).await;
+            Ok(view())
+        }
+        Claim::Queued => Ok(json!({
+            "status": "queued",
+            "id": task.id,
+            "queued": queued_ids(),
+            "running": current_task_id(),
+        })),
+    }
 }
 
 async fn run_and_record(settings: &settings::Settings, task: &Task) -> Outcome {
+    // Every run starts clean: a cancel meant for an earlier run must not abort
+    // this one.
+    CANCEL.store(false, Ordering::SeqCst);
+    set_current(Some(&task.id));
     mark_running(&task.id);
-    let outcome = execute(settings.port, &settings.api_key, task).await;
+    // Daily budget: checked before every request, scheduled or manual. A
+    // reached limit sends nothing, spends nothing and is never retried.
+    let started = now_secs();
+    let store = load();
+    let outcome = match daily_limit_message(task, &store.history, started) {
+        Some(message) => skipped_outcome(message),
+        None => execute(settings.port, &settings.api_key, task).await,
+    };
     let at = now_secs();
     // Re-read after the request: a concurrent edit must not be overwritten by
     // the store snapshot taken before the (up to 300 s) run.
@@ -838,10 +1149,12 @@ async fn run_and_record(settings: &settings::Settings, task: &Task) -> Outcome {
     if apply_outcome(&mut store, &task.id, at, &outcome).is_ok() {
         let _ = save(&store);
     }
+    set_current(None);
     outcome
 }
 
 /// Toast after every run, gated by the master switch and the scheduler toggle.
+/// A cancelled run is user-initiated, so it stays silent.
 fn notify_outcome(
     app: &tauri::AppHandle,
     settings: &settings::Settings,
@@ -849,6 +1162,9 @@ fn notify_outcome(
     outcome: &Outcome,
 ) {
     if !settings.notifications || !settings.notify_scheduler {
+        return;
+    }
+    if outcome.status == STATUS_CANCELLED {
         return;
     }
     let (title, body) = notification_text(settings.lang == "en", task_name, outcome);
@@ -925,29 +1241,44 @@ pub fn apply_outcome(
         task.last_result = truncate_result(&outcome.result);
         task.last_duration_ms = Some(outcome.duration_ms);
         task.last_tokens = outcome.tokens;
-        // Failures keep the task enabled and move on to the next fire time.
-        // A manual run of a disabled task must not arm a schedule.
-        task.next_run_at = if task.enabled {
-            // +1 s for cron only: `at` has whole-second precision, and a fast
-            // run can finish in the same minute it was due. Without this the
-            // task would immediately become due again on the next tick.
-            // Intervals start from the exact completion time.
-            let reference = if task.schedule_kind == SCHEDULE_CRON {
-                at + 1
-            } else {
-                at
-            };
-            next_run_for(
-                &task.schedule_kind,
-                task.interval_minutes,
-                task.cron_expression.as_deref(),
-                task.time_zone.as_deref(),
-                reference,
-            )
-            .ok()
+        // Only a transport/gateway failure retries, with a bounded backoff;
+        // after the limit the normal cron/interval schedule resumes. Cancelled
+        // and skipped runs are not failures to retry: they keep the normal
+        // schedule and the retry counter untouched. A manual run of a disabled
+        // task must not arm a schedule.
+        if outcome.status == STATUS_ERROR && task.enabled && task.retry_attempt < task.retry_limit {
+            task.retry_attempt += 1;
+            task.next_run_at = Some(at + task.retry_delay_minutes.max(1) * 60);
+            let suffix = format!("retry {}/{}", task.retry_attempt, task.retry_limit);
+            task.last_error = Some(format!(
+                "{} · {}",
+                outcome.error.clone().unwrap_or_default(),
+                suffix
+            ));
         } else {
-            None
-        };
+            if outcome.status == STATUS_OK {
+                task.retry_attempt = 0;
+            }
+            task.next_run_at = if task.enabled {
+                // +1 s for cron only: `at` has whole-second precision, and a
+                // fast run can finish in the same minute it was due.
+                let reference = if task.schedule_kind == SCHEDULE_CRON {
+                    at + 1
+                } else {
+                    at
+                };
+                next_run_for(
+                    &task.schedule_kind,
+                    task.interval_minutes,
+                    task.cron_expression.as_deref(),
+                    task.time_zone.as_deref(),
+                    reference,
+                )
+                .ok()
+            } else {
+                None
+            };
+        }
         task.model.clone()
     };
     store.history.push(HistoryEntry {
@@ -969,9 +1300,24 @@ pub fn endpoint(port: u16) -> String {
 }
 
 pub fn request_body(task: &Task) -> Value {
+    let mut prompt = task.prompt.clone();
+    if task.include_git_context {
+        if let Some(directory) = task
+            .working_directory
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let context = git_context(directory);
+            if !context.is_empty() {
+                prompt.push_str("\n\nRepository context (read-only):\n");
+                prompt.push_str(&context);
+            }
+        }
+    }
     let mut body = json!({
         "model": task.model,
-        "messages": [{ "role": "user", "content": task.prompt }],
+        "messages": [{ "role": "user", "content": prompt }],
         "stream": false,
     });
     if let Some(effort) = task
@@ -981,7 +1327,50 @@ pub fn request_body(task: &Task) -> Value {
     {
         body["reasoning_effort"] = json!(effort);
     }
+    if let Some(max_tokens) = task.max_tokens {
+        body["max_tokens"] = json!(max_tokens);
+    }
     body
+}
+
+/// Bounded read-only git context for a scheduled task. `git` must be on PATH;
+/// a missing repository/tool simply yields no context.
+fn git_context(directory: &str) -> String {
+    if !std::path::Path::new(directory).is_dir() {
+        return String::new();
+    }
+    let run = |args: &[&str]| -> String {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(directory)
+            .output();
+        match output {
+            Ok(output) if output.status.success() => {
+                String::from_utf8_lossy(&output.stdout).trim().to_string()
+            }
+            _ => String::new(),
+        }
+    };
+    if run(&["rev-parse", "--is-inside-work-tree"]).is_empty() {
+        return String::new();
+    }
+    let mut text = String::new();
+    let commands: [(&str, &[&str]); 3] = [
+        ("status --short", &["status", "--short"]),
+        ("log -5 --oneline", &["log", "-5", "--oneline", "--decorate"]),
+        ("diff --stat", &["diff", "--stat"]),
+    ];
+    for (label, args) in commands {
+        let out = run(args);
+        if !out.is_empty() {
+            text.push_str("$ git ");
+            text.push_str(label);
+            text.push('\n');
+            text.push_str(&out);
+            text.push('\n');
+        }
+    }
+    text.chars().take(12_000).collect()
 }
 
 /// One completion through the local gateway.
@@ -1044,6 +1433,14 @@ pub fn outcome_from_response(code: u16, text: &str) -> Outcome {
         tokens: value
             .pointer("/usage/total_tokens")
             .and_then(Value::as_i64),
+    }
+}
+
+fn skipped_outcome(message: String) -> Outcome {
+    Outcome {
+        status: STATUS_SKIPPED.to_string(),
+        error: Some(message),
+        ..Outcome::default()
     }
 }
 
@@ -1708,6 +2105,80 @@ mod tests {
         assert_eq!(json["timeZone"], "+03:00");
         let back: Task = serde_json::from_value(json).unwrap();
         assert_eq!(back, value);
+    }
+
+    #[test]
+    fn failed_run_uses_bounded_retry_before_the_interval() {
+        let mut stored = task("a");
+        stored.retry_limit = 2;
+        stored.retry_delay_minutes = 1;
+        stored.next_run_at = Some(0);
+        let mut store = Store {
+            tasks: vec![stored],
+            history: Vec::new(),
+        };
+        let outcome = Outcome {
+            status: "error".to_string(),
+            error: Some("HTTP 500".to_string()),
+            ..Outcome::default()
+        };
+        apply_outcome(&mut store, "a", 1_000, &outcome).unwrap();
+        assert_eq!(store.tasks[0].retry_attempt, 1);
+        assert_eq!(store.tasks[0].next_run_at, Some(1_060));
+        assert!(store.tasks[0]
+            .last_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("retry 1/2"));
+    }
+
+    #[test]
+    fn daily_limit_counts_only_today_and_blocks_the_request() {
+        let now = 1_760_000_000;
+        let mut stored = task("a");
+        stored.daily_token_limit = Some(20);
+        let history = vec![entry("a", now), entry("a", now), entry("b", now)];
+        assert_eq!(tokens_used_today("a", &history, now), 20);
+        assert_eq!(
+            daily_limit_message(&stored, &history, now).as_deref(),
+            Some("Daily token limit reached (20/20)")
+        );
+        stored.daily_token_limit = Some(21);
+        assert!(daily_limit_message(&stored, &history, now).is_none());
+    }
+
+    #[test]
+    fn cancelled_and_skipped_runs_keep_the_normal_schedule_without_retry() {
+        for status in [STATUS_CANCELLED, STATUS_SKIPPED] {
+            let mut stored = task("a");
+            stored.retry_limit = 3;
+            stored.retry_delay_minutes = 1;
+            let mut store = Store {
+                tasks: vec![stored],
+                history: Vec::new(),
+            };
+            let outcome = Outcome {
+                status: status.to_string(),
+                error: Some("not a retry".to_string()),
+                ..Outcome::default()
+            };
+            apply_outcome(&mut store, "a", 1_000, &outcome).unwrap();
+            assert_eq!(store.tasks[0].last_status, status);
+            assert_eq!(store.tasks[0].retry_attempt, 0);
+            assert_ne!(store.tasks[0].next_run_at, Some(1_060));
+        }
+    }
+
+    #[test]
+    fn queue_dedupes_and_skips_unknown_tasks() {
+        let mut queue = Vec::new();
+        assert!(push_queued(&mut queue, "a"));
+        assert!(!push_queued(&mut queue, "a"));
+        assert!(!push_queued(&mut queue, ""));
+        assert_eq!(queue, vec!["a".to_string()]);
+        let tasks = vec![task("b")];
+        assert!(pop_known_task(&mut queue, &tasks).is_none());
+        assert!(queue.is_empty());
     }
 
     #[test]

@@ -8,7 +8,7 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{dpapi, paths};
 
@@ -203,14 +203,18 @@ pub fn unprotect_tokens(value: &mut Value) {
 }
 
 pub fn load_raw() -> Value {
-    let path = vault_file();
-    let raw = std::fs::read_to_string(&path).ok();
+    load_raw_at(&vault_file())
+}
+
+/// Same as [`load_raw`] for an explicit path (backup export / tests).
+pub fn load_raw_at(path: &Path) -> Value {
+    let raw = std::fs::read_to_string(path).ok();
     let mut value = raw
         .as_deref()
         .and_then(|text| serde_json::from_str::<Value>(text).ok())
         .unwrap_or_else(|| {
             if raw.as_deref().map(|text| !text.trim().is_empty()).unwrap_or(false) {
-                let _ = paths::quarantine(&path);
+                let _ = paths::quarantine(path);
             }
             json!({"accounts": [], "currentAccountId": Value::Null})
         });
@@ -219,18 +223,22 @@ pub fn load_raw() -> Value {
 }
 
 pub fn save_raw(value: &Value) -> Result<(), String> {
+    save_raw_at(&vault_file(), value)
+}
+
+/// Same as [`save_raw`] for an explicit path (backup import / tests).
+pub fn save_raw_at(path: &Path, value: &Value) -> Result<(), String> {
     // Vault tokens are encrypted on disk only; callers keep plaintext values
     // in memory (the gateway config and Codex auth files need them).
     let mut stored = value.clone();
     protect_tokens(&mut stored)?;
-    let path = vault_file();
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let data = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;
-    let tmp = paths::tmp_path(&path);
+    let tmp = paths::tmp_path(path);
     std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 pub fn accounts() -> Vec<Account> {
