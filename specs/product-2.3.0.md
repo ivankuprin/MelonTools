@@ -133,16 +133,55 @@ Optional:
 
 ## Evidence
 
-- S1 core: macOS 156/156, Windows 140/140, JS OK, both builds OK.
-- S2/S3/B1/O1: pending.
-- R1: pending.
+- **S1** workspace context, max tokens, pool guard and retry: implemented on
+  macOS and Windows; existing coverage retained.
+- **S2** memory-only queue, visible queued state, cancel via URLSessionDataTask
+  cancellation (macOS) and reqwest select/cancel flag (Windows); cancelled runs
+  are not retried. macOS tests cover queued/cancelled runs; Windows unit tests
+  cover queue dedupe and cancelled/skipped scheduling.
+- **S3** optional daily token limit checked before manual and scheduled runs;
+  no request when reached; normal schedule and retry counter preserved.
+  Backward decoding covered by tests.
+- **B1** portable encrypted backup on both platforms: PBKDF2-HMAC-SHA256
+  210k, AES-256-GCM, 16-byte salt, 12-byte nonce, ciphertext||tag. Scheduler,
+  vault, auth files, model sources and portable settings are included; logs,
+  gateway keys and secrets are excluded. macOS validates SchedulerFile/Vault
+  and snapshots/rolls back targets; Windows validates before writes, snapshots
+  and rolls back, re-protects DPAPI, and preserves the machine-local gateway
+  keys. Wrong password/malformed payload tests leave live files unchanged.
+- **O1** macOS onboarding health card and Windows onboarding health rows cover
+  gateway, accounts, models, scheduler and backup, with deep links and a
+  disabled demo task.
+- **R1.1** version 2.3.0 in project.yml/Info.plist, Cargo.toml/tauri.conf.json,
+  Cask, winget and docs; release notes updated.
+- **R1.2** GitHub release `v2.3.0` published with 8 assets (DMG, setup,
+  portable, legacy and four `.sha256` files); downloaded DMG/setup hashes
+  matched the published checksums; Cask/winget hashes match. The automatic
+  tag Release run was cancelled deliberately after the verified local assets
+  were published, matching the prior release procedure. CI and Security on
+  `7b206cc` are green.
+- **Checks:** macOS **167/167**, Windows **150/150**, `node --check` OK,
+  `docs-lint` OK, macOS and Windows unsigned builds succeeded, DMG installed
+  on the Mac at 2.3.0 build 20 and launched.
+- **Review:** independent reviewer PASS; critical reviewer PASS after fixes.
+  Accepted residuals: history-based daily accounting can undercount if history
+  is trimmed; PBKDF2 parameters and key/password zeroization are advisory
+  improvements.
 
 ## Review
 
-Pending independent review after implementation.
+Independent functional review and critical security review completed on the
+current tree. High findings (unsafe macOS restore, Windows gateway-live
+restore, codexHome traversal, cancel race) were fixed and re-checked. No
+High/Critical finding remains in the reviewed paths. Low residuals: Windows
+reserved-device auth filenames, a restart-error toast that can be overwritten
+by the success toast, and an empty auths directory on a macOS restore failure.
 
 ## Loop
 
-- phase: SPEC
-- repair_count: 0
-- next action: architect discovery, then implement S2/S3/B1/O1 on both platforms.
+- phase: **PASS**
+- repair_count: 5
+- release commit/tag: `7b206cc` / `v2.3.0`
+- publication: https://github.com/ivankuprin/MelonTools/releases/tag/v2.3.0
+- next action: none for 2.3.0; remaining 2.4/3.0 product work stays out of
+  scope. Signing/notarization/Authenticode remain externally blocked.
