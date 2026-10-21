@@ -66,7 +66,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.melontools.app
         MARKETING_VERSION: "2.2.3"
-        CURRENT_PROJECT_VERSION: "20"
+        CURRENT_PROJECT_VERSION: "19"
         GENERATE_INFOPLIST_FILE: "NO"
 
   MelonToolsTests:
