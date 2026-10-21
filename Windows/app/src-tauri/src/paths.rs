@@ -62,6 +62,25 @@ pub fn yaml_path(p: &std::path::Path) -> String {
 /// A unique temporary sibling for atomic writes: two concurrent writers of
 /// the same file must not share one tmp path — the rename would publish the
 /// wrong content and the other writer would fail on a missing file.
+/// Move an unreadable store aside instead of letting the next save overwrite
+/// it. Returns the quarantined path when a file was moved.
+pub fn quarantine(path: &std::path::Path) -> Option<PathBuf> {
+    if !path.exists() {
+        return None;
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let name = path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "store".to_string());
+    let target = path.with_file_name(format!("{name}.corrupt-{stamp}"));
+    std::fs::rename(path, &target).ok()?;
+    Some(target)
+}
+
 pub fn tmp_path(path: &std::path::Path) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);

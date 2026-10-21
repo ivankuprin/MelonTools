@@ -186,10 +186,16 @@ pub fn load() -> Store {
 }
 
 fn load_from(target: &std::path::Path) -> Store {
-    let mut store: Store = std::fs::read_to_string(target)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
+    let raw = std::fs::read_to_string(target).ok();
+    let mut store: Store = raw
+        .as_deref()
+        .and_then(|text| serde_json::from_str(text).ok())
+        .unwrap_or_else(|| {
+            if raw.as_deref().map(|text| !text.trim().is_empty()).unwrap_or(false) {
+                let _ = paths::quarantine(target);
+            }
+            Store::default()
+        });
     let now = now_secs();
     clamp_store(&mut store);
     for task in &mut store.tasks {

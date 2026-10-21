@@ -588,6 +588,7 @@
   function renderPopover() {
     const pop = state.popover;
     if (!pop) return;
+    const status = state.status || {};
     const body = pop.querySelector('.melon-pop-body');
     const foot = pop.querySelector('.melon-pop-foot');
     const data = totals();

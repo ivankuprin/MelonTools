@@ -11,6 +11,10 @@ use crate::paths;
 pub const PROVIDER_ID: &str = "melon_local_access";
 const PROVIDER_NAME: &str = "Melon Tools API";
 pub const CATALOG_FILE: &str = "melon-model-catalog.json";
+
+pub fn catalog_path() -> PathBuf {
+    paths::codex_home().join(CATALOG_FILE)
+}
 const MODELS_CACHE_FILE: &str = "models_cache.json";
 const DEFAULT_CATALOG_TOOLS: &[&str] = &["send_user_message_async", "clock"];
 const FALLBACK_BASE_INSTRUCTIONS: &str =
@@ -206,7 +210,12 @@ pub fn apply(port: u16, api_key: &str) -> Result<(), String> {
         &format!("http://127.0.0.1:{}/v1", port),
         api_key,
     );
-    updated = upsert_top_level_key(&updated, "model_catalog_json", CATALOG_FILE);
+    if catalog_path().exists() {
+        updated = upsert_top_level_key(&updated, "model_catalog_json", CATALOG_FILE);
+    } else {
+        // Never point Codex at a file we did not generate.
+        updated = remove_top_level_key(&updated, "model_catalog_json");
+    }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
@@ -217,9 +226,20 @@ pub fn apply(port: u16, api_key: &str) -> Result<(), String> {
 /// stop the Codex app from starting when the file is gone).
 pub fn remove() -> Result<(), String> {
     let path = config_path();
+    let backup = path.with_extension("toml.melon-backup");
     let Ok(current) = std::fs::read_to_string(&path) else {
         return Ok(());
     };
+    // Restore the pre-Melon config when possible; otherwise strip only our
+    // route and catalog reference.
+    if backup.exists() {
+        let restored = std::fs::read_to_string(&backup).map_err(|e| e.to_string())?;
+        if !restored.trim().is_empty() {
+            write_atomic(&path, &restored)?;
+            let _ = std::fs::remove_file(&backup);
+            return Ok(());
+        }
+    }
     let mut updated = remove_route(&current);
     updated = remove_top_level_key(&updated, "model_catalog_json");
     write_atomic(&path, &updated)
@@ -589,6 +609,20 @@ fn custom_catalog_entry(
         json!(["text"])
     };
     entry["supports_image_detail_original"] = json!(false);
+    // Never inherit the pool template's provider-specific capabilities.
+    entry["description"] = json!(prettify(id));
+    entry["context_window"] = json!(128_000);
+    entry["max_context_window"] = json!(128_000);
+    entry["auto_compact_token_limit"] = json!(108_800);
+    entry["effective_context_window_percent"] = json!(95);
+    entry["additional_speed_tiers"] = json!([]);
+    entry["service_tiers"] = json!([]);
+    entry["default_service_tier"] = Value::Null;
+    entry["supports_search_tool"] = json!(false);
+    entry["use_responses_lite"] = json!(false);
+    entry["prefer_websockets"] = json!(false);
+    entry["visibility"] = json!("list");
+    entry["supported_in_api"] = json!(true);
     if entry.get("experimental_supported_tools").is_none() {
         entry["experimental_supported_tools"] = json!(["send_user_message_async", "clock"]);
     }
@@ -744,7 +778,9 @@ pub async fn sync_catalog(
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let data = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
-    std::fs::write(&path, data).map_err(|e| e.to_string())?;
+    let tmp = paths::tmp_path(&path);
+    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     Ok(custom)
 }
 

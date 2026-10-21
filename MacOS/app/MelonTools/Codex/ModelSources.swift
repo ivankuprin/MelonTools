@@ -935,7 +935,8 @@ final class ModelSourcesStore: ObservableObject {
     /// otherwise leave the old catalog in place.
     func syncCatalogIfNeeded() {
         do {
-            let count = try CodexModelCatalog.sync(sources: sources)
+            let ownsRoute = CodexGatewayService.shared.codexRoute == .melon
+            let count = try CodexModelCatalog.sync(sources: sources, updateConfig: ownsRoute)
             lastApply = String(format: L("Applied: %d models for Codex."), count)
         } catch {
             lastApply = L("Apply failed") + ": " + error.localizedDescription
@@ -966,7 +967,12 @@ final class ModelSourcesStore: ObservableObject {
             store.load()
             await gateway.start(accounts: store.accounts, priorities: store.effectivePriorities())
         }
+        guard gateway.isRunning else {
+            lastApply = gateway.lastError ?? L("Apply failed")
+            return
+        }
         gateway.enableCodexRoute()
+        guard gateway.codexRoute == .melon else { return }
         ComposerBridge.shared.launchOrActivateCodex(forceRestart: true)
     }
 }

@@ -233,7 +233,7 @@ final class UpdaterStore: ObservableObject {
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("melontools-update-\(UUID().uuidString).sh")
         let script = installerScript(
-            appPath: "/Applications/Melon Tools.app",
+            appPath: Bundle.main.bundleURL.path,
             dmgPath: dmg.path,
             pid: ProcessInfo.processInfo.processIdentifier
         )

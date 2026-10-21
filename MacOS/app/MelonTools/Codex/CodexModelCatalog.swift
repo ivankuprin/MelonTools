@@ -61,8 +61,10 @@ enum CodexModelCatalog {
     }
 
     /// Regenerates the catalog. Returns the number of custom models written.
+    /// The config reference is only rewritten when the caller owns the Codex
+    /// route; a launch-time sync must not steal another tool’s route.
     @discardableResult
-    static func sync(sources: [ModelSource]) throws -> Int {
+    static func sync(sources: [ModelSource], updateConfig: Bool = true) throws -> Int {
         guard let entries = loadBaseEntries() else { throw CatalogError.baseMissing }
         let (result, custom) = generatedEntries(
             base: entries,
@@ -72,7 +74,9 @@ enum CodexModelCatalog {
         let payload: [String: Any] = ["models": result]
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         try SecureFile.write(data, to: URL(fileURLWithPath: targetPath))
-        try ensureConfigReference()
+        if updateConfig {
+            try ensureConfigReference()
+        }
         return custom
     }
 

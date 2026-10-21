@@ -55,8 +55,8 @@ enum MTTheme {
         light: rgb(110, 110, 115))   // #6E6E73
     /// Tertiary text / faint glyphs.
     static let textTertiary = adaptive("mt.textTertiary",
-        dark: rgb(110, 110, 116),    // #6E6E74
-        light: rgb(152, 152, 158))   // #98989E
+        dark: rgb(148, 148, 156),    // #94949C
+        light: rgb(100, 100, 106))   // #64646A
 
     // MARK: - Semantic status
 

@@ -2,6 +2,15 @@ import Foundation
 import Combine
 import AppKit
 
+/// XCTest launches the real app as its test host. Unit tests must not touch
+/// the live vault, gateway, Codex config, scheduler or network.
+enum AppRuntime {
+    static var isTesting: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
+    }
+}
+
 /// Global app state: appearance and codex home.
 @MainActor
 final class AppState: ObservableObject {

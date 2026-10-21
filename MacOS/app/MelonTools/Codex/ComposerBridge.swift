@@ -38,6 +38,7 @@ final class ComposerBridge: ObservableObject {
     // only grows over time (publishing would invalidate observers forever).
     private(set) var logLines: [String] = []
     @Published private(set) var busy = false
+    private var tickInFlight = false
     @Published private(set) var refreshing = false
 
     @Published var enabled: Bool {
@@ -88,9 +89,8 @@ final class ComposerBridge: ObservableObject {
     /// Starts the discovery/injection loop (no-op when disabled).
     func start() {
         guard enabled else {
-            // A disabled feature must not inherit a debug port left by an
-            // earlier session.
-            closeDebugPortIfNeeded()
+            // A disabled feature must not restart Codex implicitly; the next
+            // explicit Codex launch will omit the debug flag.
             return
         }
         if status == .off { status = .connecting }
@@ -139,22 +139,9 @@ final class ComposerBridge: ObservableObject {
         refreshing = false
         status = .off
         if disposeChips {
-            log(L("Chips removed from the Codex app."))
-            closeDebugPortIfNeeded()
-        }
-    }
-
-    /// The CDP listener belongs to the Codex process: closing websockets does
-    /// not close it. Restart Codex without the flag when chips are turned off.
-    private func closeDebugPortIfNeeded() {
-        Task { @MainActor in
-            guard !busy,
-                  let process = await Self.findCodexProcess(),
-                  process.debugPort != nil else { return }
-            busy = true
-            defer { busy = false }
-            log(L("Composer chips are off — restarting Codex without a debug port."))
-            await relaunchCodex(openDebugPort: false)
+            // Do not quit Codex implicitly: unsaved input can be lost. The
+            // debug port is closed the next time the user relaunches Codex.
+            log(L("Chips removed from the Codex app. Relaunch Codex to close the debug port."))
         }
     }
 
@@ -218,6 +205,9 @@ final class ComposerBridge: ObservableObject {
 
     private func tick() async {
         guard enabled else { return }
+        guard !tickInFlight else { return }
+        tickInFlight = true
+        defer { tickInFlight = false }
         guard !Self.scriptSource().isEmpty else {
             status = .failed(L("Composer chips script resource is missing from the app bundle."))
             return
@@ -424,6 +414,16 @@ final class ComposerBridge: ObservableObject {
         return payload
     }
 
+    /// Never send the full account address to an injected page. The masked
+    /// form is enough to distinguish accounts in the composer.
+    nonisolated static func maskedEmail(_ email: String?) -> Any {
+        guard let email, let at = email.firstIndex(of: "@"), at != email.startIndex else {
+            return NSNull()
+        }
+        let local = email[..<at]
+        return "\(local.prefix(1))***\(email[at...])"
+    }
+
     private func providersPayload() -> [String: Any] {
         var payload: [String: Any] = [:]
         if let stats = providerUsage.openRouter {
@@ -448,7 +448,7 @@ final class ComposerBridge: ObservableObject {
         }
         if let stats = providerUsage.claude {
             var entry: [String: Any] = ["title": "Claude", "connected": stats.connected, "modelCount": stats.modelCount]
-            entry["email"] = stats.email ?? NSNull()
+            entry["email"] = Self.maskedEmail(stats.email)
             entry["plan"] = stats.plan ?? NSNull()
             entry["fiveHourPercent"] = stats.fiveHourPercent ?? NSNull()
             entry["fiveHourReset"] = stats.fiveHourReset.map { Int($0.timeIntervalSince1970) } ?? NSNull()
@@ -460,7 +460,7 @@ final class ComposerBridge: ObservableObject {
         }
         if let stats = providerUsage.antigravity {
             var entry: [String: Any] = ["title": "Antigravity", "connected": stats.connected, "modelCount": stats.modelCount]
-            entry["email"] = stats.email ?? NSNull()
+            entry["email"] = Self.maskedEmail(stats.email)
             entry["projectID"] = stats.projectID ?? NSNull()
             entry["updatedAt"] = stats.updatedAt.map { Int($0.timeIntervalSince1970) } ?? NSNull()
             entry["error"] = stats.error ?? NSNull()
@@ -635,6 +635,11 @@ final class ComposerBridge: ObservableObject {
             guard target.type == "page",
                   let ws = target.webSocketDebuggerUrl, !ws.isEmpty,
                   let wsURL = URL(string: ws), wsURL.scheme == "ws" else { return false }
+            // The debug endpoint is ours and local. Never follow a target that
+            // points the CDP session at a remote or different-port WebSocket.
+            guard let host = wsURL.host,
+                  host == "127.0.0.1" || host == "localhost",
+                  wsURL.port == port else { return false }
             guard target.url.hasPrefix("app://-/") else { return false }
             guard !target.url.contains("avatar-overlay") else { return false }
             return true
@@ -789,6 +794,7 @@ final class ComposerBridge: ObservableObject {
     /// (throttled so a broken app cannot cause a relaunch loop).
     private func autoRelaunchForManagedRoute() {
         guard enabled, !busy else { return }
+        guard UserDefaults.standard.bool(forKey: "composerAutoRelaunch") else { return }
         guard CodexGatewayService.shared.codexRoute == .melon else { return }
         if let last = lastAutoManagedRelaunch, Date().timeIntervalSince(last) < 120 { return }
         lastAutoManagedRelaunch = Date()

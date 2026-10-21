@@ -21,6 +21,16 @@ use crate::paths;
 /// (correctly) distrusted by the hash check below.
 const ENGINE_VERSION: &str = "e7003d2a";
 
+/// Cache key derived from the embedded payload itself. A rebuilt engine can
+/// never be silently ignored because someone forgot to bump a constant.
+fn payload_key() -> &'static str {
+    static KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    KEY.get_or_init(|| {
+        let digest = Sha256::digest(ENGINE_PAYLOAD);
+        format!("{:x}", digest)[..16].to_string()
+    })
+}
+
 static ENGINE_PAYLOAD: &[u8] = include_bytes!("../../resources/cliproxyapi.exe.z");
 
 pub fn engine_dir() -> PathBuf {
@@ -85,7 +95,7 @@ fn extract_engine() -> Result<PathBuf, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = engine_path();
     let current = std::fs::read_to_string(version_path()).unwrap_or_default();
-    if current.trim() == ENGINE_VERSION && path.exists() {
+    if current.trim() == payload_key() && path.exists() {
         let recorded = std::fs::read_to_string(hash_path()).unwrap_or_default();
         if let Ok(actual) = sha256_file(&path) {
             if checksum_matches(&recorded, &actual) {
@@ -113,7 +123,7 @@ fn extract_engine() -> Result<PathBuf, String> {
             // (a crash left it behind): keep the fresh extraction instead.
             let fallback = dir.join(format!(
                 "cliproxyapi-{}.exe",
-                ENGINE_VERSION.replace('.', "_")
+                payload_key()
             ));
             std::fs::rename(&tmp, &fallback).map_err(|e| e.to_string())?;
             write_provenance(&digest)?;
@@ -129,7 +139,7 @@ fn extract_engine() -> Result<PathBuf, String> {
 /// binary as adopted.
 fn write_provenance(digest: &str) -> Result<(), String> {
     std::fs::write(hash_path(), digest).map_err(|e| e.to_string())?;
-    std::fs::write(version_path(), ENGINE_VERSION).map_err(|e| e.to_string())
+    std::fs::write(version_path(), payload_key()).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

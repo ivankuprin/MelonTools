@@ -13,6 +13,10 @@ on:
 env:
   RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -30,8 +34,11 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       signed: ${{ steps.sign.outputs.signed }}
     steps:
-      - name: Check out the repository
+      - name: Check out the requested tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
 
       - name: Resolve and verify the version
         id: version
@@ -57,6 +64,16 @@ jobs:
 
       - name: Fetch the pinned gateway source
         run: ./MacOS/scripts/fetch-sources.sh
+
+      - name: Run macOS tests
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project MacOS/app/MelonTools.xcodeproj \
+            -scheme MelonTools \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/MelonToolsTests" \
+            CODE_SIGNING_ALLOWED=NO test
 
       - name: Build the app and DMG
         working-directory: MacOS
@@ -105,7 +122,9 @@ jobs:
           set -euo pipefail
           DMG="build/MelonTools-${{ steps.version.outputs.version }}.dmg"
           test -f "$DMG"
-          shasum -a 256 "$DMG" > "$DMG.sha256"
+          # Keep the bare filename so `shasum -c` works in a download folder.
+          (cd build && shasum -a 256 "MelonTools-${{ steps.version.outputs.version }}.dmg" \
+            > "MelonTools-${{ steps.version.outputs.version }}.dmg.sha256")
           cat "$DMG.sha256"
 
       - name: Upload the DMG artifact
@@ -120,12 +139,18 @@ jobs:
   windows:
     name: Windows executable
     runs-on: windows-latest
+    env:
+      WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
     outputs:
       version: ${{ steps.version.outputs.version }}
       signed: ${{ steps.sign.outputs.signed }}
     steps:
-      - name: Check out the repository
+      - name: Check out the requested tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
 
       - name: Resolve and verify the version
         id: version
@@ -153,6 +178,11 @@ jobs:
       # Windows/build-windows.sh is a macOS cross-compile helper (cargo-xwin).
       # On windows-latest the same sources build natively with cargo; the
       # checked-in compressed gateway engine is embedded into the executable.
+      - name: Run Windows tests
+        working-directory: Windows/app/src-tauri
+        shell: bash
+        run: cargo test --locked
+
       - name: Build the executable
         working-directory: Windows/app/src-tauri
         shell: bash
@@ -165,6 +195,32 @@ jobs:
             "../../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe"
           cp "../../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe" \
             "../../dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
+
+      - name: Sign the executable
+        id: sign
+        if: env.WINDOWS_CERT_PFX_BASE64 != '' && env.WINDOWS_CERT_PASSWORD != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ runner.temp }}\melontools-cert.pfx
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          try {
+            $bytes = [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64)
+            [IO.File]::WriteAllBytes($env:WINDOWS_CERT_PFX, $bytes)
+            $exe = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe"
+            ./packaging/sign-windows.ps1 -File $exe -Require
+            if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed" }
+            $legacy = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
+            if (Test-Path $legacy) {
+              ./packaging/sign-windows.ps1 -File $legacy -Require
+              if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed for legacy alias" }
+            }
+            "signed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } finally {
+            Remove-Item $env:WINDOWS_CERT_PFX -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Build the Windows installer
         shell: pwsh
@@ -187,33 +243,19 @@ jobs:
           if (-not (Test-Path $setup)) { throw "installer was not produced" }
           Get-Item $setup | Format-List Name,Length
 
-      - name: Sign the executable
-        id: sign
-        if: env.WINDOWS_CERT_PFX != '' && env.WINDOWS_CERT_PASSWORD != ''
+      - name: Sign the installer
+        if: env.WINDOWS_CERT_PFX_BASE64 != '' && env.WINDOWS_CERT_PASSWORD != ''
         shell: pwsh
         env:
           WINDOWS_CERT_PFX: ${{ runner.temp }}\melontools-cert.pfx
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
-          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX }}
         run: |
           $ErrorActionPreference = "Stop"
           try {
             $bytes = [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64)
             [IO.File]::WriteAllBytes($env:WINDOWS_CERT_PFX, $bytes)
-            $exe = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64-portable.exe"
-            ./packaging/sign-windows.ps1 -File $exe -Require
-            if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed" }
-            $legacy = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-win-x64.exe"
-            if (Test-Path $legacy) {
-              ./packaging/sign-windows.ps1 -File $legacy -Require
-              if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed for legacy alias" }
-            }
             $setup = "Windows/dist/MelonTools-${{ steps.version.outputs.version }}-setup.exe"
-            if (Test-Path $setup) {
-              ./packaging/sign-windows.ps1 -File $setup -Require
-              if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed for installer" }
-            }
-            "signed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            ./packaging/sign-windows.ps1 -File $setup -Require
+            if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 failed for installer" }
           } finally {
             Remove-Item $env:WINDOWS_CERT_PFX -Force -ErrorAction SilentlyContinue
           }
@@ -261,6 +303,22 @@ jobs:
 
       - name: List the release assets
         run: ls -l release-assets
+
+      - name: Verify every expected asset
+        run: |
+          set -euo pipefail
+          V="${{ needs.macos.outputs.version }}"
+          for name in \
+            "MelonTools-$V.dmg" \
+            "MelonTools-$V.dmg.sha256" \
+            "MelonTools-$V-setup.exe" \
+            "MelonTools-$V-setup.exe.sha256" \
+            "MelonTools-$V-win-x64-portable.exe" \
+            "MelonTools-$V-win-x64-portable.exe.sha256" \
+            "MelonTools-$V-win-x64.exe" \
+            "MelonTools-$V-win-x64.exe.sha256"; do
+            test -f "release-assets/$name" || { echo "missing $name" >&2; exit 1; }
+          done
 
       - name: Compose the release notes
         run: |

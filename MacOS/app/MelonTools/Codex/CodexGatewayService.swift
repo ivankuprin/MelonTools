@@ -147,6 +147,24 @@ final class CodexGatewayService: ObservableObject {
         "melon-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(24)
     }
 
+    /// Rotate the gateway key and immediately rewrite both the engine config
+    /// and the Codex provider token. Without the second write, Codex keeps the
+    /// old bearer and starts returning 401.
+    func rotateAPIKey() {
+        let previous = apiKey
+        apiKey = Self.generateKey()
+        do {
+            try writeConfig()
+            if codexRoute == .melon {
+                _ = enableCodexRoute()
+            }
+            auditLog("api key rotated and config/route rewritten")
+        } catch {
+            apiKey = previous
+            lastError = L("Could not rotate the API key") + ": \(error.localizedDescription)"
+        }
+    }
+
     var baseURL: String { "http://127.0.0.1:\(port)" }
 
     // MARK: - Paths
@@ -154,12 +172,14 @@ final class CodexGatewayService: ObservableObject {
     static var gatewayDir: URL {
         let dir = CodexStore.supportDir.appendingPathComponent("gateway", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
         return dir
     }
 
     static var authDir: URL {
         let dir = gatewayDir.appendingPathComponent("auths", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
         return dir
     }
 
@@ -499,6 +519,11 @@ final class CodexGatewayService: ObservableObject {
             lastError = L("Could not update the Codex config") + ": " + error.localizedDescription
             return false
         }
+        // Fresh installs have no config until the route is enabled; add the
+        // catalog reference only now, and only when the catalog actually exists.
+        if FileManager.default.fileExists(atPath: CodexModelCatalog.targetPath) {
+            try? CodexModelCatalog.ensureConfigReference()
+        }
         auditLog("codex route enabled → \(CodexConfigRoute.providerID) @ \(baseURL)")
         return true
     }
@@ -526,6 +551,25 @@ final class CodexGatewayService: ObservableObject {
         return true
     }
 
+    /// Keep the engine log private and bounded. The engine writes account
+    /// identifiers and upstream errors, so 0644 or an unbounded file is not
+    /// acceptable.
+    private func prepareLogFile() {
+        let fm = FileManager.default
+        let url = URL(fileURLWithPath: logPath)
+        if let attributes = try? fm.attributesOfItem(atPath: logPath),
+           let size = attributes[.size] as? NSNumber,
+           size.intValue > 5 * 1024 * 1024 {
+            let rotated = URL(fileURLWithPath: logPath + ".1")
+            try? fm.removeItem(at: rotated)
+            try? fm.moveItem(at: url, to: rotated)
+        }
+        if !fm.fileExists(atPath: logPath) {
+            fm.createFile(atPath: logPath, contents: nil)
+        }
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: logPath)
+    }
+
     private func spawn(binary: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: binary)
@@ -536,7 +580,7 @@ final class CodexGatewayService: ObservableObject {
 
         // Log directly to a file (not a pipe): a pipe would break when the app quits
         // and Go's runtime would kill the child with SIGPIPE on the next log write.
-        FileManager.default.createFile(atPath: logPath, contents: nil)
+        prepareLogFile()
         let logHandle = FileHandle(forWritingAtPath: logPath)
         if let logHandle {
             logHandle.seekToEndOfFile()
@@ -557,7 +601,9 @@ final class CodexGatewayService: ObservableObject {
                 self.healthTimer = nil
                 self.adopted = false
                 self.removePIDFile()
-                self.status = .failed(self.friendlyExitReason())
+                let reason = self.friendlyExitReason()
+                self.lastError = reason
+                self.status = .failed(reason)
             }
         }
 
@@ -571,8 +617,26 @@ final class CodexGatewayService: ObservableObject {
         writePIDFile(p.processIdentifier)
         adopted = false
         auditLog("gateway spawned pid \(p.processIdentifier)")
+        hardenEngineLogs()
         startHealthCheck()
         startLogTail(replayLastBytes: false)
+    }
+
+    /// The engine creates its own request/error logs with the process umask.
+    /// Tighten them after startup so backups and sync tools cannot read them.
+    private func hardenEngineLogs() {
+        let fm = FileManager.default
+        let logs = Self.authDir.appendingPathComponent("logs", isDirectory: true)
+        try? fm.createDirectory(at: logs, withIntermediateDirectories: true)
+        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: logs.path)
+        if let names = try? fm.contentsOfDirectory(atPath: logs.path) {
+            for name in names {
+                try? fm.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: logs.appendingPathComponent(name).path
+                )
+            }
+        }
     }
 
     private func finishWithFailure(_ message: String) {
@@ -633,11 +697,22 @@ final class CodexGatewayService: ObservableObject {
                     if self.lastError != nil { self.lastError = nil }
                 case .unauthorized, .unreachable:
                     misses += 1
-                    if self.process == nil, self.adopted, misses >= 3 {
-                        self.healthTimer?.invalidate()
-                        self.healthTimer = nil
-                        self.adopted = false
-                        self.status = .failed(L("The running service stopped responding."))
+                    if misses >= 3 {
+                        if self.process == nil, self.adopted {
+                            self.healthTimer?.invalidate()
+                            self.healthTimer = nil
+                            self.adopted = false
+                            let reason = L("The running service stopped responding.")
+                            self.lastError = reason
+                            self.status = .failed(reason)
+                        } else if self.process != nil {
+                            // Repeated 401/unreachable after spawn: do not
+                            // leave a broken child advertised as starting.
+                            self.finishWithFailure(
+                                L("The service did not answer healthy requests.")
+                            )
+                            Task { await self.stop() }
+                        }
                     }
                 }
             }
@@ -758,7 +833,9 @@ final class CodexGatewayService: ObservableObject {
         }
         enableCodexRoute()
         auditLog(L("Launching the Codex app through the service…"))
-        ComposerBridge.shared.launchOrActivateCodex(forceRestart: true)
+        // Opening Codex must not discard unsaved input; a route change has its
+        // own explicit restart path.
+        ComposerBridge.shared.launchOrActivateCodex(forceRestart: false)
     }
 
     /// Button wrapper for the API view and Settings.

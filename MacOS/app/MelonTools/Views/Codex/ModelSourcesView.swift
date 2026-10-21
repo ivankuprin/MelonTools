@@ -1082,6 +1082,15 @@ struct CodexProvidersView: View {
         .onTapGesture {
             sources.setModel(sourceId, modelId: model.id, enabled: !model.enabled)
         }
+        .focusable()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(model.display)
+        .accessibilityValue(model.enabled ? L("On") : L("Off"))
+        .accessibilityAddTraits(.isButton)
+        .onKeyPress(.space) {
+            sources.setModel(sourceId, modelId: model.id, enabled: !model.enabled)
+            return .handled
+        }
     }
 
     private func filtered(_ source: ModelSource) -> [SourceModel] {

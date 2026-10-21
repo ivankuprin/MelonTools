@@ -50,11 +50,10 @@ struct CodexAPIView: View {
                         NSPasteboard.general.setString(gateway.apiKey, forType: .string)
                     }
                     MTSecondaryButton(title: L("Rotate")) {
-                        gateway.apiKey = CodexGatewayService.generateKey()
-                        gateway.auditLog("api key rotated — restart the gateway to apply")
+                        gateway.rotateAPIKey()
                     }
                 }
-                Text(L("Use this key as the OpenAI API key in other tools. Restart the service after rotating the key."))
+                Text(L("Use this key as the OpenAI API key in other tools. Rotating it updates the gateway and the Codex route; restart the service only if another client still uses the old key."))
                     .font(MTTheme.mono(10))
                     .foregroundStyle(MTTheme.textSecondary)
             }

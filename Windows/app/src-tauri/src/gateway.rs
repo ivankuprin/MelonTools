@@ -160,8 +160,8 @@ pub(crate) const USER_AGENT: &str = concat!("MelonTools/", env!("CARGO_PKG_VERSI
 /// Every section is emitted from this one builder — a second root would break
 /// the engine config. Returns an empty string when nothing is configured.
 pub fn api_keys_yaml(settings: &Settings) -> String {
-    let opencode = !settings.opencode_key.trim().is_empty();
-    let openrouter = !settings.openrouter_key.trim().is_empty();
+    let opencode = settings.opencode_enabled && !settings.opencode_key.trim().is_empty();
+    let openrouter = settings.openrouter_enabled && !settings.openrouter_key.trim().is_empty();
     let claude = settings.claude_enabled && !settings.claude_api_key.trim().is_empty();
     if !opencode && !openrouter && !claude {
         return String::new();
@@ -626,36 +626,44 @@ pub(crate) fn tail_bytes<'a>(bytes: &'a [u8], truncated: bool) -> &'a [u8] {
     }
 }
 
+/// Parse one engine access-log line. Error lines append another `| message`,
+/// which must not shift the four base fields.
+fn parse_recent_call(line: &str) -> Option<Value> {
+    if !line.contains("\"/v1/") {
+        return None;
+    }
+    let parts: Vec<&str> = line.split('|').map(str::trim).collect();
+    if parts.len() < 4 {
+        return None;
+    }
+    let time = line
+        .find('[')
+        .and_then(|start| line.find(']').map(|end| &line[start + 1..end]))
+        .unwrap_or("");
+    let status = parts[0].split_whitespace().last().unwrap_or("");
+    let mut tokens = parts[3].split_whitespace();
+    let method = tokens.next().unwrap_or("");
+    let path = tokens.next().unwrap_or("").trim_matches('"');
+    Some(json!({
+        "time": time,
+        "status": status,
+        "duration": parts[1],
+        "method": method,
+        "path": path,
+    }))
+}
+
 /// The newest gateway requests (method, path, status, duration) for the
 /// dashboard "recent calls" card.
 pub fn recent_calls(limit: usize) -> Value {
     let text = log_tail(512 * 1024);
     let mut calls: Vec<Value> = Vec::new();
     for line in text.lines().rev() {
-        if !line.contains("\"/v1/") {
-            continue;
-        }
-        let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() < 5 {
-            continue;
-        }
-        let time = line
-            .find('[')
-            .and_then(|start| line.find(']').map(|end| &line[start + 1..end]))
-            .unwrap_or("");
-        let rest = parts[4].trim();
-        let mut tokens = rest.split_whitespace();
-        let method = tokens.next().unwrap_or("");
-        let path = tokens.next().unwrap_or("").trim_matches('"');
-        calls.push(json!({
-            "time": time,
-            "status": parts[1].trim(),
-            "duration": parts[2].trim(),
-            "method": method,
-            "path": path,
-        }));
-        if calls.len() >= limit {
-            break;
+        if let Some(call) = parse_recent_call(line) {
+            calls.push(call);
+            if calls.len() >= limit {
+                break;
+            }
         }
     }
     Value::Array(calls)
@@ -737,7 +745,8 @@ pub async fn check_api(port: u16, api_key: &str) -> Result<String, String> {
 mod tests {
     use super::{
         api_keys_yaml, base_config, image_matches_engine, image_starts_with, parse_pid,
-        parse_tasklist_image, parse_tasklist_pids, tail_bytes, yaml_escape, USER_AGENT,
+        parse_recent_call, parse_tasklist_image, parse_tasklist_pids, tail_bytes, yaml_escape,
+        USER_AGENT,
     };
     use crate::settings::Settings;
 
@@ -853,6 +862,19 @@ mod tests {
         assert!(!image_matches_engine("notcliproxyapi.exe"));
         assert!(image_starts_with("ChatGPT.exe", "chatgpt"));
         assert!(!image_starts_with("ChatGPT-helper.exe", "chatgpt.exe"));
+    }
+
+    #[test]
+    fn recent_call_parser_matches_the_engine_log_format() {
+        let call = parse_recent_call(
+            "[2026-10-21 12:00:00] [a1b2c3d4] [info ] 200 |       1.2s |       127.0.0.1 | POST    \"/v1/responses\"",
+        )
+        .expect("call");
+        assert_eq!(call["status"], "200");
+        assert_eq!(call["duration"], "1.2s");
+        assert_eq!(call["method"], "POST");
+        assert_eq!(call["path"], "/v1/responses");
+        assert!(parse_recent_call("not a call").is_none());
     }
 
     #[test]

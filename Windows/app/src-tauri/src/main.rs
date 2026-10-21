@@ -104,7 +104,18 @@ async fn settings_set(
     state: State<'_, AppState>,
     settings: settings::Settings,
 ) -> Result<Value, String> {
+    let old = state.settings();
+    let was_running = gateway::health(old.port, &old.api_key).await;
     let mut merged = settings;
+    if !(1024..=65535).contains(&merged.port) {
+        return Err("порт должен быть в диапазоне 1024–65535".to_string());
+    }
+    if !(60..=86_400).contains(&merged.quota_interval) {
+        return Err("интервал квот: от 60 до 86400 секунд".to_string());
+    }
+    if merged.lang != "ru" && merged.lang != "en" {
+        return Err("неизвестный язык".to_string());
+    }
     if merged.api_key.trim().is_empty() {
         merged.api_key = state.settings().api_key;
     }
@@ -122,6 +133,10 @@ async fn settings_set(
     settings::save(&merged)?;
     if let Ok(mut guard) = state.settings.lock() {
         *guard = merged.clone();
+    }
+    if was_running && old.port != merged.port {
+        let _ = stop_gateway(state.inner()).await;
+        let _ = start_gateway(state.inner()).await;
     }
     settings_view(&merged)
 }
@@ -150,9 +165,13 @@ async fn gateway_status(state: State<'_, AppState>) -> Result<Value, String> {
 async fn start_gateway(state: &AppState) -> Result<String, String> {
     let settings = state.settings();
     let result = gateway::start(&state.gw, &settings).await?;
-    let _ = codex_route::apply(settings.port, &settings.api_key);
+    // Generate the catalog before pointing Codex at it; a dangling
+    // model_catalog_json can stop the Codex app from starting.
     if let Ok(client) = quota::client() {
         let _ = codex_route::sync_catalog(&client, settings.port, &settings.api_key).await;
+    }
+    if std::path::Path::new(&codex_route::catalog_path()).exists() {
+        let _ = codex_route::apply(settings.port, &settings.api_key);
     }
     if let Ok(mut guard) = state.watchdog.lock() {
         guard.supervised = true;
@@ -649,14 +668,22 @@ async fn codex_route_status() -> Result<Value, String> {
 }
 
 #[tauri::command]
+async fn catalog_sync(state: State<'_, AppState>) -> Result<usize, String> {
+    let settings = state.settings();
+    let client = quota::client().map_err(|e| e.to_string())?;
+    codex_route::sync_catalog(&client, settings.port, &settings.api_key).await
+}
+
+#[tauri::command]
 async fn codex_route_apply(state: State<'_, AppState>) -> Result<Value, String> {
     let settings = state.settings();
+    let custom = if let Ok(client) = quota::client() {
+        codex_route::sync_catalog(&client, settings.port, &settings.api_key).await?
+    } else {
+        0
+    };
     codex_route::apply(settings.port, &settings.api_key)?;
-    if let Ok(client) = quota::client() {
-        let custom = codex_route::sync_catalog(&client, settings.port, &settings.api_key).await?;
-        return Ok(json!({ "route": codex_route::status(), "catalogCustom": custom }));
-    }
-    Ok(json!({ "route": codex_route::status(), "catalogCustom": 0 }))
+    Ok(json!({ "route": codex_route::status(), "catalogCustom": custom }))
 }
 
 #[tauri::command]
@@ -1170,7 +1197,14 @@ fn handle_tray_menu(app: &tauri::AppHandle, menu_id: &str) {
                 );
             });
         }
-        "quit" => app.exit(0),
+        "quit" => {
+            // Dropping a std::process::Child does not stop it. Stop the
+            // engine before exiting so no unauthenticated gateway survives
+            // the app in the background.
+            let state = app.state::<AppState>();
+            let _ = gateway::stop(&state.gw);
+            app.exit(0);
+        }
         _ => {}
     }
 }
@@ -1252,11 +1286,13 @@ fn main() {
                     let state = handle.state::<AppState>();
                     let settings = state.settings();
                     if gateway::start(&state.gw, &settings).await.is_ok() {
-                        let _ = codex_route::apply(settings.port, &settings.api_key);
                         if let Ok(client) = quota::client() {
                             let _ =
                                 codex_route::sync_catalog(&client, settings.port, &settings.api_key)
                                     .await;
+                        }
+                        if codex_route::catalog_path().exists() {
+                            let _ = codex_route::apply(settings.port, &settings.api_key);
                         }
                         // Arm the watchdog: without this the auto-started
                         // engine would get no auto-restart after a crash.
@@ -1293,6 +1329,38 @@ fn main() {
                     };
                     scheduler::tick(&settings, &scheduler_handle).await;
                     tokio::time::sleep(std::time::Duration::from_secs(scheduler::TICK_SECS)).await;
+                }
+            });
+
+            // Quota refresh and low/reset notifications belong to the Rust
+            // process, not the WebView timer: WebView2 may throttle or suspend
+            // timers when the window is hidden to the tray.
+            let quota_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut last = std::time::Instant::now()
+                    - std::time::Duration::from_secs(300);
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    let state = quota_handle.state::<AppState>();
+                    let settings = state.settings();
+                    if !gateway::health(settings.port, &settings.api_key).await {
+                        continue;
+                    }
+                    let interval = settings.quota_interval.max(60) as u64;
+                    let urgent = gateway::requests_last_minute() > 0;
+                    let due = last.elapsed()
+                        >= std::time::Duration::from_secs(if urgent { 30 } else { interval });
+                    if !due {
+                        continue;
+                    }
+                    last = std::time::Instant::now();
+                    let Ok(client) = quota::client() else { continue };
+                    let previous = quota_snapshot();
+                    let _ = quota::refresh_all(&client, None).await;
+                    let settings = state.settings();
+                    let _ = gateway::sync_accounts(&settings);
+                    check_low_quota(&quota_handle, &state, &previous);
+                    check_quota_reset(&quota_handle, &state, &previous);
                 }
             });
             Ok(())
@@ -1333,6 +1401,7 @@ fn main() {
             reset_priority,
             set_account_role,
             codex_route_status,
+            catalog_sync,
             codex_route_apply,
             codex_route_remove,
             bridge_status,

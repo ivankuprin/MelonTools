@@ -77,6 +77,7 @@ const DICT = {
     okPill: "готов", autoRefresh: "автообновление квот",
     addAccount: "Добавить аккаунт", addAccountHint: "Вход по коду: откроется страница OpenAI, введите код.",
     deviceCode: "Код", deviceWaiting: "Ждём подтверждение…", deviceOpen: "Открыть страницу входа",
+    deviceTimeout: "Код входа истёк — начните вход заново",
     subscription: "Подписка", until: "до", resetsAvailable: "Сбросы 5ч", resetsNone: "нет", available: "доступно",
     accountModels: "Модели на аккаунте", availableShort: "есть", unavailableShort: "нет",
     routing: "Роутинг", strategy: "Стратегия", strategyAuto: "Авто (по остатку)", strategyQuotaHigh: "Больше квоты — выше",
@@ -130,14 +131,14 @@ const DICT = {
     onboardingDisclaimer: "Используйте только свои аккаунты. Соблюдайте условия провайдеров: за нарушение правил возможна блокировка аккаунта.",
     onboardingAccounts: "Открыть аккаунты", onboardingProviders: "Открыть провайдеров", onboardingDone: "Готово",
     onboardingClose: "Закрыть",
-    diagTitle: "Проверка подключений", diagHint: "только чтение", diagRun: "Проверить подключения",
+    diagTitle: "Проверка подключений", diagHint: "список моделей + короткий платный запрос", diagRun: "Проверить подключения",
     diagIdle: "Проверка ещё не запускалась.", diagAt: "проверено", diagProvider: "Провайдер",
     diagAuth: "Авторизация", diagQuota: "Последняя квота", diagCodex: "Аккаунты Codex",
     diagKeySet: "ключ есть", diagKeyMissing: "ключа нет", diagUp: "доступен", diagDown: "недоступен", diagApiOk: "API ok",
     notifications: "Уведомления", notifyLowQuota: "Низкая квота", notifyScheduler: "Запуски планировщика", notifyQuotaReset: "Сброс квоты",
     notificationsHint: "Главный переключатель уведомлений; ниже — отдельные категории.",
     dashCards: "Карточки дашборда", dashCardPool: "Здоровье пула", dashCardTrends: "Тренды квот", dashCardSpend: "Расход", dashCardScheduler: "Планировщик",
-    dashPoolHealth: "Здоровье пула", dashUsable: "Рабочие", dashPaused: "На паузе", dashErrors: "С ошибкой",
+    dashPoolHealth: "Здоровье пула", dashTotal: "Всего", dashUsable: "Рабочие", dashPaused: "На паузе", dashErrors: "С ошибкой",
     dashAvgFive: "Средний 5ч", dashAvgWeek: "Средняя неделя",
     dashQuotaTrends: "Тренды квот", dashLast24h: "24 часа · по часам", dashLast7d: "7 дней · по дням",
     dashTrendEmpty: "Данных пока нет", dashTrendHint: "Средний остаток по всем аккаунтам и провайдерам.",
@@ -218,6 +219,7 @@ const DICT = {
     okPill: "ready", autoRefresh: "quota auto-refresh",
     addAccount: "Add account", addAccountHint: "Device code: a page opens, enter the code.",
     deviceCode: "Code", deviceWaiting: "Waiting for confirmation…", deviceOpen: "Open the sign-in page",
+    deviceTimeout: "The sign-in code expired — start again",
     subscription: "Subscription", until: "until", resetsAvailable: "5h resets", resetsNone: "none", available: "available",
     accountModels: "Models on this account", availableShort: "yes", unavailableShort: "no",
     routing: "Routing", strategy: "Strategy", strategyAuto: "Auto (by remaining)", strategyQuotaHigh: "More quota first",
@@ -271,14 +273,14 @@ const DICT = {
     onboardingDisclaimer: "Use only your own accounts. Follow provider terms — accounts can be banned for rule violations.",
     onboardingAccounts: "Open Accounts", onboardingProviders: "Open Providers", onboardingDone: "Done",
     onboardingClose: "Close",
-    diagTitle: "Connection check", diagHint: "read-only", diagRun: "Check connections",
+    diagTitle: "Connection check", diagHint: "model list + a small paid probe", diagRun: "Check connections",
     diagIdle: "The check has not run yet.", diagAt: "checked", diagProvider: "Provider",
     diagAuth: "Auth", diagQuota: "Last quota", diagCodex: "Codex accounts",
     diagKeySet: "key set", diagKeyMissing: "no key", diagUp: "up", diagDown: "down", diagApiOk: "API ok",
     notifications: "Notifications", notifyLowQuota: "Low quota", notifyScheduler: "Scheduler runs", notifyQuotaReset: "Quota reset",
     notificationsHint: "Master notification switch; individual categories below.",
     dashCards: "Dashboard cards", dashCardPool: "Pool health", dashCardTrends: "Quota trends", dashCardSpend: "Spend", dashCardScheduler: "Scheduler",
-    dashPoolHealth: "Pool health", dashUsable: "Usable", dashPaused: "Paused", dashErrors: "Errors",
+    dashPoolHealth: "Pool health", dashTotal: "Total", dashUsable: "Usable", dashPaused: "Paused", dashErrors: "Errors",
     dashAvgFive: "Avg 5h", dashAvgWeek: "Avg week",
     dashQuotaTrends: "Quota trends", dashLast24h: "24 hours · hourly", dashLast7d: "7 days · daily",
     dashTrendEmpty: "No data yet", dashTrendHint: "Average remaining across all accounts and providers.",
@@ -683,8 +685,9 @@ function poolHealth(accounts, routing) {
   let weeklyCount = 0;
   for (const account of list) {
     if (!account) continue;
+    // Match macOS: usable + paused = total; errors is an overlapping signal.
     if (account.quotaError || account.needsRelogin) errors += 1;
-    else if (account.blocked || account.blockInfo || blockedIds.has(String(account.id))) paused += 1;
+    if (account.blocked || account.blockInfo || blockedIds.has(String(account.id))) paused += 1;
     else usable += 1;
     const hourly = finiteNumber(account.hourlyRemaining);
     if (hourly !== null) { hourlySum += hourly; hourlyCount += 1; }
@@ -887,6 +890,7 @@ function dashboardPoolCard(health) {
   return `<div class="card" data-dashboard-card="pool-health">
     <h2>${t("dashPoolHealth")} <span class="hint">${health.total} ${t("accountsCount")}</span></h2>
     <div class="stat-grid">
+      ${stat(t("dashTotal"), health.total, "")}
       ${stat(t("dashUsable"), health.usable, "ok")}
       ${stat(t("dashPaused"), health.paused, "warn")}
       ${stat(t("dashErrors"), health.errors, "danger")}
@@ -1063,6 +1067,8 @@ function poolPauseBanner() {
 
 function toast(message, isError = false) {
   const node = document.getElementById("toast");
+  node.setAttribute("role", "status");
+  node.setAttribute("aria-live", "polite");
   node.textContent = message;
   node.className = isError ? "show error" : "show";
   clearTimeout(toast._timer);
@@ -1072,8 +1078,8 @@ function toast(message, isError = false) {
 async function run(action, fn) {
   if (S.busy[action]) return;
   S.busy[action] = true;
-  render();
   try {
+    render();
     await fn();
   } catch (error) {
     toast(String(error && error.message ? error.message : error), true);
@@ -1105,6 +1111,11 @@ const NAV = [
 // MARK: - Render
 
 function render() {
+  document.documentElement.lang = S.lang || "ru";
+  // Polling must not wipe an input the user is editing. User actions move
+  // focus to their button first, so navigation and save operations still
+  // render normally.
+  if (typeof editsInProgress === "function" && editsInProgress()) return;
   renderNav();
   renderFooter();
   const main = document.getElementById("main");
@@ -1122,7 +1133,7 @@ function render() {
   main.innerHTML = (pages[S.section] || dashboardPage)();
   if (S.section === "donate") renderDonateQr();
   if (S.section === "scheduler" && !S.scheduler && !S.schedulerError) A.schedulerLoad();
-  if (S.section === "providers" && !S.models) A.modelsLoad();
+  if (S.section === "providers" && !S.models && !S.modelsError) A.modelsLoad();
   if (S.section === "providers" && IS_TAURI && !S.claude && !S.claudeLogin) {
     A.claudeUsageLoad().then(() => {
       if (S.section === "providers") render();
@@ -1366,11 +1377,13 @@ function accountsPage() {
   const routing = S.routing || { strategy: "auto", orderedIds: [], blockedIds: [] };
   const orderedIds = routing.orderedIds && routing.orderedIds.length ? routing.orderedIds : accounts.map((a) => a.id);
   const byId = new Map(accounts.map((a) => [a.id, a]));
-  const cards = orderedIds
-    .map((id) => {
-      const account = byId.get(id);
-      return account ? accountCard(account) : "";
-    })
+  const ordered = orderedIds.filter((id) => byId.has(id));
+  // A newly imported account may not be present in a stale routing snapshot.
+  for (const account of accounts) {
+    if (!ordered.includes(account.id)) ordered.push(account.id);
+  }
+  const cards = ordered
+    .map((id) => accountCard(byId.get(id)))
     .join("");
 
   const deviceLogin = S.deviceLogin;
@@ -2202,6 +2215,15 @@ const A = {
     try {
       S.status = await inv("gateway_status");
       S.bridge = await inv("bridge_status");
+      // Rust owns quota refresh now; pick up its vault writes without
+      // triggering another network pass from the WebView.
+      if (IS_TAURI && (S.section === "dashboard" || S.section === "accounts")) {
+        try {
+          S.accounts = await inv("vault_list");
+        } catch {
+          // Keep the last snapshot on a transient read failure.
+        }
+      }
       if (S.section === "dashboard") {
         try {
           S.scheduler = await inv("scheduler_list");
@@ -2528,9 +2550,12 @@ const A = {
   },
 
   saveReserves(id) {
+    // Read before run(): its first render rebuilds the page from old state.
+    const hourlyNode = document.getElementById("res-h-" + id);
+    const weeklyNode = document.getElementById("res-w-" + id);
+    const hourly = parseInt(hourlyNode ? hourlyNode.value : "", 10);
+    const weekly = parseInt(weeklyNode ? weeklyNode.value : "", 10);
     run("reserves-" + id, async () => {
-      const hourly = parseInt(document.getElementById("res-h-" + id).value, 10);
-      const weekly = parseInt(document.getElementById("res-w-" + id).value, 10);
       S.accounts = await inv("save_reserves", {
         id,
         hourly: Number.isFinite(hourly) ? hourly : null,
@@ -2551,18 +2576,27 @@ const A = {
   },
 
   saveKeys() {
+    // Read fields before run() rebuilds the page.
+    const openrouterNode = document.getElementById("or-key");
+    const opencodeNode = document.getElementById("oc-key");
+    const openrouterEnabledNode = document.getElementById("or-enabled");
+    const opencodeEnabledNode = document.getElementById("oc-enabled");
+    const openrouterKey = openrouterNode ? openrouterNode.value.trim() : "";
+    const opencodeKey = opencodeNode ? opencodeNode.value.trim() : "";
+    const openrouterEnabled = openrouterEnabledNode
+      ? openrouterEnabledNode.checked
+      : !!S.settings.openrouterEnabled;
+    const opencodeEnabled = opencodeEnabledNode
+      ? opencodeEnabledNode.checked
+      : !!S.settings.opencodeEnabled;
     run("keys", async () => {
-      const openrouterKey = document.getElementById("or-key").value.trim();
-      const opencodeKey = document.getElementById("oc-key").value.trim();
-      const openrouterEnabled = document.getElementById("or-enabled");
-      const opencodeEnabled = document.getElementById("oc-enabled");
       S.settings = await inv("settings_set", {
         settings: {
           ...S.settings,
           openrouterKey,
           opencodeKey,
-          openrouterEnabled: openrouterEnabled ? openrouterEnabled.checked : !!S.settings.openrouterEnabled,
-          opencodeEnabled: opencodeEnabled ? opencodeEnabled.checked : !!S.settings.opencodeEnabled,
+          openrouterEnabled,
+          opencodeEnabled,
         },
       });
       toast(t("done"));
@@ -2660,9 +2694,12 @@ const A = {
   },
 
   claudeSaveKeys() {
+    // Read fields before run() rebuilds the page.
+    const enabledNode = document.getElementById("claude-enabled");
+    const keyNode = document.getElementById("claude-key");
+    const claudeEnabled = enabledNode ? enabledNode.checked : !!S.settings.claudeEnabled;
+    const claudeApiKey = keyNode ? keyNode.value.trim() : "";
     run("claudeKeys", async () => {
-      const claudeEnabled = document.getElementById("claude-enabled").checked;
-      const claudeApiKey = document.getElementById("claude-key").value.trim();
       S.settings = await inv("settings_set", { settings: { ...S.settings, claudeEnabled, claudeApiKey } });
       toast(t("done"));
       A.claudeUsageLoad().catch(() => {});
@@ -2752,10 +2789,14 @@ const A = {
   },
 
   applySettings() {
+    // Read fields before run() rebuilds the page.
+    const langNode = document.getElementById("set-lang");
+    const portNode = document.getElementById("set-port");
+    const intervalNode = document.getElementById("set-interval");
+    const lang = langNode ? langNode.value : S.lang;
+    const port = parseInt(portNode ? portNode.value : "", 10);
+    const quotaInterval = parseInt(intervalNode ? intervalNode.value : "", 10);
     run("settings", async () => {
-      const lang = document.getElementById("set-lang").value;
-      const port = parseInt(document.getElementById("set-port").value, 10);
-      const quotaInterval = parseInt(document.getElementById("set-interval").value, 10);
       S.settings = await inv("settings_set", {
         settings: {
           ...S.settings,
@@ -2809,8 +2850,16 @@ const A = {
       S.deviceLogin = { ...session, done: false };
       A.deviceOpen();
       const interval = Math.max(3, session.interval || 5) * 1000;
+      const startedAt = Date.now();
       clearInterval(A._deviceTimer);
       A._deviceTimer = setInterval(async () => {
+        if (Date.now() - startedAt > 10 * 60 * 1000) {
+          clearInterval(A._deviceTimer);
+          S.deviceLogin = null;
+          toast(t("deviceTimeout"), true);
+          render();
+          return;
+        }
         try {
           const result = await inv("device_login_poll", {
             deviceAuthId: session.deviceAuthId,
@@ -2839,7 +2888,15 @@ const A = {
 
   modelsLoad() {
     run("models", async () => {
-      const rawModels = (await inv("gateway_models")) || [];
+      let rawModels = [];
+      try {
+        rawModels = (await inv("gateway_models")) || [];
+        S.modelsError = null;
+      } catch (error) {
+        S.models = [];
+        S.modelsError = String(error && error.message ? error.message : error);
+        return;
+      }
       // Dedupe the gateway list by id first; the provider lists below reuse the
       // same set so a model served by two sources renders once.
       const models = [];
@@ -2882,6 +2939,8 @@ const A = {
         // Gateway down or no Antigravity account — the base list stays valid.
       }
       S.models = models;
+      // Keep Codex's catalog in step after a provider login/disconnect.
+      if (IS_TAURI) inv("catalog_sync").catch(() => {});
     });
   },
 
@@ -3513,11 +3572,8 @@ function showOnboarding() {
     if (!IS_TAURI) return;
     const now = Date.now();
     const interval = ((S.settings && S.settings.quotaInterval) || 300) * 1000;
-    const since = now - (S.lastQuotaRefreshAt || 0);
-    const underLoad = !!(S.status && S.status.requestsLastMinute > 0);
-    if (since >= interval || (underLoad && since >= 30000)) {
-      A.refreshQuotas();
-    }
+    // Codex quota refresh and its notifications run in Rust so tray mode is
+    // reliable; only provider-specific usage remains a WebView concern.
     // Claude usage: same configured cadence, floored at 180 s per the spec.
     const claudeDue = now - (S.lastClaudeUsageAt || 0) >= Math.max(180000, interval);
     if (claudeDue && !S.claudeLogin && (S.claude ? S.claude.connected : !!(S.settings && S.settings.claudeEnabled))) {

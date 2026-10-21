@@ -1,7 +1,7 @@
 # Melon Tools
 
 A native macOS cockpit for the **Codex account pool**, model providers and **scheduled model tasks**.
-Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
+Built with SwiftUI, macOS 14+, universal (Apple Silicon + Intel).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -16,7 +16,16 @@ Built with SwiftUI, macOS 14+, Apple Silicon (arm64).
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## What's new in 1.6.3 «Security and data safety»
+## What's new in 2.2.4
+
+- Full audit remediation: test isolation, instance path safety, quota and
+  scheduler hardening, CDP/log privacy, updater safety, and Windows parity.
+- Provider-aware composer data, equal dashboard tiles, accessibility labels and
+  Antigravity verification diagnostics.
+- Release workflow now checks the requested tag, runs tests, verifies all
+  assets and signs the portable before building the installer.
+
+## Earlier: 1.6.3 «Security and data safety»
 
 - **Hardened updater and secrets.** The Windows updater applies only the release it checked, the URL opener avoids cmd.exe, the management secret stays in the backend, helper processes are stopped by PID with identity checks, the engine binary is SHA-256 verified after extraction, and a restrictive CSP is set.
 - **Data safety.** Atomic permission-preserving writes for secrets, config and auth files, bounded log rotation, backups and updater logs locked to 0600 under ~/Library/Logs.
@@ -378,13 +387,13 @@ Re-implemented from scratch on top of the official OAuth/API endpoints:
 
 ## Build from source
 
-Prerequisites: Xcode (27+), XcodeGen (`brew install xcodegen`), Go 1.22+
+Prerequisites: Xcode (27+), XcodeGen (`brew install xcodegen`), Go 1.26+
 (`brew install go`). `create-dmg` (`brew install create-dmg`)
 is optional — the script falls back to a plain `hdiutil` image.
 
 ```bash
 ./build.sh            # full pipeline: gateway → icon → xcode → dmg
-open build/MelonTools-1.4.2.dmg
+open build/MelonTools-2.2.4.dmg
 ```
 
 The app is ad-hoc signed (personal build, not notarized). On first launch use
@@ -409,7 +418,7 @@ xcodebuild -project MelonTools.xcodeproj -scheme MelonTools \
 
 # 4. Ad-hoc sign + DMG
 codesign --force --deep --sign - "$HOME/Library/Developer/MelonTools/Build/Products/Release/MelonTools.app"
-create-dmg --volname "Melon Tools" "build/MelonTools-1.4.2.dmg" "Melon Tools.app"
+create-dmg --volname "Melon Tools" "build/MelonTools-2.2.4.dmg" "Melon Tools.app"
 ```
 
 ## Layout

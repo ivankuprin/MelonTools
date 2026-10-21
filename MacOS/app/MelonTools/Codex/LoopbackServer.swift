@@ -68,6 +68,11 @@ final class LoopbackServer: @unchecked Sendable {
         finish(.failure(ServerError.cancelled))
     }
 
+    deinit {
+        // Never leave the listener open when a login view is dismissed.
+        finish(.failure(ServerError.cancelled))
+    }
+
     // MARK: - Socket plumbing
 
     private static func bind(port: UInt16) -> Int32? {
@@ -124,6 +129,16 @@ final class LoopbackServer: @unchecked Sendable {
                 if errno == EINTR { continue }
                 return // listener closed
             }
+            // A browser that closes the tab before reading the response would
+            // otherwise terminate the whole app with SIGPIPE.
+            var noSigPipe: Int32 = 1
+            _ = setsockopt(
+                client,
+                SOL_SOCKET,
+                SO_NOSIGPIPE,
+                &noSigPipe,
+                socklen_t(MemoryLayout<Int32>.size)
+            )
             handleClient(client)
         }
     }

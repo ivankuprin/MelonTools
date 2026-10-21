@@ -386,10 +386,10 @@ struct DashboardView: View {
                         systemImage: "play.fill",
                         isLoading: scheduler.isRunning
                     ) {
-                        guard let task = due.first else { return }
+                        guard gateway.isRunning, let task = due.first else { return }
                         Task { await scheduler.runNow(id: task.id) }
                     }
-                    .disabled(due.isEmpty || scheduler.isRunning)
+                    .disabled(due.isEmpty || scheduler.isRunning || !gateway.isRunning)
                 }
                 if !gateway.isRunning {
                     Text(L("Scheduled runs wait until the service is running."))

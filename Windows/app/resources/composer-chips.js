@@ -382,7 +382,9 @@
   refreshButton.type = 'button';
   refreshButton.title = LABELS.refresh;
   refreshButton.appendChild(icon(['M21 12a9 9 0 1 1-2.64-6.36', 'M21 3v6h-6'], 13));
-  container.appendChild(refreshButton);
+  // The Windows bridge does not expose __melonSend yet; do not show a button
+  // that silently does nothing.
+  if (typeof window.__melonSend === "function") container.appendChild(refreshButton);
 
   // ---------------------------------------------------------------- data
 
@@ -541,6 +543,7 @@
   function renderPopover() {
     const pop = state.popover;
     if (!pop) return;
+    const status = state.status || {};
     const body = pop.querySelector('.melon-pop-body');
     const foot = pop.querySelector('.melon-pop-foot');
     const data = totals();

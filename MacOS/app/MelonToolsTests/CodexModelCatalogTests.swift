@@ -176,6 +176,50 @@ final class CodexModelCatalogTests: XCTestCase {
         )
     }
 
+    // MARK: - Test isolation
+
+    func testTestHostDetectsXCTest() {
+        XCTAssertTrue(AppRuntime.isTesting)
+    }
+
+    // MARK: - Instance names
+
+    func testInstanceNamesRejectTraversalAndSeparators() {
+        XCTAssertTrue(CodexInstance.isSafeName("Work account"))
+        XCTAssertTrue(CodexInstance.isSafeName("work-1_test"))
+        XCTAssertFalse(CodexInstance.isSafeName(".."))
+        XCTAssertFalse(CodexInstance.isSafeName("../evil"))
+        XCTAssertFalse(CodexInstance.isSafeName("a/b"))
+        XCTAssertFalse(CodexInstance.isSafeName("a\\b"))
+        XCTAssertFalse(CodexInstance.isSafeName("a:b"))
+        XCTAssertFalse(CodexInstance.isSafeName(""))
+        XCTAssertFalse(CodexInstance.isSafeName("bad\u{0007}name"))
+    }
+
+    func testLegacyUnsafeInstanceNameCannotEscapeInstancesDirectory() {
+        let instance = CodexInstance(name: "../Documents/foo")
+        let root = CodexInstancePaths.instancesDir.standardizedFileURL.path
+        let home = URL(fileURLWithPath: instance.homePath).standardizedFileURL.path
+        XCTAssertTrue(home.hasPrefix(root + "/"), home)
+        XCTAssertFalse(home.contains("/../"))
+        XCTAssertEqual(
+            CodexInstance.safeDirectoryName("../Documents/foo", fallbackID: "abc12345"),
+            ".._Documents_foo"
+        )
+        XCTAssertEqual(
+            CodexInstance.safeDirectoryName("..", fallbackID: "abc12345"),
+            "instance-abc12345"
+        )
+    }
+
+    func testComposerMasksEmailIdentity() {
+        XCTAssertEqual(
+            ComposerBridge.maskedEmail("alice@example.com") as? String,
+            "a***@example.com"
+        )
+        XCTAssertTrue(ComposerBridge.maskedEmail(nil) is NSNull)
+    }
+
     // MARK: - Image input
 
     /// OpenRouter's `architecture.input_modalities` drives the store flag;

@@ -35,6 +35,21 @@ fn home_for(id: &str) -> PathBuf {
     paths::appdata_dir().join("instances").join(id)
 }
 
+/// Resolve an instance home only when the id is a single safe path component.
+/// `PathBuf::starts_with` does not normalize `..`, so every destructive or
+/// credential-writing operation must go through this helper.
+fn safe_home(id: &str) -> Option<PathBuf> {
+    if !safe_id(id) {
+        return None;
+    }
+    let root = paths::appdata_dir().join("instances");
+    let home = root.join(id);
+    if home.parent() != Some(root.as_path()) {
+        return None;
+    }
+    Some(home)
+}
+
 /// Instance ids are generated as hex, but the value is read back from
 /// `instances.json`: reject anything that could escape the instances root
 /// before it is joined into a path.
@@ -92,12 +107,13 @@ pub fn create(name: &str) -> Result<Value, String> {
 }
 
 pub fn delete(id: &str) -> Result<Vec<Value>, String> {
+    let home = safe_home(id).ok_or_else(|| "некорректный идентификатор инстанса".to_string())?;
     let mut items = load();
     items.retain(|item| item.get("id").and_then(|v| v.as_str()) != Some(id));
     save(&items)?;
-    // Remove the instance home (best effort — a running CLI may hold files).
-    let home = home_for(id);
-    if home.starts_with(paths::appdata_dir().join("instances")) {
+    // Remove only a validated child of the instances root. A running CLI may
+    // still hold files; cleanup is best effort.
+    if home.exists() {
         let _ = std::fs::remove_dir_all(home);
     }
     Ok(list())
@@ -121,18 +137,12 @@ pub fn bind(id: &str, account_id: Option<String>) -> Result<Vec<Value>, String> 
 /// Codex home) and launches `codex` in a visible console with CODEX_HOME
 /// pointed at the instance directory.
 pub fn launch(id: &str) -> Result<String, String> {
-    if !safe_id(id) {
-        return Err("некорректный идентификатор инстанса".to_string());
-    }
+    let home = safe_home(id).ok_or_else(|| "некорректный идентификатор инстанса".to_string())?;
     let items = load();
     let instance = items
         .iter()
         .find(|item| item.get("id").and_then(|v| v.as_str()) == Some(id))
         .ok_or_else(|| "инстанс не найден".to_string())?;
-    let home = home_for(id);
-    if !home.starts_with(paths::appdata_dir().join("instances")) {
-        return Err("недопустимый путь инстанса".to_string());
-    }
     std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
 
     // Pick the account: bound first, else the vault's current login.
@@ -174,7 +184,18 @@ pub fn launch(id: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_id;
+    use super::{safe_home, safe_id};
+
+    #[test]
+    fn instance_home_is_a_direct_child_or_rejected() {
+        let root = crate::paths::appdata_dir().join("instances");
+        let valid = safe_home("0123456789abcdef").expect("valid id");
+        assert_eq!(valid.parent(), Some(root.as_path()));
+        assert!(safe_home("..").is_none());
+        assert!(safe_home("../..").is_none());
+        assert!(safe_home("a/b").is_none());
+        assert!(safe_home("a\\b").is_none());
+    }
 
     #[test]
     fn instance_ids_reject_path_traversal() {

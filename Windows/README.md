@@ -1,15 +1,15 @@
 # Melon Tools for Windows
 
-Порт приложения на **Tauri 2** (Rust + WebView2). Версия **2.2.3**.
+Порт приложения на **Tauri 2** (Rust + WebView2). Версия **2.2.4**.
 
-Готовый **установщик** (с выбором папки) и портативный **Windows x64** доступны в [последнем релизе](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.2.3-win-x64-portable.exe) — или обновитесь прямо из приложения: сайдбар → **«Обновить»**.
+Готовый **установщик** (с выбором папки) и портативный **Windows x64** доступны в [последнем релизе](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.2.4-win-x64-portable.exe) — или обновитесь прямо из приложения: сайдбар → **«Обновить»**.
 Скачайте и запустите `.exe`; это приложение, не установщик. Для запуска нужен
 **WebView2 Runtime**. Файл не подписан Authenticode, поэтому Windows может
 показать предупреждение. SHA-256 опубликован рядом с файлом; в PowerShell
 проверьте его командой:
 
 ```powershell
-Get-FileHash .\MelonTools-2.2.3-win-x64-portable.exe -Algorithm SHA256
+Get-FileHash .\MelonTools-2.2.4-win-x64-portable.exe -Algorithm SHA256
 ```
 
 Исходники и инструкции по сборке приведены ниже.
@@ -83,7 +83,8 @@ Vault можно перенести с macOS: скопируйте
 ## Сборка
 
 Для установщика нужен NSIS: `brew install makensis`.
- из исходников (macOS или Windows)
+
+## Сборка из исходников (macOS или Windows)
 
 Исходники: `app/` (`ui/` — фронтенд без сборки, `src-tauri/` — Rust).
 
@@ -108,5 +109,6 @@ brew install lld llvm
 - Фронтенд: ванильный HTML/CSS/JS, дизайн-токены перенесены из `MTTheme.swift`
   (палитра, отступы, карточки, золото).
 - Сеть: reqwest (native-tls → schannel на Windows), без OpenSSL.
-- Чипы: CDP через WebSocket (`tokio-tungstenite`), тот же `composer-chips.js`,
-  что и на macOS.
+- Чипы: CDP через WebSocket (`tokio-tungstenite`), базовая версия
+  `composer-chips.js`; расширенные данные Claude/Antigravity пока есть только
+  в macOS-версии.

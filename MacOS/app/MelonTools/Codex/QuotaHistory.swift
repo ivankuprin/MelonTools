@@ -121,6 +121,13 @@ final class QuotaHistoryStore: ObservableObject {
         persist()
     }
 
+    /// Drop the trend series for a deleted account.
+    func remove(_ key: String) {
+        loadIfNeeded()
+        guard history.removeValue(forKey: key) != nil else { return }
+        persist()
+    }
+
     func clear() {
         history = [:]
         persist()

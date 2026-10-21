@@ -70,10 +70,18 @@ pub fn parse(raw: &str) -> History {
 }
 
 pub fn load() -> History {
-    std::fs::read_to_string(path())
-        .ok()
-        .map(|raw| parse(&raw))
-        .unwrap_or_default()
+    let target = path();
+    let raw = std::fs::read_to_string(&target).ok();
+    match raw {
+        Some(text) => match serde_json::from_str(&text) {
+            Ok(history) => history,
+            Err(_) => {
+                let _ = paths::quarantine(&target);
+                History::default()
+            }
+        },
+        None => History::default(),
+    }
 }
 
 fn save(history: &History) -> Result<(), String> {

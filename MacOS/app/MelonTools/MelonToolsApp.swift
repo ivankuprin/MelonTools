@@ -40,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updateTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // XCTest uses this executable as its host. Never read the real vault,
+        // rewrite ~/.codex, start the gateway or relaunch Codex during tests.
+        guard !AppRuntime.isTesting else { return }
         MainActor.assumeIsolated {
             ModelSourcesStore.shared.syncCatalogIfNeeded()
             CodexStore.shared.load()

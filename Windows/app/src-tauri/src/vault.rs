@@ -87,11 +87,7 @@ pub struct Account {
 impl Account {
     pub fn display_name(&self) -> String {
         self.email.clone().unwrap_or_else(|| {
-            if self.id.len() > 8 {
-                self.id[..8].to_string()
-            } else {
-                self.id.clone()
-            }
+            self.id.chars().take(8).collect()
         })
     }
 
@@ -207,10 +203,17 @@ pub fn unprotect_tokens(value: &mut Value) {
 }
 
 pub fn load_raw() -> Value {
-    let mut value = std::fs::read_to_string(vault_file())
-        .ok()
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .unwrap_or_else(|| json!({"accounts": [], "currentAccountId": Value::Null}));
+    let path = vault_file();
+    let raw = std::fs::read_to_string(&path).ok();
+    let mut value = raw
+        .as_deref()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .unwrap_or_else(|| {
+            if raw.as_deref().map(|text| !text.trim().is_empty()).unwrap_or(false) {
+                let _ = paths::quarantine(&path);
+            }
+            json!({"accounts": [], "currentAccountId": Value::Null})
+        });
     unprotect_tokens(&mut value);
     value
 }

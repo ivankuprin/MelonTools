@@ -2,23 +2,30 @@
 """E2E: transform ~/.codex/auth.json into Melon Tools' gateway account format,
 boot CLIProxyAPI against it, and verify the credential loads + models enumerate.
 Prints no secrets."""
+import atexit
 import base64
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 import time
 import urllib.request
 import urllib.error
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(ROOT, "build", "cliproxyapi")
-TEST_DIR = "/tmp/melon-gw-e2e"
+# Real tokens are written here for the smoke test: keep the directory private
+# and remove it even when the script fails.
+TEST_DIR = tempfile.mkdtemp(prefix="melon-gw-e2e-")
 CONFIG = f"{TEST_DIR}/config.yaml"
 AUTHS = f"{TEST_DIR}/auths"
 PORT = 18402
 KEY = "melon-e2e-key"
 
-os.makedirs(AUTHS, exist_ok=True)
+os.umask(0o077)
+os.makedirs(AUTHS, mode=0o700, exist_ok=True)
+atexit.register(lambda: shutil.rmtree(TEST_DIR, ignore_errors=True))
 
 with open(os.path.expanduser("~/.codex/auth.json")) as f:
     auth = json.load(f)
@@ -52,12 +59,15 @@ exp = jwt_claims(tokens.get("access_token", "")).get("exp")
 if exp:
     account["expired"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(exp))
 
-with open(f"{AUTHS}/codex-e2e-account.json", "w") as f:
+auth_path = f"{AUTHS}/codex-e2e-account.json"
+with open(auth_path, "w") as f:
     json.dump(account, f, indent=2)
+os.chmod(auth_path, 0o600)
 print("account file written: email=%s plan=%s account_id_present=%s" % (
     account["email"] or "(none)", account["plan_type"], bool(account["account_id"])))
 
 with open(CONFIG, "w") as f:
+    os.chmod(CONFIG, 0o600)
     f.write(f"""# Melon Tools E2E test config
 config-version: 8
 

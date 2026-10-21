@@ -352,28 +352,33 @@ pub async fn fetch_update(asset_url: &str, digest: Option<&str>) -> Result<PathB
     }
 }
 
-/// Writes the swap script and spawns it detached. The script waits for this
-/// process to exit (PowerShell Get-Process — locale-independent), copies the
-/// new exe over the current one, restarts it and deletes itself.
+/// Writes a PowerShell swap script and spawns it detached. PowerShell reads
+/// UTF-8 with BOM correctly on every Windows locale; `cmd.exe` does not.
+/// The script waits for this process, keeps a backup and restores it when the
+/// copy fails, then starts the new executable and removes itself.
 pub fn spawn_swapper(new_exe: &Path, current_exe: &Path, pid: u32) -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join("melontools-update");
+    let dir = std::env::temp_dir().join(format!("melontools-update-{}", uuid_like()));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let script = dir.join("swap.cmd");
+    let script = dir.join("swap.ps1");
+    let quote = |path: &Path| format!("'{}'", path.display().to_string().replace('\'', "''"));
     let content = format!(
-        "@echo off\r\nset \"PID={pid}\"\r\nset \"N=0\"\r\n:wait\r\npowershell -NoProfile -Command \"if (Get-Process -Id %PID% -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}\"\r\nif errorlevel 1 goto swap\r\nset /a N+=1\r\nif %N% geq 90 goto giveup\r\nping -n 2 127.0.0.1 >nul\r\ngoto wait\r\n:giveup\r\ndel \"%~f0\"\r\nexit /b 1\r\n:swap\r\ncopy /y \"{new}\" \"{cur}\" >nul\r\nstart \"\" \"{cur}\"\r\ndel /q \"{new}\" >nul 2>nul\r\ndel \"%~f0\"\r\n",
+        "$ErrorActionPreference = 'Stop'\r\n         $pidToWait = {pid}\r\n         $new = {new}\r\n         $cur = {cur}\r\n         $backup = \"$cur.melon-old\"\r\n         $deadline = (Get-Date).AddSeconds(90)\r\n         while ((Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {{ Start-Sleep -Milliseconds 500 }}\r\n         try {{\r\n           if (Test-Path -LiteralPath $cur) {{ Copy-Item -LiteralPath $cur -Destination $backup -Force }}\r\n           Copy-Item -LiteralPath $new -Destination $cur -Force\r\n           Start-Process -FilePath $cur\r\n           Start-Sleep -Seconds 3\r\n           if (-not (Get-Process -Name (Split-Path $cur -Leaf).Replace('.exe','') -ErrorAction SilentlyContinue)) {{ throw 'new executable did not start' }}\r\n           Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue\r\n         }} catch {{\r\n           if (Test-Path -LiteralPath $backup) {{ Copy-Item -LiteralPath $backup -Destination $cur -Force }}\r\n           exit 1\r\n         }} finally {{\r\n           Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue\r\n           Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\r\n         }}\r\n",
         pid = pid,
-        new = new_exe.display(),
-        cur = current_exe.display()
+        new = quote(new_exe),
+        cur = quote(current_exe)
     );
-    std::fs::write(&script, content).map_err(|e| e.to_string())?;
-    let mut command = std::process::Command::new("cmd");
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(content.as_bytes());
+    std::fs::write(&script, bytes).map_err(|e| e.to_string())?;
+    let mut command = std::process::Command::new("powershell");
     command.args([
-        "/C",
-        "start",
-        "",
-        "/min",
-        "cmd",
-        "/C",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
         &script.to_string_lossy(),
     ]);
     #[cfg(windows)]
@@ -383,6 +388,12 @@ pub fn spawn_swapper(new_exe: &Path, current_exe: &Path, pid: u32) -> Result<Pat
     }
     command.spawn().map_err(|e| e.to_string())?;
     Ok(script)
+}
+
+fn uuid_like() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    format!("{:x}-{}", nanos, std::process::id())
 }
 
 #[cfg(test)]

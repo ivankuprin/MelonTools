@@ -423,10 +423,17 @@ async fn picker_models(state: &BridgeState, port: u16, api_key: &str) -> Vec<Val
             if let Some(array) = list.get("data").and_then(|d| d.as_array()) {
                 for item in array {
                     if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+                        let provider = if crate::antigravity::is_antigravity_model_entry(item) {
+                            "Antigravity"
+                        } else {
+                            provider_of(id)
+                        };
                         models.push(json!({
-                            "name": id,
-                            "provider": provider_of(id),
+                            // Codex displays the catalog display name, not the
+                            // raw gateway id. Keep both for exact matching.
+                            "name": crate::codex_route::prettify(id),
                             "slug": id,
+                            "provider": provider,
                         }));
                     }
                 }
@@ -499,6 +506,17 @@ pub async fn tick(state: &BridgeState, settings: &crate::settings::Settings) {
         set_status(state, json!({"attached": false, "reason": "no_ws_url", "debugPort": debug_port}));
         return;
     };
+    // Never follow a target that points the CDP session at a remote host or
+    // a different debug port.
+    let loopback = format!("ws://127.0.0.1:{debug_port}/");
+    let localhost = format!("ws://localhost:{debug_port}/");
+    if !(ws_url.starts_with(&loopback) || ws_url.starts_with(&localhost)) {
+        set_status(
+            state,
+            json!({"attached": false, "reason": "non_loopback_ws", "debugPort": debug_port}),
+        );
+        return;
+    }
 
     let mut session = match Session::connect(ws_url).await {
         Ok(session) => session,

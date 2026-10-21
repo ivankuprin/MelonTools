@@ -39,19 +39,23 @@ enum MTSection: String, CaseIterable, Identifiable {
         let sections: [MTSection]
     }
 
-    static let groups: [Group] = [
-        Group(title: L("Overview"), sections: [.dashboard]),
-        Group(title: L("Scheduler"), sections: [.scheduler]),
-        Group(title: L("Codex"), sections: [.codexAccounts, .codexAPI, .providers, .codexComposer, .codexInstances]),
-        Group(title: L("App"), sections: [.settings, .donate]),
-    ]
+    static var groups: [Group] {
+        [
+            Group(title: L("Overview"), sections: [.dashboard]),
+            Group(title: L("Scheduler"), sections: [.scheduler]),
+            Group(title: L("Codex"), sections: [.codexAccounts, .codexAPI, .providers, .codexComposer, .codexInstances]),
+            Group(title: L("App"), sections: [.settings, .donate]),
+        ]
+    }
 }
 
 /// Bento layout: one solid card on the left (navigation), a card board on the right.
 struct MainView: View {
     @EnvironmentObject private var app: AppState
     @ObservedObject private var updater = UpdaterStore.shared
-    @State private var selection: MTSection = .dashboard
+    @State private var selection: MTSection = MTSection(
+        rawValue: UserDefaults.standard.string(forKey: "mainSelection") ?? ""
+    ) ?? .dashboard
     /// First-run guide: shown once, then never again on this account.
     @AppStorage("onboardingDone") private var onboardingDone = false
 
@@ -64,9 +68,16 @@ struct MainView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .background(MTTheme.background)
+        .onChange(of: selection) { _, section in
+            // The language switch recreates MainView via .id; keep the user on
+            // the same section instead of dropping them on Dashboard.
+            UserDefaults.standard.set(section.rawValue, forKey: "mainSelection")
+        }
         .onAppear {
             app.applyAppearance()
-            Task { await updater.check(manual: false) }
+            if !AppRuntime.isTesting {
+                Task { await updater.check(manual: false) }
+            }
         }
         .onChange(of: app.appearance) { app.applyAppearance() }
         .sheet(isPresented: $updater.sheetPresented) {

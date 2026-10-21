@@ -182,9 +182,32 @@ struct CodexInstance: Codable, Identifiable, Equatable {
     var accountId: String?
     var createdAt: Date = Date()
 
+    /// A display name is also a directory component. Reject separators,
+    /// control characters and the two traversal components outright.
+    static func isSafeName(_ name: String) -> Bool {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean != ".", clean != ".." else { return false }
+        guard !clean.contains("/"), !clean.contains("\\"), !clean.contains(":") else { return false }
+        return !clean.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
+    }
+
+    /// Old files may contain names written before validation existed. Keep a
+    /// readable name, but never let its folder escape `instances/`.
+    static func safeDirectoryName(_ name: String, fallbackID: String) -> String {
+        let cleaned = name
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "\\", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.isEmpty || cleaned == "." || cleaned == ".." {
+            return "instance-\(fallbackID.prefix(8))"
+        }
+        return cleaned
+    }
+
     var homePath: String {
         CodexInstancePaths.instancesDir
-            .appendingPathComponent(name, isDirectory: true)
+            .appendingPathComponent(Self.safeDirectoryName(name, fallbackID: id), isDirectory: true)
             .appendingPathComponent("codex-home", isDirectory: true)
             .path
     }
@@ -219,6 +242,10 @@ final class CodexInstanceStore: ObservableObject {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else {
             lastMessage = L("Name is required")
+            return false
+        }
+        guard CodexInstance.isSafeName(clean) else {
+            lastMessage = L("Name contains invalid characters")
             return false
         }
         guard !instances.contains(where: { $0.name == clean }) else {

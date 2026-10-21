@@ -613,7 +613,10 @@ enum SessionUsageReader {
                 matched.matchedThread = true
                 return matched
             }
-            if var snapshot = parseTail(of: url, maxBytes: 128 * 1024 * 1024) {
+            // Cap the exact-thread read; the composer tick is every 5 s and a
+            // 128 MB parse per tick would stall the main actor. The estimate
+            // already marks truncated windows as scaled.
+            if var snapshot = parseTail(of: url, maxBytes: 32 * 1024 * 1024) {
                 snapshot.matchedThread = true
                 storeCache(snapshot, for: url)
                 return snapshot

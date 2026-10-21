@@ -212,6 +212,10 @@ final class SchedulerStore: ObservableObject {
                     restored[index].lastStatus = .error
                     restored[index].lastError = restored[index].lastError
                         ?? "Interrupted: Melon Tools quit while the task was running."
+                    // Do not replay a run that was interrupted mid-flight.
+                    restored[index].nextRunAt = restored[index].enabled
+                        ? SchedulerPolicy.nextRun(after: now, task: restored[index])?.timeIntervalSince1970
+                        : nil
                     changed = true
                 }
                 // An enabled task without a schedule (hand-edited file) gets
@@ -230,10 +234,14 @@ final class SchedulerStore: ObservableObject {
             history = trimmed
             if changed || trimmed.count != file.history.count { save() }
         } catch {
-            // Leave the unreadable file on disk for manual recovery.
+            // Quarantine the unreadable file; a later save must not destroy it.
+            let stamp = Int(Date().timeIntervalSince1970)
+            let backup = fileURL.deletingLastPathComponent()
+                .appendingPathComponent("scheduler.corrupt-\(stamp).json")
+            try? FileManager.default.moveItem(at: fileURL, to: backup)
             tasks = []
             history = []
-            persistenceError = "Could not read scheduler.json: \(error.localizedDescription)"
+            persistenceError = "Could not read scheduler.json: \(error.localizedDescription). Saved as \(backup.lastPathComponent)."
         }
     }
 
@@ -322,9 +330,12 @@ final class SchedulerStore: ObservableObject {
     }
 
     func deleteTask(id: String) {
+        guard runningTaskID != id else {
+            persistenceError = L("Task is running; wait for it to finish before deleting.")
+            return
+        }
         tasks.removeAll { $0.id == id }
         history.removeAll { $0.taskId == id }
-        if runningTaskID == id { runningTaskID = nil }
         save()
     }
 
@@ -383,7 +394,7 @@ final class SchedulerStore: ObservableObject {
         updated.lastRunAt = finishedAt.timeIntervalSince1970
         updated.lastStatus = result.status
         updated.lastResult = body
-        updated.lastError = result.error
+        updated.lastError = result.error.map { SchedulerPolicy.truncatedResult($0) }
         updated.lastDurationMs = result.durationMs
         updated.lastTokens = result.tokens
         // Failures keep the task enabled; the next attempt is one interval
@@ -401,7 +412,7 @@ final class SchedulerStore: ObservableObject {
             durationMs: result.durationMs,
             tokens: result.tokens,
             result: body,
-            error: result.error
+            error: result.error.map { SchedulerPolicy.truncatedResult($0) }
         )
         history = SchedulerPolicy.trimHistory([entry] + history)
         runningTaskID = nil

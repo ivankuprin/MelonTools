@@ -5,6 +5,7 @@ struct CodexComposerView: View {
     @ObservedObject private var bridge = ComposerBridge.shared
     @ObservedObject private var store = CodexStore.shared
     @State private var confirmRelaunch = false
+    @AppStorage("composerAutoRelaunch") private var autoRelaunch = false
 
     var body: some View {
         ScrollView {
@@ -50,6 +51,14 @@ struct CodexComposerView: View {
                         .font(MTTheme.body(11))
                         .foregroundStyle(MTTheme.textSecondary)
                 }
+            }
+            .toggleStyle(.switch)
+            .tint(MTTheme.gold)
+
+            Toggle(isOn: $autoRelaunch) {
+                Text(L("Automatically relaunch Codex when the chips lose their debug port"))
+                    .font(MTTheme.body(11))
+                    .foregroundStyle(MTTheme.textSecondary)
             }
             .toggleStyle(.switch)
             .tint(MTTheme.gold)

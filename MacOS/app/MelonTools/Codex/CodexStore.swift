@@ -576,7 +576,11 @@ final class CodexStore: ObservableObject {
             lastRefresh: auth.last_refresh
         )
         upsert(account)
-        currentAccountId = account.id
+        // upsert may merge into an existing record and keep its stable id.
+        currentAccountId = accounts.first {
+            ($0.accountId != nil && $0.accountId == account.accountId)
+                || ($0.email != nil && $0.email == account.email)
+        }?.id ?? account.id
         save()
         applyRoutingIfNeeded(reason: L("account added"))
         lastMessage = L("Imported") + " \(account.displayName)"
@@ -615,11 +619,17 @@ final class CodexStore: ObservableObject {
             ($0.accountId != nil && $0.accountId == account.accountId) ||
             ($0.email != nil && $0.email == account.email)
         }) {
+            let old = accounts[idx]
             var merged = account
-            merged.id = accounts[idx].id // keep stable id
-            merged.quota = accounts[idx].quota
-            merged.quotaUpdatedAt = accounts[idx].quotaUpdatedAt
-            merged.note = accounts[idx].note
+            merged.id = old.id // keep stable id
+            merged.quota = old.quota
+            merged.quotaUpdatedAt = old.quotaUpdatedAt
+            merged.note = old.note
+            merged.hourlyReservePercent = old.hourlyReservePercent
+            merged.weeklyReservePercent = old.weeklyReservePercent
+            merged.preferredFirst = old.preferredFirst
+            merged.isBackup = old.isBackup
+            merged.subscriptionUpdatedAt = old.subscriptionUpdatedAt
             accounts[idx] = merged
         } else {
             accounts.append(account)
@@ -803,6 +813,7 @@ final class CodexStore: ObservableObject {
     // MARK: - Quota
 
     private var quotaTimer: Timer?
+    private var quotaRefreshTask: Task<Void, Never>?
 
     /// When the bulk quota refresh last ran — the adaptive scheduler uses it
     /// to throttle itself while the gateway is under load.
@@ -836,6 +847,9 @@ final class CodexStore: ObservableObject {
 
     func refreshQuota(for accountId: String, forceTokens: Bool = false) async {
         guard let idx = accounts.firstIndex(where: { $0.id == accountId }) else { return }
+        // Timer, Accounts, Providers and Composer can all request a refresh.
+        // Never rotate the same refresh token concurrently.
+        guard !busyAccountIds.contains(accountId) else { return }
         busyAccountIds.insert(accountId)
         defer { busyAccountIds.remove(accountId) }
 
@@ -906,7 +920,20 @@ final class CodexStore: ObservableObject {
             account.quotaError = nil
             if let plan = quota.planType { account.planType = plan }
             if let idx = accounts.firstIndex(where: { $0.id == accountId }) {
-                accounts[idx] = account
+                // Merge only fetched fields: a stale snapshot must not erase
+                // reserves, preferred/backup flags or subscription edits.
+                var merged = accounts[idx]
+                merged.tokens = account.tokens
+                merged.lastRefresh = account.lastRefresh
+                merged.email = account.email
+                merged.planType = account.planType
+                merged.accountId = account.accountId
+                merged.subscriptionActiveUntil = account.subscriptionActiveUntil
+                merged.subscriptionUpdatedAt = account.subscriptionUpdatedAt
+                merged.quota = account.quota
+                merged.quotaUpdatedAt = account.quotaUpdatedAt
+                merged.quotaError = nil
+                accounts[idx] = merged
             }
             save()
             QuotaHistoryStore.shared.record(
@@ -929,17 +956,31 @@ final class CodexStore: ObservableObject {
             account.quotaError = error.localizedDescription
         }
         if let idx = accounts.firstIndex(where: { $0.id == accountId }) {
-            accounts[idx] = account
+            var merged = accounts[idx]
+            merged.quotaError = account.quotaError
+            accounts[idx] = merged
         }
         save()
         applyRoutingIfNeeded(reason: L("quota refreshed"))
     }
 
     func refreshAllQuotas(forceTokens: Bool = false) async {
-        lastQuotaRefreshAt = Date()
-        for account in accounts {
-            await refreshQuota(for: account.id, forceTokens: forceTokens)
+        // Coalesce timer/manual requests. A second caller waits for the
+        // in-flight pass instead of starting a parallel token rotation.
+        if let existing = quotaRefreshTask {
+            await existing.value
+            return
         }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.lastQuotaRefreshAt = Date()
+            for account in self.accounts {
+                await self.refreshQuota(for: account.id, forceTokens: forceTokens)
+            }
+        }
+        quotaRefreshTask = task
+        await task.value
+        quotaRefreshTask = nil
     }
 
     private static let notificationRecordsKey = "quotaNotificationRecords"
@@ -1068,8 +1109,20 @@ final class CodexStore: ObservableObject {
     // MARK: - Mutations
 
     func remove(_ account: CodexAccount) {
+        let wasCurrent = currentAccountId == account.id
         accounts.removeAll { $0.id == account.id }
-        if currentAccountId == account.id { currentAccountId = nil }
+        if wasCurrent {
+            currentAccountId = nil
+            // Removing the active account must not leave its Codex login and
+            // backup behind. The caller already showed a destructive confirm.
+            try? FileManager.default.removeItem(atPath: codexAuthPath)
+            try? FileManager.default.removeItem(atPath: codexAuthPath + ".melon-backup")
+        }
+        QuotaHistoryStore.shared.remove(account.id)
+        var records = notificationRecords
+        let prefix = account.id + ":"
+        records = records.filter { !$0.key.hasPrefix(prefix) }
+        notificationRecords = records
         save()
         applyRoutingIfNeeded(reason: L("account removed"))
     }

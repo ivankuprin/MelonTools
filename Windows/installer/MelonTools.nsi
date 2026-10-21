@@ -56,6 +56,8 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright (c) 2026 Melon Tools"
 !define MUI_DIRECTORYPAGE_VERIFYONLEAVE
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
 
 ; Finish page: launch the app, and let the user opt into a desktop shortcut.
 !define MUI_FINISHPAGE_RUN "$INSTDIR\MelonTools.exe"
@@ -136,6 +138,10 @@ SectionEnd
 
 Section "Uninstall"
   SetShellVarContext current
+
+  ; A running app would keep the exe locked and leave a ghost install.
+  nsExec::ExecToLog 'taskkill /IM MelonTools.exe /F'
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "MelonTools"
 
   Delete "$INSTDIR\MelonTools.exe"
   Delete "$INSTDIR\Uninstall.exe"

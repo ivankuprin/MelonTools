@@ -81,10 +81,17 @@ impl Default for Settings {
 }
 
 pub fn load() -> Settings {
-    let mut s: Settings = std::fs::read_to_string(paths::settings_path())
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
+    let path = paths::settings_path();
+    let raw = std::fs::read_to_string(&path).ok();
+    let mut s: Settings = raw
+        .as_deref()
+        .and_then(|text| serde_json::from_str(text).ok())
+        .unwrap_or_else(|| {
+            if raw.as_deref().map(|text| !text.trim().is_empty()).unwrap_or(false) {
+                let _ = paths::quarantine(&path);
+            }
+            Settings::default()
+        });
     unprotect_secrets(&mut s);
     if s.port == 0 {
         s.port = 18317;
