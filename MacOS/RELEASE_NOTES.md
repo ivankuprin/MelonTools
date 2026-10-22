@@ -1,4 +1,24 @@
-# Melon Tools 2.3.0
+# Melon Tools 2.3.1
+
+- **Automatic recovery after capacity errors.** Codex's native Retry is pressed
+  automatically while it is offered. When Codex stops offering Retry, Melon
+  Tools sends a short continuation so a long task keeps moving without a manual
+  click.
+- **Quota-aware guard.** The watcher stays silent when every account is paused
+  or the best 5-hour quota is at or below 5%. A model that is unavailable
+  because of limits no longer produces a stream of continuation messages.
+- **Visible control.** «Продолжать автоматически после перегрузки модели» is
+  available in Settings → Codex and on the Codex → Composer chips page.
+- **Build metadata.** macOS build 21; version metadata is aligned at 2.3.1 on
+  macOS and Windows.
+
+## Downloads
+
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.1.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.1-setup.exe) — custom install path, WebView2 required.
+- [Windows portable](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.1-win-x64-portable.exe) — single file, no install.
+
+## 2.3.0
 
 - **Workspace-aware scheduler.** Tasks can use a working directory and append
   bounded `git status`, recent log and diff stat to the prompt. Optional
@@ -18,12 +38,6 @@
   screen, and a disabled demo task can be created without sending a request.
 - **Release hygiene.** Version metadata is aligned at 2.3.0 on macOS and
   Windows. Builds remain ad-hoc signed on macOS and unsigned on Windows.
-
-## Downloads
-
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.0.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.0-setup.exe) — custom install path, WebView2 required.
-- [Windows portable](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.0-win-x64-portable.exe) — single file, no install.
 
 ## Earlier fixes
 

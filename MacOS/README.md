@@ -16,6 +16,17 @@ Built with SwiftUI, macOS 14+, universal (Apple Silicon + Intel).
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## What's new in 2.3.1
+
+- **Automatic recovery after capacity errors.** Codex's native Retry is pressed
+  automatically while it is offered. When the retry budget is spent, Melon Tools
+  sends a short continuation so a long task keeps moving without a manual click.
+- **Quota-aware guard.** The watcher stays silent when every account is paused
+  or the best 5-hour quota is at or below 5%, so a limit error does not produce a
+  stream of continuation messages.
+- **Visible control.** «Продолжать автоматически после перегрузки модели» is in
+  Settings → Codex and on the Codex → Composer chips page. macOS build 21.
+
 ## What's new in 2.3.0
 
 - Full audit remediation: test isolation, instance path safety, quota and
@@ -393,7 +404,7 @@ is optional — the script falls back to a plain `hdiutil` image.
 
 ```bash
 ./build.sh            # full pipeline: gateway → icon → xcode → dmg
-open build/MelonTools-2.3.0.dmg
+open build/MelonTools-2.3.1.dmg
 ```
 
 The app is ad-hoc signed (personal build, not notarized). On first launch use
@@ -418,7 +429,7 @@ xcodebuild -project MelonTools.xcodeproj -scheme MelonTools \
 
 # 4. Ad-hoc sign + DMG
 codesign --force --deep --sign - "$HOME/Library/Developer/MelonTools/Build/Products/Release/MelonTools.app"
-create-dmg --volname "Melon Tools" "build/MelonTools-2.3.0.dmg" "Melon Tools.app"
+create-dmg --volname "Melon Tools" "build/MelonTools-2.3.1.dmg" "Melon Tools.app"
 ```
 
 ## Layout

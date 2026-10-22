@@ -54,6 +54,24 @@ final class ComposerBridge: ObservableObject {
     }
 
     static let enabledKey = "composerChipsEnabled"
+    static let autoRetryKey = "composerAutoRetry"
+
+    /// Presses Codex's own retry control after a model-capacity error, and
+    /// sends a short continuation when Codex stops offering that control.
+    /// The app shows the retry CTA only for a limited number of consecutive
+    /// capacity failures; the continuation keeps the task moving after that
+    /// budget is spent.
+    @Published var autoRetryEnabled: Bool {
+        didSet {
+            guard autoRetryEnabled != oldValue else { return }
+            UserDefaults.standard.set(autoRetryEnabled, forKey: Self.autoRetryKey)
+            pushStatus()
+        }
+    }
+
+    /// Number of automatic actions performed in this app session.
+    @Published private(set) var autoRetryActions = 0
+    @Published private(set) var lastAutoRetryAt: Date?
 
     private var tickTimer: Timer?
     private var sessions: [String: CDPSession] = [:]
@@ -75,6 +93,7 @@ final class ComposerBridge: ObservableObject {
     private var cachedCodexProcess: (process: CodexProcess, at: Date)?
 
     private init() {
+        autoRetryEnabled = UserDefaults.standard.object(forKey: Self.autoRetryKey) as? Bool ?? true
         enabled = UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true
         pickerModels = CodexModelCatalog.pickerIndex(sources: ModelSourcesStore.shared.sources)
         sourcesSubscription = ModelSourcesStore.shared.$sources
@@ -476,6 +495,17 @@ final class ComposerBridge: ObservableObject {
               let action = json["action"] as? String else { return }
         if action == "refresh" {
             refreshQuotas()
+            return
+        }
+        if action == "autoRetry" {
+            let kind = json["kind"] as? String ?? "retry"
+            autoRetryActions += 1
+            lastAutoRetryAt = Date()
+            if kind == "continue" {
+                log(L("The task was continued automatically after a capacity error."))
+            } else {
+                log(L("Retry was pressed automatically after a capacity error."))
+            }
         }
     }
 
@@ -577,6 +607,29 @@ final class ComposerBridge: ObservableObject {
             "models": pickerModels.map { ["name": $0.name, "provider": $0.provider, "slug": $0.slug] },
             "providers": providersPayload(),
         ]
+        var autoRetry: [String: Any] = [
+            "enabled": autoRetryEnabled,
+            // Give Codex a moment to settle after the failed turn before the
+            // fallback sends a new message.
+            "continueDelaySeconds": 45,
+        ]
+        // The watcher must stay silent when the pool has no usable quota: a
+        // capacity card would otherwise produce a continuation every couple of
+        // minutes while every account is at its limit. The best account is the
+        // signal — one healthy account is enough to keep retrying.
+        if let bestHourly = store.accounts.compactMap({ $0.quota?.hourlyRemainingPercent }).max() {
+            autoRetry["poolHourlyRemaining"] = Int(bestHourly.rounded())
+        }
+        if let bestWeekly = store.accounts.compactMap({ $0.quota?.weeklyRemainingPercent }).max() {
+            autoRetry["poolWeeklyRemaining"] = Int(bestWeekly.rounded())
+        }
+        // The routing planner's pool-wide pause is the authoritative signal:
+        // every account is held back by a limit or reserve, so a capacity card
+        // must not trigger another attempt.
+        autoRetry["poolPaused"] = store.poolPauseSummary() != nil
+        autoRetry["continueText"] = L("Continue the task from where you stopped. Do not repeat work already done.")
+        payload["autoRetry"] = autoRetry
+
         var active: [String: Any] = [:]
         active["model"] = pageContext.model ?? NSNull()
         active["provider"] = provider(of: pageContext.model) ?? NSNull()

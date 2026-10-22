@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @EnvironmentObject private var app: AppState
     @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var composer = ComposerBridge.shared
 
     @AppStorage("gatewayAutoStart") private var gatewayAutoStart = true
     @AppStorage("gatewayStopOnQuit") private var gatewayStopOnQuit = false
@@ -90,6 +91,28 @@ struct SettingsView: View {
                         Toggle(L("Show scheduler summary"), isOn: $showScheduler)
                             .toggleStyle(.switch)
                             .font(MTTheme.body(12))
+                    }
+                }
+
+                MTCard(title: L("Codex"), systemImage: "arrow.triangle.2.circlepath") {
+                    VStack(alignment: .leading, spacing: MTTheme.s2) {
+                        Toggle(isOn: $composer.autoRetryEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L("Auto-continue after capacity errors"))
+                                    .font(MTTheme.body(12))
+                                    .foregroundStyle(MTTheme.textPrimary)
+                                Text(L("Press Codex Retry automatically. If Codex stops offering Retry, send a short continuation message."))
+                                    .font(MTTheme.mono(10))
+                                    .foregroundStyle(MTTheme.textSecondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .tint(MTTheme.gold)
+                        if let last = composer.lastAutoRetryAt {
+                            Text(L("Last automatic action:") + " " + last.formatted(date: .omitted, time: .shortened))
+                                .font(MTTheme.mono(10))
+                                .foregroundStyle(MTTheme.textTertiary)
+                        }
                     }
                 }
 

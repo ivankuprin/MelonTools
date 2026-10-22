@@ -62,6 +62,19 @@ struct CodexComposerView: View {
             }
             .toggleStyle(.switch)
             .tint(MTTheme.gold)
+
+            Toggle(isOn: $bridge.autoRetryEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("Auto-continue after capacity errors"))
+                        .font(MTTheme.body(13, weight: .medium))
+                        .foregroundStyle(MTTheme.textPrimary)
+                    Text(L("Press Codex Retry automatically. If Codex stops offering Retry, send a short continuation message."))
+                        .font(MTTheme.body(11))
+                        .foregroundStyle(MTTheme.textSecondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(MTTheme.gold)
         }
     }
 
@@ -87,6 +100,12 @@ struct CodexComposerView: View {
                     }
                 }
                 .padding(.top, MTTheme.s1)
+
+                if let last = bridge.lastAutoRetryAt {
+                    Text(L("Last automatic action:") + " " + last.formatted(date: .omitted, time: .shortened))
+                        .font(MTTheme.body(11))
+                        .foregroundStyle(MTTheme.textSecondary)
+                }
             }
         }
     }

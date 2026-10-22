@@ -171,6 +171,13 @@
     timers: [],
     debounceTimer: null,
     docListeners: [],
+    autoRetry: {
+      signature: null,
+      seenAt: 0,
+      lastActionAt: 0,
+      retryClicks: 0,
+      continueAttempts: 0,
+    },
   };
 
   // ---------------------------------------------------------------- styles
@@ -1062,6 +1069,311 @@
     for (const node of document.querySelectorAll('[data-melon-provider]')) node.removeAttribute('data-melon-provider');
   }
 
+  // ------------------------------------------------- auto-continue
+  //
+  // Codex offers its own "Retry" action after a model-capacity error, but it
+  // stops offering it after a few consecutive failures. The bridge enables a
+  // watcher that presses that action, then falls back to a short continuation
+  // message so a long task can keep moving without a human. The fallback
+  // repeats with a growing delay instead of giving up.
+  //
+  // The watcher only acts when the capacity error is the last turn, no run is
+  // active, and the composer is empty. A non-empty composer means the user is
+  // typing, so the watcher stays out of the way.
+
+  const CAPACITY_ERROR_RE = /(selected model is at capacity|model is at capacity|server is (?:currently )?overloaded|servers are (?:currently )?overloaded|сервер[\s\S]{0,40}перегруж|модель[\s\S]{0,40}перегруж|выбранная модель[\s\S]{0,40}перегруж|сервер занят)/i;
+  // Any card that represents a failed turn. The capacity fallback must never
+  // run while a newer, different error is on screen: the model is unreachable
+  // for another reason, and a continuation would only add noise.
+  const ERROR_CARD_RE = /(unknown provider|selected model is at capacity|model is at capacity|server is (?:currently )?overloaded|servers are (?:currently )?overloaded|rate limit|too many requests|quota|перегруж|недоступн|лимит|превышен)/i;
+  const RETRY_LABEL_RE = /^(повторить|возобновить|retry|try again|resume)$/i;
+  const RETRY_COUNTDOWN_RE = /(?:через|in)\s+\d+\s*(?:с|s)(?:\s|$)/i;
+  const STOP_LABEL_RE = /^(остановить|stop|поставить в очередь|queue|скорректировать|steer)$/i;
+  const SEND_LABEL_RE = /^(отправить|send)$/i;
+
+  function visible(node) {
+    return node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
+  }
+
+  function labelOf(node) {
+    return (node.getAttribute('aria-label') || node.getAttribute('title') || node.innerText || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function capacityCards() {
+    const matches = (node) => {
+      const text = (node.innerText || '').trim();
+      return text.length > 0 && text.length < 1200 && CAPACITY_ERROR_RE.test(text);
+    };
+    let cards = [...document.querySelectorAll('aside')].filter((node) => visible(node) && matches(node));
+    if (cards.length === 0) {
+      cards = [...document.querySelectorAll('[role="alert"], [role="status"]')]
+        .filter((node) => visible(node) && matches(node));
+    }
+    return cards;
+  }
+
+  function isLastTurn(card) {
+    // The card must sit inside the newest conversation item. `closest` alone
+    // is not enough: a card rendered outside an item resolves to a container
+    // that also contains every newer item, so the check would always pass.
+    const items = [...document.querySelectorAll('[data-local-conversation-item-target-ids]')]
+      .filter((node) => visible(node));
+    if (items.length === 0) return false;
+    const last = items[items.length - 1];
+    return last.contains(card);
+  }
+
+  function newestErrorCard() {
+    const nodes = [...document.querySelectorAll('aside, [role="alert"], [role="status"]')];
+    const cards = nodes.filter((node) => {
+      if (!visible(node)) return false;
+      const text = (node.innerText || '').trim();
+      return text.length > 0 && text.length < 1200 && ERROR_CARD_RE.test(text);
+    });
+    return cards[cards.length - 1] || null;
+  }
+
+  /// Best hourly quota left in the pool, in percent. The bridge sends the
+  /// maximum across accounts. Older payloads only carry per-plan sums and
+  /// counts, so the group average is used as a conservative fallback.
+  function poolHourlyRemaining(config) {
+    if (config && typeof config.poolHourlyRemaining === 'number'
+        && Number.isFinite(config.poolHourlyRemaining)) {
+      return config.poolHourlyRemaining;
+    }
+    const groups = state.status && Array.isArray(state.status.groups) ? state.status.groups : [];
+    const values = groups
+      .map((group) => {
+        if (!group || group.fiveHour == null) return NaN;
+        const sum = Number(group.fiveHour);
+        const count = Number(group.count);
+        if (!Number.isFinite(sum)) return NaN;
+        return Number.isFinite(count) && count > 0 ? sum / count : sum;
+      })
+      .filter((value) => Number.isFinite(value));
+    if (values.length === 0) return null;
+    return Math.max(...values);
+  }
+
+  /// A capacity card is not actionable when the pool is out of quota: Codex
+  /// would only repeat the same failure, and the user asked for silence until
+  /// the window resets.
+  function quotaBlocked(config) {
+    if (config && config.poolPaused === true) return true;
+    const hourly = poolHourlyRemaining(config);
+    if (hourly !== null && hourly <= 5) return true;
+    const health = state.status && state.status.health;
+    if (health && Number(health.total) > 0 && Number(health.working) === 0) return true;
+    return false;
+  }
+
+  function hasActiveRun() {
+    return [...document.querySelectorAll('button[aria-label]')]
+      .some((button) => visible(button) && STOP_LABEL_RE.test(labelOf(button)));
+  }
+
+  function composerEditor() {
+    const editors = [
+      ...document.querySelectorAll('[data-codex-composer][contenteditable="true"]'),
+      ...document.querySelectorAll('.ProseMirror[contenteditable="true"]'),
+    ];
+    // Codex keeps a composer for every mounted thread, and the inactive ones
+    // are display:none. Text typed into a hidden editor never reaches the
+    // visible conversation, so always prefer the editor on screen.
+    return editors.find((node) => visible(node)) || editors[0] || null;
+  }
+
+  function composerHasText() {
+    const editor = composerEditor();
+    return !!editor && (editor.innerText || '').trim().length > 0;
+  }
+
+  /// Returns the retry CTA in or near the error card. Countdown and disabled
+  /// controls are returned too: the caller waits instead of sending a new
+  /// message while Codex is already about to retry on its own.
+  function retryControl(card) {
+    // The overflow card renders its own action inside the <aside>; the parent
+    // is only a small safety margin. Never scan the whole document: another
+    // panel can show an unrelated "Retry" control.
+    const scopes = [card, card.parentElement].filter(Boolean);
+    for (const scope of scopes) {
+      for (const control of scope.querySelectorAll('button, [role="button"]')) {
+        if (!visible(control)) continue;
+        const label = labelOf(control);
+        if (!label) continue;
+        const countdown = RETRY_COUNTDOWN_RE.test(label);
+        const base = label.replace(RETRY_COUNTDOWN_RE, '').trim();
+        if (!countdown && !RETRY_LABEL_RE.test(label) && !RETRY_LABEL_RE.test(base)) continue;
+        return {
+          control,
+          countdown,
+          disabled: control.disabled === true || control.getAttribute('aria-disabled') === 'true',
+        };
+      }
+    }
+    return null;
+  }
+
+  function sendButtonNear(editor) {
+    let scope = editor.closest('[data-codex-composer-root]');
+    for (let depth = 0; depth < 4 && scope; depth += 1) {
+      const button = [...scope.querySelectorAll('button[aria-label]')]
+        .find((node) => SEND_LABEL_RE.test(labelOf(node)) && visible(node) && !node.disabled);
+      if (button) return button;
+      scope = scope.parentElement;
+    }
+    return null;
+  }
+
+  /// Types a short continuation into an empty composer and submits it. The
+  /// text goes through execCommand so ProseMirror receives a real input event.
+  function sendContinuation(text) {
+    const editor = composerEditor();
+    if (!editor || (editor.innerText || '').trim().length > 0) return false;
+    editor.focus();
+    const selection = window.getSelection();
+    if (selection) {
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    let inserted = false;
+    try {
+      inserted = document.execCommand('insertText', false, text);
+    } catch (error) {
+      inserted = false;
+    }
+    if (!inserted) {
+      editor.textContent = text;
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    }
+    const submit = (attempt) => {
+      const button = sendButtonNear(editor);
+      if (button) {
+        button.click();
+        return;
+      }
+      if (attempt < 6) {
+        setTimeout(() => submit(attempt + 1), 150);
+        return;
+      }
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+    };
+    setTimeout(() => submit(0), 120);
+    return true;
+  }
+
+  function reportAutoRetry(kind, attempt) {
+    try {
+      if (typeof window.__melonSend === 'function') {
+        window.__melonSend(JSON.stringify({ action: 'autoRetry', kind, attempt }));
+      }
+    } catch (error) {
+      // The binding is optional; the page must keep working without it.
+    }
+  }
+
+  function maybeAutoContinue() {
+    const config = state.status && state.status.autoRetry;
+    if (!config || config.enabled !== true) return;
+    if (quotaBlocked(config)) {
+      state.autoRetry.signature = null;
+      return;
+    }
+    if (hasActiveRun()) return;
+    const cards = capacityCards();
+    const newest = newestErrorCard();
+    // A newer error of any other kind means the model is unavailable for a
+    // different reason. Do not answer it with a continuation message.
+    if (!newest || !CAPACITY_ERROR_RE.test(newest.innerText || '')) {
+      state.autoRetry.signature = null;
+      return;
+    }
+    const card = newest;
+    if (!isLastTurn(card)) return;
+    if (composerHasText()) return;
+
+    const signature = `${cards.length}:${(card.innerText || '').trim().slice(0, 180)}`;
+    if (signature !== state.autoRetry.signature) {
+      state.autoRetry.signature = signature;
+      state.autoRetry.seenAt = Date.now();
+      state.autoRetry.retryClicks = 0;
+      state.autoRetry.continueAttempts = 0;
+    }
+
+    const now = Date.now();
+    const retry = retryControl(card);
+    if (retry) {
+      // A visible countdown means Codex is retrying by itself; a disabled
+      // control means a retry is already in flight.
+      if (retry.countdown || retry.disabled) return;
+      if (now - state.autoRetry.lastActionAt < 10000) return;
+      state.autoRetry.lastActionAt = now;
+      state.autoRetry.retryClicks += 1;
+      reportAutoRetry('retry', state.autoRetry.retryClicks);
+      retry.control.click();
+      return;
+    }
+
+    // No retry CTA: Codex has spent its own capacity-retry budget. Send one
+    // short continuation, with a growing delay between attempts. The minimum
+    // two-minute gap keeps a rapidly changing card from producing a burst of
+    // messages.
+    const initialDelay = Math.max(0, Number(config.continueDelaySeconds) || 0) * 1000;
+    if (now - state.autoRetry.seenAt < initialDelay) return;
+    const backoff = [120, 180, 300, 300][Math.min(state.autoRetry.continueAttempts, 3)] * 1000;
+    if (now - state.autoRetry.lastActionAt < backoff) return;
+    const text = String(config.continueText || 'Continue the task from where you stopped.').trim();
+    if (!sendContinuation(text)) return;
+    state.autoRetry.lastActionAt = now;
+    state.autoRetry.continueAttempts += 1;
+    reportAutoRetry('continue', state.autoRetry.continueAttempts);
+  }
+
+  /// Read-only snapshot for the bridge and for live diagnostics over CDP.
+  /// It mirrors the guards, so a stuck watcher is visible at a glance.
+  function autoRetrySnapshot() {
+    const config = state.status && state.status.autoRetry;
+    const cards = capacityCards();
+    const newest = newestErrorCard();
+    const card = newest;
+    const retry = card ? retryControl(card) : null;
+    const hourly = poolHourlyRemaining(config);
+    const blockedReason = quotaBlocked(config)
+      ? 'quota'
+      : !newest
+        ? 'no-error'
+        : !CAPACITY_ERROR_RE.test(newest.innerText || '')
+          ? 'other-error'
+          : !isLastTurn(card)
+            ? 'not-last-turn'
+            : null;
+    return {
+      enabled: !!(config && config.enabled === true),
+      cards: cards.length,
+      newestErrorText: newest ? (newest.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 120) : null,
+      newestErrorIsCapacity: !!(newest && CAPACITY_ERROR_RE.test(newest.innerText || '')),
+      errorIsLastTurn: card ? isLastTurn(card) : false,
+      poolHourlyRemaining: hourly,
+      blockedReason: blockedReason,
+      activeRun: hasActiveRun(),
+      composerHasText: composerHasText(),
+      retryVisible: !!retry,
+      retryCountdown: !!(retry && retry.countdown),
+      retryDisabled: !!(retry && retry.disabled),
+      lastRetryLabel: retry ? labelOf(retry.control) : null,
+      signature: state.autoRetry.signature,
+      seenAt: state.autoRetry.seenAt,
+      lastActionAt: state.autoRetry.lastActionAt,
+      retryClicks: state.autoRetry.retryClicks,
+      continueAttempts: state.autoRetry.continueAttempts,
+    };
+  }
+
   // ---------------------------------------------------------------- boot
 
   function boot() {
@@ -1090,6 +1402,7 @@
     });
     state.observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
     state.timers.push(setInterval(ensureAttached, 1500));
+    state.timers.push(setInterval(maybeAutoContinue, 1500));
     state.timers.push(setInterval(watchdog, 10000));
   }
 
@@ -1115,6 +1428,7 @@
     delete window.__melonChipsSetStatus;
     delete window.__melonChipsSetOffline;
     delete window.__melonChipsPing;
+    delete window.__melonAutoRetryState;
     delete window.__melonChipsDispose;
     delete window.__melonChipsContext;
   }
@@ -1173,6 +1487,8 @@
     mode: container.getAttribute('data-melon-mode'),
     status: state.status,
   });
+
+  window.__melonAutoRetryState = autoRetrySnapshot;
 
   if (document.body) {
     boot();
