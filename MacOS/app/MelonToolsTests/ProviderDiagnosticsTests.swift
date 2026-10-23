@@ -40,6 +40,8 @@ final class ProviderDiagnosticsTests: XCTestCase {
         XCTAssertEqual(ProviderDiagnostics.authFileCount(id: "claude", names: names), 1)
         XCTAssertEqual(ProviderDiagnostics.authFileCount(id: "antigravity", names: names), 2)
         XCTAssertEqual(ProviderDiagnostics.authFileCount(id: "openrouter", names: names), 0)
+        XCTAssertEqual(ProviderDiagnostics.authFileCount(id: "deepinfra", names: names), 0)
+        XCTAssertEqual(ProviderDiagnostics.authFileCount(id: "vercel", names: names), 0)
     }
 
     func testModelCountsUseOwnershipAndTheAntigravityRegistry() {
@@ -50,12 +52,16 @@ final class ProviderDiagnosticsTests: XCTestCase {
             ProviderDiagnostics.ModelEntry(id: "gemini-4-argon-high", owner: nil),
             ProviderDiagnostics.ModelEntry(id: "openrouter/openai/gpt-4o", owner: "openrouter"),
             ProviderDiagnostics.ModelEntry(id: "opencode/big-pickle", owner: "opencode"),
+            ProviderDiagnostics.ModelEntry(id: "deepinfra/deepseek-ai/DeepSeek-V4", owner: "deepinfra"),
+            ProviderDiagnostics.ModelEntry(id: "vercel/anthropic/claude-sonnet-4.6", owner: "vercel"),
         ]
         XCTAssertEqual(ProviderDiagnostics.modelCount(id: "codex", models: models), 1)
         XCTAssertEqual(ProviderDiagnostics.modelCount(id: "claude", models: models), 1)
         XCTAssertEqual(ProviderDiagnostics.modelCount(id: "antigravity", models: models), 2)
         XCTAssertEqual(ProviderDiagnostics.modelCount(id: "openrouter", models: models), 1)
         XCTAssertEqual(ProviderDiagnostics.modelCount(id: "opencode", models: models), 1)
+        XCTAssertEqual(ProviderDiagnostics.modelCount(id: "deepinfra", models: models), 1)
+        XCTAssertEqual(ProviderDiagnostics.modelCount(id: "vercel", models: models), 1)
     }
 
     func testRowsAreOKWithGatewayAuthAndKeys() {
@@ -63,12 +69,12 @@ final class ProviderDiagnosticsTests: XCTestCase {
         let rows = ProviderDiagnostics.rows(evidence(
             authFileNames: allAuthNames,
             models: [ProviderDiagnostics.ModelEntry(id: "gpt-5.2", owner: "openai")],
-            keys: .init(openRouter: true, openCode: true, claude: true),
+            keys: .init(openRouter: true, openCode: true, deepInfra: true, vercel: true, claude: true),
             quotaUpdatedAt: ["claude": date]
         ))
 
         XCTAssertEqual(rows.map(\.id), ProviderDiagnostics.ids)
-        XCTAssertEqual(rows.map(\.status), Array(repeating: .ok, count: 5))
+        XCTAssertEqual(rows.map(\.status), Array(repeating: .ok, count: 7))
         XCTAssertEqual(rows.first { $0.id == "claude" }?.quotaUpdatedAt, date)
         XCTAssertEqual(rows.allSatisfy(\.authPresent), true)
         XCTAssertEqual(rows.first { $0.id == "codex" }?.modelCount, 1)
@@ -77,7 +83,7 @@ final class ProviderDiagnosticsTests: XCTestCase {
     func testMissingCredentialsAreAWarning() {
         let rows = ProviderDiagnostics.rows(evidence())
 
-        XCTAssertEqual(rows.map(\.status), Array(repeating: .warning, count: 5))
+        XCTAssertEqual(rows.map(\.status), Array(repeating: .warning, count: 7))
         XCTAssertTrue(rows.allSatisfy { !$0.authPresent })
     }
 
@@ -88,7 +94,7 @@ final class ProviderDiagnosticsTests: XCTestCase {
             authFileNames: allAuthNames
         ))
 
-        XCTAssertEqual(rows.map(\.status), Array(repeating: .failed, count: 5))
+        XCTAssertEqual(rows.map(\.status), Array(repeating: .failed, count: 7))
         XCTAssertTrue(rows.allSatisfy { $0.error == "Could not connect to the server." })
         XCTAssertTrue(rows.allSatisfy { $0.modelCount == nil })
     }
@@ -96,14 +102,14 @@ final class ProviderDiagnosticsTests: XCTestCase {
     func testQuotaErrorsStayVerbatim() {
         let rows = ProviderDiagnostics.rows(evidence(
             authFileNames: allAuthNames,
-            keys: .init(openRouter: true, openCode: true, claude: true),
+            keys: .init(openRouter: true, openCode: true, deepInfra: true, vercel: true, claude: true),
             quotaErrors: ["claude": "HTTP 429 Too Many Requests"]
         ))
 
         let claude = rows.first { $0.id == "claude" }
         XCTAssertEqual(claude?.status, .warning)
         XCTAssertEqual(claude?.error, "HTTP 429 Too Many Requests")
-        XCTAssertEqual(rows.filter { $0.id != "claude" }.map(\.status), Array(repeating: .ok, count: 4))
+        XCTAssertEqual(rows.filter { $0.id != "claude" }.map(\.status), Array(repeating: .ok, count: 6))
     }
 
     func testModelListDecodeFailureIsVisible() {
@@ -112,7 +118,7 @@ final class ProviderDiagnosticsTests: XCTestCase {
             authFileNames: allAuthNames
         ))
 
-        XCTAssertEqual(rows.map(\.status), Array(repeating: .warning, count: 5))
+        XCTAssertEqual(rows.map(\.status), Array(repeating: .warning, count: 7))
         XCTAssertTrue(rows.allSatisfy { $0.error == "The data could not be read." })
         XCTAssertTrue(rows.allSatisfy { $0.modelCount == nil })
     }

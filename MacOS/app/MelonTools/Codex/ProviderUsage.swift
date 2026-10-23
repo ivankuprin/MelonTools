@@ -44,6 +44,15 @@ final class ProviderUsageStore: ObservableObject {
         var error: String?
     }
 
+    /// Vercel AI Gateway team-level numbers. `balance` and `totalUsed` are
+    /// account-wide, not key-wide; the UI labels them accordingly.
+    struct VercelStats: Equatable {
+        var balance: Double?
+        var totalUsed: Double?
+        var updatedAt: Date?
+        var error: String?
+    }
+
     /// Claude (subscription) status: account identity plus the two rolling
     /// quota windows. Every number is nil-tolerant — missing data renders
     /// as “—” and nothing is fabricated.
@@ -77,6 +86,7 @@ final class ProviderUsageStore: ObservableObject {
 
     @Published private(set) var openRouter: OpenRouterStats?
     @Published private(set) var openCode: OpenCodeStats?
+    @Published private(set) var vercel: VercelStats?
     @Published private(set) var claude: ClaudeStats?
     @Published private(set) var antigravity: AntigravityStats?
 
@@ -87,16 +97,19 @@ final class ProviderUsageStore: ObservableObject {
 
     private let openRouterTTL: TimeInterval = 300
     private let openCodeTTL: TimeInterval = 1800
+    private let vercelTTL: TimeInterval = 300
     /// Claude quota windows move slowly; the endpoint is polled rarely.
     private let claudeTTL: TimeInterval = 180
     /// Antigravity has no network poll — only the auth file and selection.
     private let antigravityTTL: TimeInterval = 180
     private var lastOpenRouterFetch = Date.distantPast
     private var lastOpenCodeFetch = Date.distantPast
+    private var lastVercelFetch = Date.distantPast
     private var lastClaudeFetch = Date.distantPast
     private var lastAntigravityFetch = Date.distantPast
     private var openRouterBusy = false
     private var openCodeBusy = false
+    private var vercelBusy = false
     private var claudeBusy = false
     private var antigravityBusy = false
 
@@ -112,6 +125,7 @@ final class ProviderUsageStore: ObservableObject {
         await store.hydrateOpenRouterPrices()
         await refreshOpenRouter(key: store.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines), force: force)
         await refreshOpenCode(key: store.openCodeKey.trimmingCharacters(in: .whitespacesAndNewlines), force: force)
+        await refreshVercel(key: store.vercelKey.trimmingCharacters(in: .whitespacesAndNewlines), force: force)
         await refreshClaude(force: force)
         await refreshAntigravity(force: force)
     }
@@ -272,6 +286,42 @@ final class ProviderUsageStore: ObservableObject {
             var failed = openCode ?? OpenCodeStats()
             failed.error = error.localizedDescription
             openCode = failed
+        }
+    }
+
+    // MARK: - Vercel AI Gateway
+
+    /// The gateway has no per-key balance endpoint; `/v1/credits` returns the
+    /// team wallet. Missing values stay nil rather than being derived.
+    private func refreshVercel(key: String, force: Bool) async {
+        guard !vercelBusy, isStale(lastVercelFetch, ttl: vercelTTL, force: force) else { return }
+        guard !key.isEmpty else {
+            vercel = nil
+            return
+        }
+        vercelBusy = true
+        lastVercelFetch = Date()
+        defer { vercelBusy = false }
+
+        var stats = VercelStats()
+        do {
+            guard let root = try await Self.fetchJSON(url: ModelSourcesStore.vercelCreditsURL, key: key) else {
+                throw URLError(.badServerResponse)
+            }
+            stats.balance = Self.number(root["balance"])
+            stats.totalUsed = Self.number(root["total_used"])
+            stats.updatedAt = Date()
+            vercel = stats
+            if let balance = stats.balance {
+                QuotaHistoryStore.shared.record(
+                    QuotaHistorySample(at: Date(), balance: balance),
+                    for: "vercel"
+                )
+            }
+        } catch {
+            var failed = vercel ?? stats
+            failed.error = error.localizedDescription
+            vercel = failed
         }
     }
 

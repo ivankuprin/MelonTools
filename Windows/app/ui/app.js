@@ -9,7 +9,7 @@ const IS_TAURI = !!(window.__TAURI__ && window.__TAURI__.core);
 
 const DICT = {
   ru: {
-    dashboard: "Дашборд", accounts: "Аккаунты", api: "API Service", providers: "Провайдеры", donate: "Донат", settings: "Настройки",
+    dashboard: "Дашборд", accounts: "Аккаунты", api: "API Service", providers: "Подключения", donate: "Донат", settings: "Настройки",
     codex: "Codex", general: "Приложение",
     dashTitle: "Обзор", dashSub: "Локальный шлюз Codex, пул аккаунтов и провайдеры — одним взглядом.",
     gateway: "Шлюз", running: "работает", stopped: "остановлен", starting: "запускается…",
@@ -45,10 +45,17 @@ const DICT = {
     bridgeRestart: "Перезапустить Codex с чипами",
     bridgeRestartConfirm: "Codex будет закрыт и запущен заново с debug-портом (нужен для чипов). Продолжить?",
     bridgeRestarted: "Codex запущен заново",
-    providersSub: "Метрики ключей: OpenRouter, OpenCode, Claude, Antigravity. Ключи попадают в конфиг шлюза.",
+    providersSub: "Ключи и аккаунты: OpenRouter, OpenCode, DeepInfra, Vercel AI Gateway, Claude, Antigravity.",
     openrouter: "OpenRouter", orKey: "Ключ OpenRouter", totalCredits: "Куплено", spend: "Потрачено", remaining: "Остаток",
-    keyLimit: "Лимит ключа", keySpend: "Расход ключа", opencode: "OpenCode", ocKey: "Ключ OpenCode (oc_sk_…)",
+    available: "Доступно", balance: "Баланс", lifetime: "За всё время", keyLimit: "Лимит ключа", keyRemaining: "Остаток лимита ключа",
+    keySpend: "Расход ключа", opencode: "OpenCode", ocKey: "Ключ OpenCode (oc_sk_…)",
     ocHint: "После сохранения ключей перезапустите шлюз — модели opencode/* и openrouter/* появятся в списке.",
+    deepinfra: "DeepInfra", diKey: "Ключ DeepInfra", loadModels: "Загрузить модели",
+    diHint: "Только чат-модели. У DeepInfra нет баланса ключа: карточка показывает число моделей и расход сессии. После загрузки перезапустите шлюз.",
+    vercel: "Vercel", vcKey: "Ключ Vercel AI Gateway",
+    vcHint: "Ключ Vercel AI Gateway (AI_GATEWAY_API_KEY), не личный токен Vercel. Баланс и расход — общие для команды. После загрузки перезапустите шлюз.",
+    sessionSpend: "Расход сессии", teamBalance: "Баланс команды", lifetimeSpend: "Всего израсходовано",
+    keyConfigured: "ключ задан", noKey: "ключ не задан", keyRequired: "Сначала задайте ключ", modelsAvailable: "Доступно моделей",
     claude: "Claude", claudeSub: "Anthropic Claude: вход по подписке через OAuth, опциональный API-ключ.",
     claudeConnect: "Подключить", claudeConnecting: "Ждём подтверждение…", claudeCancel: "Отмена",
     claudeDisconnect: "Отключить", claudeConnected: "подключён", claudeNotConnected: "не подключён",
@@ -130,7 +137,7 @@ const DICT = {
     schedulerCancelled: "отменено", schedulerSkipped: "пропущено",
     schedulerDailyTokenLimit: "Дневной лимит токенов (0 = без лимита)", schedulerDailyLimit: "Лимит токенов в день",
     schedulerDailyLimitNone: "без лимита", schedulerDailyLimitInvalid: "Дневной лимит: 0 или от 1 до 1 000 000",
-    sgGateway: "Шлюз", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", cancel: "Отмена",
+    sgGateway: "Шлюз", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", sgDeepInfra: "DeepInfra", sgVercel: "Vercel", cancel: "Отмена",
     instances: "Инстансы", instanceNew: "Имя нового инстанса", instanceCreate: "Создать", instanceLaunch: "Запустить Codex",
     instanceBind: "Аккаунт", instanceNone: "текущий логин", instanceDelete: "Удалить", instanceHint: "Отдельный CODEX_HOME со своим входом.",
     composer: "Композер", composerHint: "Чипы в композере Codex: аккаунты и квоты прямо в строке ввода.",
@@ -144,10 +151,10 @@ const DICT = {
     onboardingTitle: "Добро пожаловать в Melon Tools",
     onboardingWelcome: "Настройте приложение за три шага.",
     onboardingStep1: "Добавьте или импортируйте аккаунт Codex.",
-    onboardingStep2: "Подключите провайдеров: OpenRouter, OpenCode, Claude, Antigravity.",
+    onboardingStep2: "Подключите источники: OpenRouter, OpenCode, DeepInfra, Vercel AI Gateway, Claude, Antigravity.",
     onboardingStep3: "Запустите API-сервис и откройте Codex.",
     onboardingDisclaimer: "Используйте только свои аккаунты. Соблюдайте условия провайдеров: за нарушение правил возможна блокировка аккаунта.",
-    onboardingAccounts: "Открыть аккаунты", onboardingProviders: "Открыть провайдеров", onboardingDone: "Готово",
+    onboardingAccounts: "Открыть аккаунты", onboardingProviders: "Открыть подключения", onboardingDone: "Готово",
     onboardingClose: "Закрыть",
     onboardingHealth: "Проверка окружения", onboardingHealthSub: "Живой статус без отправки запросов.",
     onboardingPass: "ОК", onboardingWarn: "ВНИМ.", onboardingFail: "ОШИБКА",
@@ -179,7 +186,7 @@ const DICT = {
     dashRunNextDone: "Запущено: {name}",
   },
   en: {
-    dashboard: "Dashboard", accounts: "Accounts", api: "API Service", providers: "Providers", donate: "Donate", settings: "Settings",
+    dashboard: "Dashboard", accounts: "Accounts", api: "API Service", providers: "Connections", donate: "Donate", settings: "Settings",
     codex: "Codex", general: "App",
     dashTitle: "Overview", dashSub: "The local Codex gateway, the account pool and providers at a glance.",
     gateway: "Gateway", running: "running", stopped: "stopped", starting: "starting…",
@@ -215,10 +222,17 @@ const DICT = {
     bridgeRestart: "Restart Codex with chips",
     bridgeRestartConfirm: "Codex will close and relaunch with the debug port (required for chips). Continue?",
     bridgeRestarted: "Codex relaunched",
-    providersSub: "Key metrics: OpenRouter, OpenCode, Claude, Antigravity. Keys are written into the gateway config.",
+    providersSub: "Keys and accounts: OpenRouter, OpenCode, DeepInfra, Vercel AI Gateway, Claude, Antigravity.",
     openrouter: "OpenRouter", orKey: "OpenRouter key", totalCredits: "Purchased", spend: "Spent", remaining: "Remaining",
-    keyLimit: "Key limit", keySpend: "Key usage", opencode: "OpenCode", ocKey: "OpenCode key (oc_sk_…)",
+    available: "Available", balance: "Balance", lifetime: "Lifetime", keyLimit: "Key limit", keyRemaining: "Key limit remaining",
+    keySpend: "Key usage", opencode: "OpenCode", ocKey: "OpenCode key (oc_sk_…)",
     ocHint: "After saving keys restart the gateway — opencode/* and openrouter/* models appear in the list.",
+    deepinfra: "DeepInfra", diKey: "DeepInfra key", loadModels: "Load models",
+    diHint: "Chat models only. DeepInfra has no key balance endpoint: the card shows the model count and session spend. Restart the gateway after loading.",
+    vercel: "Vercel", vcKey: "Vercel AI Gateway key",
+    vcHint: "Use a Vercel AI Gateway key (AI_GATEWAY_API_KEY), not a personal Vercel token. Balance and spend are shared by the team. Restart the gateway after loading.",
+    sessionSpend: "Session spend", teamBalance: "Team balance", lifetimeSpend: "Lifetime spend",
+    keyConfigured: "key set", noKey: "no key", keyRequired: "Set the key first", modelsAvailable: "Models available",
     claude: "Claude", claudeSub: "Anthropic Claude: subscription sign-in via OAuth, optional API key.",
     claudeConnect: "Connect", claudeConnecting: "Waiting for confirmation…", claudeCancel: "Cancel",
     claudeDisconnect: "Disconnect", claudeConnected: "connected", claudeNotConnected: "not connected",
@@ -300,7 +314,7 @@ const DICT = {
     schedulerCancelled: "cancelled", schedulerSkipped: "skipped",
     schedulerDailyTokenLimit: "Daily token limit (0 = no limit)", schedulerDailyLimit: "Daily token limit",
     schedulerDailyLimitNone: "no limit", schedulerDailyLimitInvalid: "Daily token limit: 0 or 1 to 1,000,000",
-    sgGateway: "Gateway", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", cancel: "Cancel",
+    sgGateway: "Gateway", sgClaude: "Claude", sgOpenCode: "OpenCode", sgOpenRouter: "OpenRouter", sgDeepInfra: "DeepInfra", sgVercel: "Vercel", cancel: "Cancel",
     instances: "Instances", instanceNew: "New instance name", instanceCreate: "Create", instanceLaunch: "Launch Codex",
     instanceBind: "Account", instanceNone: "current login", instanceDelete: "Delete", instanceHint: "A separate CODEX_HOME with its own login.",
     composer: "Composer", composerHint: "Chips in the Codex composer: accounts and quotas right in the input row.",
@@ -314,10 +328,10 @@ const DICT = {
     onboardingTitle: "Welcome to Melon Tools",
     onboardingWelcome: "Set up the app in three steps.",
     onboardingStep1: "Add or import a Codex account.",
-    onboardingStep2: "Connect providers: OpenRouter, OpenCode, Claude, Antigravity.",
+    onboardingStep2: "Connect sources: OpenRouter, OpenCode, DeepInfra, Vercel AI Gateway, Claude, Antigravity.",
     onboardingStep3: "Start the API service and launch Codex.",
     onboardingDisclaimer: "Use only your own accounts. Follow provider terms — accounts can be banned for rule violations.",
-    onboardingAccounts: "Open Accounts", onboardingProviders: "Open Providers", onboardingDone: "Done",
+    onboardingAccounts: "Open Accounts", onboardingProviders: "Open Connections", onboardingDone: "Done",
     onboardingClose: "Close",
     onboardingHealth: "Environment health", onboardingHealthSub: "Live status without sending a request.",
     onboardingPass: "PASS", onboardingWarn: "WARN", onboardingFail: "FAIL",
@@ -358,6 +372,9 @@ const S = {
   status: null,
   settings: null,
   providers: null,
+  vercel: null,
+  vercelLoaded: false,
+  providerModelsError: {},
   claude: null,
   claudeLogin: null,
   lastClaudeUsageAt: 0,
@@ -469,7 +486,7 @@ function mock(cmd, args) {
   ];
   const mocks = {
     app_info: { name: "Melon Tools", version: "1.4.7", platform: "windows", dataDir: "C:\\Users\\you\\AppData\\Roaming\\MelonTools", codexHome: "C:\\Users\\you\\.codex" },
-    settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "", claudeEnabled: false, claudeApiKey: "", notifications: true, notifyLowQuota: true, notifyScheduler: true, notifyQuotaReset: true, dashboardShowPoolHealth: true, dashboardShowQuotaTrends: true, dashboardShowSpend: true, dashboardShowScheduler: true, quotaResetNotified: [] },
+    settings_get: { port: 18317, apiKey: "", lang: S.lang, quotaInterval: 300, openrouterKey: "", opencodeKey: "", deepinfraKey: "", vercelKey: "", opencodeEnabled: true, openrouterEnabled: true, deepinfraEnabled: true, vercelEnabled: true, deepinfraModels: [], vercelModels: [], claudeEnabled: false, claudeApiKey: "", notifications: true, notifyLowQuota: true, notifyScheduler: true, notifyQuotaReset: true, dashboardShowPoolHealth: true, dashboardShowQuotaTrends: true, dashboardShowSpend: true, dashboardShowScheduler: true, quotaResetNotified: [] },
     settings_set: (a) => a.settings,
     vault_list: demoAccounts,
     quota_history: historyMocks,
@@ -483,6 +500,16 @@ function mock(cmd, args) {
     save_reserves: demoAccounts,
     delete_account: demoAccounts,
     openrouter_refresh: { totalCredits: 30, totalUsage: 29.87, remaining: 0.13, label: "melon", usage: 0.09, limit: 1000, limitRemaining: 999.9, isFreeTier: false, status: "ok" },
+    vercel_refresh: { balance: 42.5, totalUsed: 118.2, status: "ok", updatedAt: new Date().toISOString() },
+    provider_models_load: (a) => a.provider === "deepinfra"
+      ? { count: 2, models: [
+          { id: "deepseek-ai/DeepSeek-V4", display: "DeepSeek V4", contextWindow: 131072, promptPerToken: 0.00000027, completionPerToken: 0.0000011, supportsImages: true },
+          { id: "Qwen/Qwen3.5-235B", display: "Qwen 3.5 235B", contextWindow: 262144, promptPerToken: 0.0000002, completionPerToken: 0.0000008, supportsImages: false },
+        ] }
+      : { count: 2, models: [
+          { id: "anthropic/claude-sonnet-4.6", display: "Claude Sonnet 4.6", contextWindow: 200000, promptPerToken: 0.000003, completionPerToken: 0.000015, supportsImages: true },
+          { id: "openai/gpt-6.1", display: "GPT-6.1", contextWindow: 400000, promptPerToken: 0.000001, completionPerToken: 0.000004, supportsImages: true },
+        ] },
     claude_login_start: { url: "https://example.invalid/oauth/authorize?state=demo-state", state: "demo-state" },
     claude_login_status: { status: "wait" },
     claude_login_cancel: { canceled: true },
@@ -514,7 +541,7 @@ function mock(cmd, args) {
     codex_route_status: { configPath: "C:\\Users\\you\\.codex\\config.toml", provider: "melon_local_access", ours: true, catalogExists: true, catalogPath: "C:\\Users\\you\\.codex\\melon-model-catalog.json" },
     codex_route_apply: { route: { provider: "melon_local_access", ours: true, catalogExists: true }, catalogCustom: 32 },
     codex_route_remove: { provider: null, ours: false, catalogExists: true },
-    bridge_status: { attached: true, debugPort: 55660, model: "GPT-6.1 Sol", targets: 3, reason: null, session: { total: { total: 2730 }, cost: { total: 0.42, providers: { openai: { usd: 0.32 }, opencode: { usd: 0.10 } } } } },
+    bridge_status: { attached: true, debugPort: 55660, model: "GPT-6.1 Sol", targets: 3, reason: null, session: { total: { total: 2730 }, cost: { total: 0.42, providers: { openai: { usd: 0.32 }, opencode: { usd: 0.10 }, deepinfra: { usd: 0.014 }, vercel: { usd: 0.021 } } } } },
     routing_state: { strategy: "auto", strategies: ["auto", "quotaHighFirst", "quotaLowFirst", "planHighFirst", "planLowFirst", "expirySoonFirst", "custom"], priorityOrder: [], orderedIds: ["demo-1", "demo-2"], blockedIds: ["demo-2"] },
     set_routing_strategy: (a) => ({ strategy: a.strategy, orderedIds: ["demo-1", "demo-2"], blockedIds: ["demo-2"], accounts: demoAccounts }),
     move_priority: { strategy: "custom", orderedIds: ["demo-2", "demo-1"], blockedIds: [], accounts: demoAccounts },
@@ -573,10 +600,12 @@ function mock(cmd, args) {
       }
       return { status: "idle", queued: [], running: null };
     },
-    scheduler_models: { count: 3, ids: ["gpt-6.1-sol", "claude-opus-5-5", "opencode/grok-4.7"], groups: [
+    scheduler_models: { count: 5, ids: ["gpt-6.1-sol", "claude-opus-5-5", "opencode/grok-4.7", "deepinfra/deepseek-ai/DeepSeek-V4", "vercel/anthropic/claude-sonnet-4.6"], groups: [
       { id: "gateway", ids: ["gpt-6.1-sol"] },
       { id: "claude", ids: ["claude-opus-5-5"] },
       { id: "opencode", ids: ["opencode/grok-4.7"] },
+      { id: "deepinfra", ids: ["deepinfra/deepseek-ai/DeepSeek-V4"] },
+      { id: "vercel", ids: ["vercel/anthropic/claude-sonnet-4.6"] },
     ] },
     instances_list: [],
     instance_create: [],
@@ -910,6 +939,8 @@ function providerOfModel(model) {
   const id = String(model || "");
   if (id.startsWith("opencode/")) return "opencode";
   if (id.startsWith("openrouter/")) return "openrouter";
+  if (id.startsWith("deepinfra/")) return "deepinfra";
+  if (id.startsWith("vercel/")) return "vercel";
   if (id.startsWith("claude-")) return "claude";
   return "gateway";
 }
@@ -920,6 +951,8 @@ function providerName(provider) {
     case "claude": return t("sgClaude");
     case "opencode": return t("sgOpenCode");
     case "openrouter": return t("sgOpenRouter");
+    case "deepinfra": return t("sgDeepInfra");
+    case "vercel": return t("sgVercel");
     default: return String(provider || "—");
   }
 }
@@ -1274,6 +1307,10 @@ function render() {
   if (S.section === "donate") renderDonateQr();
   if (S.section === "scheduler" && !S.scheduler && !S.schedulerError) A.schedulerLoad();
   if (S.section === "providers" && !S.models && !S.modelsError) A.modelsLoad();
+  if (S.section === "providers" && IS_TAURI && !S.vercelLoaded
+      && String((S.settings && S.settings.vercelKey) || "").trim()) {
+    A.vercelLoad();
+  }
   if (S.section === "providers" && IS_TAURI && !S.claude && !S.claudeLogin) {
     A.claudeUsageLoad().then(() => {
       if (S.section === "providers") render();
@@ -1789,9 +1826,204 @@ function diagnosticsCard() {
   </div>`;
 }
 
+function providerMetric(label, value, cls = "") {
+  const text = value === null || value === undefined || value === "" ? "—" : String(value);
+  return `<div class="stat ${cls}"><span class="value">${esc(text)}</span><span class="label">${esc(label)}</span></div>`;
+}
+
+function providerRatio(part, whole) {
+  const value = finiteNumber(part);
+  const total = finiteNumber(whole);
+  if (value === null || total === null || total <= 0) return null;
+  return Math.min(1, Math.max(0, value / total));
+}
+
+function providerMeterMetric(label, value, caption, part, whole, tint, valueClass = "") {
+  const ratio = providerRatio(part, whole);
+  const percent = ratio === null ? null : Math.round(ratio * 1000) / 10;
+  const meter = percent === null
+    ? '<div class="provider-meter-placeholder" aria-hidden="true"></div>'
+    : `<div class="provider-meter" role="meter" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i class="${tint}" style="width:${percent}%"></i></div>`;
+  return `<div class="stat provider-stat ${valueClass}">
+    <span class="label">${esc(label)}</span>
+    <span class="value">${esc(String(value ?? "—"))}</span>
+    ${meter}
+    <span class="provider-caption">${esc(caption || "")}</span>
+  </div>`;
+}
+
+function providerKeyPill(configured) {
+  return `<span class="pill ${configured ? "ok" : ""}">${configured ? t("keyConfigured") : t("noKey")}</span>`;
+}
+
+function providerModelCount(provider) {
+  const rows = S.settings && Array.isArray(S.settings[`${provider}Models`])
+    ? S.settings[`${provider}Models`]
+    : null;
+  return rows ? rows.length : 0;
+}
+
+function sessionProviderSpend(provider) {
+  const session = S.bridge && S.bridge.session;
+  const cost = session && session.cost;
+  const stats = cost && cost.providers && cost.providers[provider];
+  return finiteNumber(stats && stats.usd);
+}
+
+function openRouterCard(settings) {
+  const p = S.providers;
+  const configured = !!(settings.openrouterKey || "").trim();
+  const creditsTotal = finiteNumber(p && p.totalCredits);
+  const creditsSpent = finiteNumber(p && p.totalUsage);
+  const reportedCreditsRemaining = finiteNumber(p && p.remaining);
+  const calculatedCreditsRemaining = creditsTotal !== null && creditsSpent !== null
+    ? Math.max(0, creditsTotal - creditsSpent)
+    : null;
+  const creditsRemaining = reportedCreditsRemaining !== null
+    ? Math.max(0, reportedCreditsRemaining)
+    : calculatedCreditsRemaining;
+  const keyLimit = finiteNumber(p && p.limit);
+  const keyUsage = finiteNumber(p && p.usage);
+  const reportedKeyRemaining = finiteNumber(p && p.limitRemaining);
+  const calculatedKeyRemaining = keyLimit !== null && keyUsage !== null
+    ? Math.max(0, keyLimit - keyUsage)
+    : null;
+  const keyRemaining = reportedKeyRemaining !== null
+    ? Math.max(0, reportedKeyRemaining)
+    : calculatedKeyRemaining;
+  return `
+  <div class="card provider-card">
+    <h2>${t("openrouter")} ${providerKeyPill(configured)}</h2>
+    <div class="stat-grid">
+      ${providerMeterMetric(t("available"), formatMoney(creditsRemaining), t("balance"), null, null, "green")}
+      ${providerMeterMetric(
+        t("spend"),
+        formatMoney(creditsSpent),
+        creditsTotal === null ? t("lifetime") : `${t("lifetime")} · ${t("totalCredits").toLowerCase()} ${formatMoney(creditsTotal)}`,
+        null,
+        null,
+        "gold",
+        "gold"
+      )}
+      ${providerMeterMetric(
+        t("keyRemaining"),
+        formatMoney(keyRemaining),
+        keyLimit === null ? t("keyLimit") : `${t("keyLimit")} ${formatMoney(keyLimit)}`,
+        keyRemaining,
+        keyLimit,
+        "blue"
+      )}
+    </div>
+    <div class="stack" style="margin-top:12px">
+      <label class="field">${t("orKey")}
+        <input type="password" id="or-key" value="${esc(settings.openrouterKey || "")}" placeholder="sk-or-v1-…">
+      </label>
+      <div class="row">
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" id="or-enabled" ${settings.openrouterEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
+          <span>${t("sourceEnabled")}</span>
+        </label>
+        <span class="spacer"></span>
+        <button class="btn small" onclick="A.saveKeys()">${t("save")}</button>
+        <button class="ghost small" onclick="A.openrouterRefresh()" ${S.busy.openrouter ? "disabled" : ""}>${t("refresh")}</button>
+      </div>
+      ${historyStrip("openrouter")}
+    </div>
+  </div>`;
+}
+
+function openCodeCard(settings) {
+  const configured = !!(settings.opencodeKey || "").trim();
+  const count = S.models ? S.models.filter((m) => String(m.id || "").startsWith("opencode/")).length : null;
+  return `
+  <div class="card provider-card">
+    <h2>${t("opencode")} ${providerKeyPill(configured)}</h2>
+    <div class="stat-grid">
+      ${providerMetric(t("modelsAvailable"), count === null ? "—" : count)}
+      ${providerMetric(t("sessionSpend"), formatMoney(sessionProviderSpend("opencode")))}
+    </div>
+    <div class="stack" style="margin-top:12px">
+      <label class="field">${t("ocKey")}
+        <input type="password" id="oc-key" value="${esc(settings.opencodeKey || "")}" placeholder="oc_sk_…">
+      </label>
+      <div class="row">
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" id="oc-enabled" ${settings.opencodeEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
+          <span>${t("sourceEnabled")}</span>
+        </label>
+        <span class="spacer"></span>
+        <button class="btn small" onclick="A.saveKeys()">${t("save")}</button>
+      </div>
+      <div class="footnote">${t("ocHint")}</div>
+    </div>
+  </div>`;
+}
+
+function deepInfraCard(settings) {
+  const configured = !!(settings.deepinfraKey || "").trim();
+  const error = S.providerModelsError.deepinfra;
+  return `
+  <div class="card provider-card">
+    <h2>${t("deepinfra")} ${providerKeyPill(configured)}</h2>
+    <div class="stat-grid">
+      ${providerMetric(t("modelsAvailable"), providerModelCount("deepinfra"))}
+      ${providerMetric(t("sessionSpend"), formatMoney(sessionProviderSpend("deepinfra")))}
+    </div>
+    <div class="stack" style="margin-top:12px">
+      <label class="field">${t("diKey")}
+        <input type="password" id="di-key" value="${esc(settings.deepinfraKey || "")}" placeholder="di_…">
+      </label>
+      <div class="row">
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" id="di-enabled" ${settings.deepinfraEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
+          <span>${t("sourceEnabled")}</span>
+        </label>
+        <span class="spacer"></span>
+        <button class="btn small" onclick="A.saveKeys()">${t("save")}</button>
+        <button class="ghost small" onclick="A.loadProviderModels('deepinfra')" ${S.busy["models-deepinfra"] ? "disabled" : ""}>${t("loadModels")}</button>
+      </div>
+      ${error ? `<div class="footnote mono">${esc(error)}</div>` : ""}
+      <div class="footnote">${t("diHint")}</div>
+    </div>
+  </div>`;
+}
+
+function vercelCard(settings) {
+  const configured = !!(settings.vercelKey || "").trim();
+  const v = S.vercel;
+  const error = S.providerModelsError.vercel || (v && v.error);
+  const balance = v ? finiteNumber(v.balance) : null;
+  return `
+  <div class="card provider-card">
+    <h2>${t("vercel")} ${providerKeyPill(configured)}</h2>
+    <div class="stat-grid">
+      ${providerMetric(t("teamBalance"), balance === null ? "—" : formatMoney(balance), balance === null ? "" : "ok")}
+      ${providerMetric(t("lifetimeSpend"), v ? formatMoney(v.totalUsed) : "—")}
+      ${providerMetric(t("modelsAvailable"), providerModelCount("vercel"))}
+      ${providerMetric(t("sessionSpend"), formatMoney(sessionProviderSpend("vercel")))}
+    </div>
+    <div class="stack" style="margin-top:12px">
+      <label class="field">${t("vcKey")}
+        <input type="password" id="vc-key" value="${esc(settings.vercelKey || "")}" placeholder="vck_…">
+      </label>
+      <div class="row">
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" id="vc-enabled" ${settings.vercelEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
+          <span>${t("sourceEnabled")}</span>
+        </label>
+        <span class="spacer"></span>
+        <button class="btn small" onclick="A.saveKeys()">${t("save")}</button>
+        <button class="ghost small" onclick="A.vercelRefresh()" ${S.busy.vercel ? "disabled" : ""}>${t("refresh")}</button>
+        <button class="ghost small" onclick="A.loadProviderModels('vercel')" ${S.busy["models-vercel"] ? "disabled" : ""}>${t("loadModels")}</button>
+      </div>
+      ${error ? `<div class="footnote mono">${esc(error)}</div>` : ""}
+      <div class="footnote">${t("vcHint")}</div>
+    </div>
+  </div>`;
+}
+
 function providersPage() {
   const settings = S.settings || {};
-  const p = S.providers;
   const models = S.models || [];
   const query = String(S.modelsQuery || "").trim().toLowerCase();
   const filtered = query
@@ -1802,62 +2034,16 @@ function providersPage() {
         return haystack.includes(query);
       })
     : models;
-  const metric = (label, value) => `
-    <tr><td>${esc(label)}</td><td>${value === null || value === undefined ? "—" : esc(typeof value === "number" ? value.toFixed(4) : value)}</td></tr>`;
 
   return `
   ${pageHead("codex", t("providers"), t("providersSub"))}
   ${poolPauseBanner()}
-  <div class="grid2">
-    <div class="card">
-      <h2>${t("openrouter")}</h2>
-      <div class="stack">
-        <label class="field">${t("orKey")}
-          <input type="password" id="or-key" value="${esc(settings.openrouterKey || "")}" placeholder="sk-or-v1-…">
-        </label>
-        <div class="row">
-          <label class="field" style="flex-direction:row;align-items:center;gap:6px">
-            <input type="checkbox" id="or-enabled" ${settings.openrouterEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
-            <span>${t("sourceEnabled")}</span>
-          </label>
-          <label class="field" style="flex-direction:row;align-items:center;gap:6px">
-            <input type="checkbox" id="oc-enabled" ${settings.opencodeEnabled ? "checked" : ""} onchange="A.providerToggleChanged()">
-            <span>OpenCode ${t("sourceEnabled")}</span>
-          </label>
-        </div>
-        <div class="row">
-          <button class="btn small" onclick="A.saveKeys()">${t("save")}</button>
-          <button class="ghost small" onclick="A.openrouterRefresh()" ${S.busy.openrouter ? "disabled" : ""}>${t("refresh")}</button>
-        </div>
-        ${p ? `<table class="kv">
-          ${metric(t("totalCredits"), p.totalCredits)}
-          ${metric(t("spend"), p.totalUsage)}
-          ${metric(t("remaining"), p.remaining)}
-          ${metric(t("keyLimit"), p.limit)}
-          ${metric(t("keySpend"), p.usage)}
-        </table>` : `<div class="footnote">${t("loading")}</div>`}
-        ${historyStrip("openrouter")}
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>${t("opencode")}</h2>
-      <div class="stack">
-        <label class="field">${t("ocKey")}
-          <input type="password" id="oc-key" value="${esc(settings.opencodeKey || "")}" placeholder="oc_sk_…">
-        </label>
-        <div class="row">
-          <button class="btn small" onclick="A.saveKeys()">${t("save")}</button>
-        </div>
-        <div class="footnote">${t("ocHint")}</div>
-      </div>
-    </div>
-  </div>
-
+  ${openRouterCard(settings)}
+  ${openCodeCard(settings)}
+  ${deepInfraCard(settings)}
+  ${vercelCard(settings)}
   ${claudeCard(settings)}
-
   ${antigravityCard()}
-
   ${diagnosticsCard()}
 
   <div class="card">
@@ -1873,7 +2059,11 @@ function providersPage() {
         // claude-*/gemini-*/gpt-oss ids, so prefix alone would mislabel them.
         const provider = S.antigravityIds && S.antigravityIds.has(id)
           ? "Antigravity"
-          : id.startsWith("opencode/") ? "OpenCode" : id.startsWith("openrouter/") ? "OpenRouter" : id.startsWith("claude-") ? "Claude" : "OpenAI";
+          : id.startsWith("opencode/") ? "OpenCode"
+          : id.startsWith("openrouter/") ? "OpenRouter"
+          : id.startsWith("deepinfra/") ? "DeepInfra"
+          : id.startsWith("vercel/") ? "Vercel"
+          : id.startsWith("claude-") ? "Claude" : "OpenAI";
         return `<div class="row" style="padding:3px 0;gap:8px">
           <span class="pill ${provider === "OpenAI" ? "gold" : ""}">${provider}</span>
           <span class="mono" style="font-size:11px">${esc(id)}</span>
@@ -2096,6 +2286,8 @@ function schedulerGroupLabel(id) {
     case "claude": return t("sgClaude");
     case "opencode": return t("sgOpenCode");
     case "openrouter": return t("sgOpenRouter");
+    case "deepinfra": return t("sgDeepInfra");
+    case "vercel": return t("sgVercel");
     default: return t("sgGateway");
   }
 }
@@ -2675,6 +2867,13 @@ const A = {
         ["antigravityCredentials", "antigravity_credentials", () => inv("antigravity_credentials")],
         ["antigravityModels", "antigravity_models", () => inv("antigravity_models")],
         ["antigravityMetrics", "antigravity_metrics", () => inv("antigravity_metrics")],
+        // A missing key is a normal unconfigured state, not a diagnostics
+        // failure. Only probe Vercel when the user actually saved a key.
+        ["vercelMetrics", "vercel_refresh", async () => {
+          const settings = S.settings || await inv("settings_get");
+          if (!String(settings.vercelKey || "").trim()) return null;
+          return inv("vercel_refresh");
+        }],
       ];
       const settled = await Promise.allSettled(checks.map(([, , call]) => call()));
       const data = {};
@@ -2750,7 +2949,10 @@ const A = {
           name: t("diagCodex"), reach: viaGateway,
           auth: { text: `${accounts.length} ${t("accountsCount")}`, cls: accounts.length ? "ok" : "warn" },
           models: countCell(has("gatewayModels")
-            ? gatewayIds.filter((id) => !id.startsWith("opencode/") && !id.startsWith("openrouter/")).length
+            ? gatewayIds.filter((id) => !id.startsWith("opencode/")
+              && !id.startsWith("openrouter/")
+              && !id.startsWith("deepinfra/")
+              && !id.startsWith("vercel/")).length
             : null),
           quota: codexQuota ? { text: ageText(codexQuota), cls: "ok" } : { text: "—", cls: "" },
         },
@@ -2765,6 +2967,21 @@ const A = {
           auth: keyAuth(settings.opencodeKey),
           models: countCell(has("gatewayModels") ? countPrefix("opencode/") : null),
           quota: { text: "—", cls: "" },
+        },
+        {
+          name: t("deepinfra"), reach: viaGateway,
+          auth: keyAuth(settings.deepinfraKey),
+          models: countCell(has("gatewayModels") ? countPrefix("deepinfra/") : null),
+          // DeepInfra exposes no per-key balance endpoint.
+          quota: { text: "—", cls: "" },
+        },
+        {
+          name: t("vercel"), reach: viaGateway,
+          auth: keyAuth(settings.vercelKey),
+          models: countCell(has("gatewayModels") ? countPrefix("vercel/") : null),
+          quota: has("vercelMetrics")
+            ? quotaCell(data.vercelMetrics && data.vercelMetrics.updatedAt)
+            : { text: "—", cls: "" },
         },
         {
           name: t("claude"), reach: viaGateway,
@@ -2795,11 +3012,15 @@ const A = {
   providerToggleChanged() {
     const openrouter = document.getElementById("or-enabled");
     const opencode = document.getElementById("oc-enabled");
+    const deepinfra = document.getElementById("di-enabled");
+    const vercel = document.getElementById("vc-enabled");
     const claude = document.getElementById("claude-enabled");
     S.settings = {
       ...S.settings,
       ...(openrouter ? { openrouterEnabled: openrouter.checked } : {}),
       ...(opencode ? { opencodeEnabled: opencode.checked } : {}),
+      ...(deepinfra ? { deepinfraEnabled: deepinfra.checked } : {}),
+      ...(vercel ? { vercelEnabled: vercel.checked } : {}),
       ...(claude ? { claudeEnabled: claude.checked } : {}),
     };
     inv("settings_set", { settings: S.settings })
@@ -2917,30 +3138,105 @@ const A = {
   },
 
   saveKeys() {
-    // Read fields before run() rebuilds the page.
+    // Read fields before run() rebuilds the page. Falling back to the saved
+    // value keeps a partial rerender from blanking a key the user did not edit.
     const openrouterNode = document.getElementById("or-key");
     const opencodeNode = document.getElementById("oc-key");
+    const deepinfraNode = document.getElementById("di-key");
+    const vercelNode = document.getElementById("vc-key");
     const openrouterEnabledNode = document.getElementById("or-enabled");
     const opencodeEnabledNode = document.getElementById("oc-enabled");
-    const openrouterKey = openrouterNode ? openrouterNode.value.trim() : "";
-    const opencodeKey = opencodeNode ? opencodeNode.value.trim() : "";
+    const deepinfraEnabledNode = document.getElementById("di-enabled");
+    const vercelEnabledNode = document.getElementById("vc-enabled");
+    const openrouterKey = openrouterNode
+      ? openrouterNode.value.trim()
+      : (S.settings.openrouterKey || "");
+    const opencodeKey = opencodeNode
+      ? opencodeNode.value.trim()
+      : (S.settings.opencodeKey || "");
+    const deepinfraKey = deepinfraNode
+      ? deepinfraNode.value.trim()
+      : (S.settings.deepinfraKey || "");
+    const vercelKey = vercelNode
+      ? vercelNode.value.trim()
+      : (S.settings.vercelKey || "");
     const openrouterEnabled = openrouterEnabledNode
       ? openrouterEnabledNode.checked
       : !!S.settings.openrouterEnabled;
     const opencodeEnabled = opencodeEnabledNode
       ? opencodeEnabledNode.checked
       : !!S.settings.opencodeEnabled;
+    const deepinfraEnabled = deepinfraEnabledNode
+      ? deepinfraEnabledNode.checked
+      : !!S.settings.deepinfraEnabled;
+    const vercelEnabled = vercelEnabledNode
+      ? vercelEnabledNode.checked
+      : !!S.settings.vercelEnabled;
+    const previous = {
+      openrouter: S.settings.openrouterKey || "",
+      deepinfra: S.settings.deepinfraKey || "",
+      vercel: S.settings.vercelKey || "",
+    };
     run("keys", async () => {
       S.settings = await inv("settings_set", {
         settings: {
           ...S.settings,
           openrouterKey,
           opencodeKey,
+          deepinfraKey,
+          vercelKey,
           openrouterEnabled,
           opencodeEnabled,
+          deepinfraEnabled,
+          vercelEnabled,
         },
       });
+      // Metrics and cached model lists belong to the key they were fetched
+      // with; never leave the previous key's numbers on screen.
+      if (openrouterKey !== previous.openrouter) S.providers = null;
+      if (deepinfraKey !== previous.deepinfra) {
+        S.providerModelsError.deepinfra = null;
+      }
+      if (vercelKey !== previous.vercel) {
+        S.providerModelsError.vercel = null;
+        S.vercel = null;
+        S.vercelLoaded = false;
+      }
       toast(t("done"));
+    });
+  },
+
+  loadProviderModels(provider) {
+    const prefix = provider === "deepinfra" ? "di" : "vc";
+    const keyNode = document.getElementById(prefix + "-key");
+    const field = provider + "Key";
+    const modelsField = provider + "Models";
+    const key = keyNode ? keyNode.value.trim() : (S.settings[field] || "");
+    if (!key) {
+      toast(t("keyRequired"), true);
+      return;
+    }
+    run("models-" + provider, async () => {
+      S.providerModelsError[provider] = null;
+      try {
+        // The Rust loader reads the key from the saved settings.
+        S.settings = await inv("settings_set", {
+          settings: { ...S.settings, [field]: key },
+        });
+        const result = await inv("provider_models_load", { provider });
+        const models = Array.isArray(result.models) ? result.models : [];
+        S.settings = await inv("settings_set", {
+          settings: { ...S.settings, [modelsField]: models },
+        });
+        if (provider === "vercel") {
+          S.vercelLoaded = false;
+          S.vercel = null;
+        }
+        toast(`${t("models")}: ${result.count === undefined ? models.length : result.count}`);
+      } catch (error) {
+        S.providerModelsError[provider] = errorText(error);
+        throw error;
+      }
     });
   },
 
@@ -2948,6 +3244,38 @@ const A = {
     run("openrouter", async () => {
       S.providers = await inv("openrouter_refresh");
       await A.historyLoad();
+    });
+  },
+
+  vercelLoad() {
+    S.vercelLoaded = true;
+    return inv("vercel_refresh").then((value) => {
+      S.vercel = value;
+      if (S.section === "providers") render();
+    }).catch((error) => {
+      S.vercel = { error: errorText(error) };
+      if (S.section === "providers") render();
+    });
+  },
+
+  vercelRefresh() {
+    const node = document.getElementById("vc-key");
+    const key = node ? node.value.trim() : (S.settings.vercelKey || "");
+    if (!key) {
+      toast(t("keyRequired"), true);
+      return;
+    }
+    run("vercel", async () => {
+      if (key !== (S.settings.vercelKey || "")) {
+        S.settings = await inv("settings_set", {
+          settings: { ...S.settings, vercelKey: key },
+        });
+        S.providerModelsError.vercel = null;
+        S.vercel = null;
+      }
+      S.vercelLoaded = true;
+      S.vercel = await inv("vercel_refresh");
+      toast(t("done"));
     });
   },
 

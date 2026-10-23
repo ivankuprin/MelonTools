@@ -197,6 +197,56 @@ final class ClaudeAuthTests: XCTestCase {
         XCTAssertEqual(ModelSourcesStore.gatewayYAML(sources: [source]), "")
     }
 
+    private func keySource(
+        id: String,
+        kind: ModelSource.Kind,
+        baseURL: String,
+        alias: String
+    ) -> ModelSource {
+        ModelSource(
+            id: id,
+            kind: kind,
+            title: id,
+            baseURL: baseURL,
+            apiKey: "\(id)-key",
+            enabled: true,
+            models: [SourceModel(
+                id: "vendor/model-1",
+                display: "Vendor Model 1",
+                contextLength: 128_000,
+                enabled: true,
+                alias: alias
+            )]
+        )
+    }
+
+    func testDeepInfraAndVercelMergeIntoTheSingleApiKeysRoot() {
+        let deepInfra = keySource(
+            id: "deepinfra",
+            kind: .deepInfra,
+            baseURL: ModelSourcesStore.deepInfraBaseURL,
+            alias: "deepinfra/vendor/model-1"
+        )
+        let vercel = keySource(
+            id: "vercel",
+            kind: .vercel,
+            baseURL: ModelSourcesStore.vercelBaseURL,
+            alias: "vercel/vendor/model-1"
+        )
+        let yaml = ModelSourcesStore.gatewayYAML(sources: [deepInfra, vercel])
+        XCTAssertEqual(yaml.components(separatedBy: "api-keys:").count - 1, 1)
+        XCTAssertTrue(yaml.contains("  openai-compatibility:"))
+        XCTAssertTrue(yaml.contains("    - name: \"deepinfra\""))
+        XCTAssertTrue(yaml.contains("      base-url: \"https://api.deepinfra.com/v1/openai\""))
+        XCTAssertTrue(yaml.contains("alias: \"deepinfra/vendor/model-1\""))
+        XCTAssertTrue(yaml.contains("    - name: \"vercel\""))
+        XCTAssertTrue(yaml.contains("      base-url: \"https://ai-gateway.vercel.sh/v1\""))
+        XCTAssertTrue(yaml.contains("alias: \"vercel/vendor/model-1\""))
+        XCTAssertTrue(yaml.contains("display-name: \"Vendor Model 1\""))
+        XCTAssertFalse(yaml.contains("name: \"deepinfra/*\""))
+        XCTAssertFalse(yaml.contains("name: \"vercel/*\""))
+    }
+
     // MARK: - Helpers
 
     private func makeTempDir() throws -> URL {

@@ -8,7 +8,7 @@ For data locations and the trust model, see
 [SECURITY-MODEL.md](SECURITY-MODEL.md). For signing and distribution details,
 see [packaging/README.md](../packaging/README.md).
 
-## Providers
+## Connections
 
 ### Which providers can I connect?
 
@@ -19,6 +19,8 @@ see [packaging/README.md](../packaging/README.md).
 | Google Antigravity | Google OAuth | Account email and project id appear on the card. |
 | OpenRouter | API key | Key metrics and `openrouter/*` models. |
 | OpenCode | API key | `opencode/*` models after a gateway restart. |
+| DeepInfra | API key | Chat models only; no API-key balance endpoint. |
+| Vercel AI Gateway | AI Gateway API key | Team balance and `vercel/*` language models. |
 
 Selected models from every provider appear in the Codex model picker. The local
 gateway exposes an OpenAI-compatible API on `127.0.0.1:18317` by default; the
@@ -27,8 +29,8 @@ port is configurable in Settings.
 ### Do I need an API key for Claude or Antigravity?
 
 No. Claude Pro/Max and Google Antigravity use OAuth in a browser. An Anthropic
-console API key is optional for Claude. OpenRouter and OpenCode always use an
-API key.
+console API key is optional for Claude. OpenRouter, OpenCode, DeepInfra and
+Vercel AI Gateway use API keys.
 
 ### Where do provider keys go?
 
@@ -42,7 +44,8 @@ They are not sent to a Melon Tools server. See
 
 From the provider's own account or usage endpoint. Codex accounts show the
 5-hour and weekly windows with reset times. Claude shows the same windows when
-the usage endpoint returns them. OpenRouter shows key spend and limits.
+the usage endpoint returns them. OpenRouter shows available credits, lifetime
+spend and key-limit remaining. Vercel balance and total spend are team-wide.
 Antigravity does not expose a quota API, so the card shows connection state,
 account, project, and model count only.
 

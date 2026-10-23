@@ -223,7 +223,7 @@ struct MTMeter: View {
             if let fraction {
                 Capsule()
                     .fill(tint)
-                    .scaleEffect(x: min(1, max(0.02, fraction)), y: 1, anchor: .leading)
+                    .scaleEffect(x: min(1, max(0, fraction)), y: 1, anchor: .leading)
             }
         }
         .frame(height: height)
@@ -237,6 +237,8 @@ struct MTMetricTile: View {
     var caption: String? = nil
     var fraction: Double? = nil
     var tint: Color = MTTheme.gold
+    var valueColor: Color? = nil
+    var reservesMeterSpace: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: MTTheme.s2) {
@@ -246,11 +248,14 @@ struct MTMetricTile: View {
                 .foregroundStyle(MTTheme.textTertiary)
             Text(value)
                 .font(MTTheme.display(20, weight: .semibold))
-                .foregroundStyle(MTTheme.textPrimary)
+                .foregroundStyle(valueColor ?? MTTheme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             if let fraction {
                 MTMeter(fraction: fraction, tint: tint)
+            } else if reservesMeterSpace {
+                Color.clear.frame(height: 5)
+                    .accessibilityHidden(true)
             }
             if let caption {
                 Text(caption)

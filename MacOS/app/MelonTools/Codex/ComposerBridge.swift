@@ -465,6 +465,40 @@ final class ComposerBridge: ObservableObject {
             entry["error"] = stats.error ?? NSNull()
             payload["opencode"] = entry
         }
+        let sources = ModelSourcesStore.shared
+        if !sources.deepInfraKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            var entry: [String: Any] = [
+                "title": "DeepInfra",
+                "modelCount": sources.deepInfraSource?.models.count ?? 0,
+                "selectedCount": sources.deepInfraSource?.selectedModels.count ?? 0,
+            ]
+            entry["updatedAt"] = NSNull()
+            entry["error"] = NSNull()
+            payload["deepinfra"] = entry
+        }
+        if let stats = providerUsage.vercel {
+            var entry: [String: Any] = [
+                "title": "Vercel",
+                "modelCount": sources.vercelSource?.models.count ?? 0,
+                "selectedCount": sources.vercelSource?.selectedModels.count ?? 0,
+                "balance": stats.balance ?? NSNull(),
+                "totalUsed": stats.totalUsed ?? NSNull(),
+            ]
+            entry["updatedAt"] = stats.updatedAt.map { Int($0.timeIntervalSince1970) } ?? NSNull()
+            entry["error"] = stats.error ?? NSNull()
+            payload["vercel"] = entry
+        } else if !sources.vercelKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            var entry: [String: Any] = [
+                "title": "Vercel",
+                "modelCount": sources.vercelSource?.models.count ?? 0,
+                "selectedCount": sources.vercelSource?.selectedModels.count ?? 0,
+            ]
+            entry["balance"] = NSNull()
+            entry["totalUsed"] = NSNull()
+            entry["updatedAt"] = NSNull()
+            entry["error"] = NSNull()
+            payload["vercel"] = entry
+        }
         if let stats = providerUsage.claude {
             var entry: [String: Any] = ["title": "Claude", "connected": stats.connected, "modelCount": stats.modelCount]
             entry["email"] = Self.maskedEmail(stats.email)

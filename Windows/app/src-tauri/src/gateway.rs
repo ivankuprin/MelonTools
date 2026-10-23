@@ -162,14 +162,20 @@ pub(crate) const USER_AGENT: &str = concat!("MelonTools/", env!("CARGO_PKG_VERSI
 pub fn api_keys_yaml(settings: &Settings) -> String {
     let opencode = settings.opencode_enabled && !settings.opencode_key.trim().is_empty();
     let openrouter = settings.openrouter_enabled && !settings.openrouter_key.trim().is_empty();
+    let deepinfra = settings.deepinfra_enabled
+        && !settings.deepinfra_key.trim().is_empty()
+        && !settings.deepinfra_models.is_empty();
+    let vercel = settings.vercel_enabled
+        && !settings.vercel_key.trim().is_empty()
+        && !settings.vercel_models.is_empty();
     let claude = settings.claude_enabled && !settings.claude_api_key.trim().is_empty();
-    if !opencode && !openrouter && !claude {
+    if !opencode && !openrouter && !deepinfra && !vercel && !claude {
         return String::new();
     }
 
     let mut yaml = String::from("api-keys:\n");
 
-    if opencode || openrouter {
+    if opencode || openrouter || deepinfra || vercel {
         yaml.push_str("  openai-compatibility:\n");
         if opencode {
             yaml.push_str("    - name: \"opencode-go\"\n");
@@ -196,6 +202,24 @@ pub fn api_keys_yaml(settings: &Settings) -> String {
                 yaml_escape(&settings.openrouter_key)
             ));
         }
+        if deepinfra {
+            yaml.push_str("    - name: \"deepinfra\"\n");
+            yaml.push_str("      base-url: \"https://api.deepinfra.com/v1/openai\"\n");
+            yaml.push_str(&format!(
+                "      keys:\n        - api-key: \"{}\"\n",
+                yaml_escape(&settings.deepinfra_key)
+            ));
+            push_cached_models(&mut yaml, "deepinfra", &settings.deepinfra_models);
+        }
+        if vercel {
+            yaml.push_str("    - name: \"vercel\"\n");
+            yaml.push_str("      base-url: \"https://ai-gateway.vercel.sh/v1\"\n");
+            yaml.push_str(&format!(
+                "      keys:\n        - api-key: \"{}\"\n",
+                yaml_escape(&settings.vercel_key)
+            ));
+            push_cached_models(&mut yaml, "vercel", &settings.vercel_models);
+        }
     }
 
     if claude {
@@ -215,6 +239,32 @@ pub fn api_keys_yaml(settings: &Settings) -> String {
     }
 
     yaml
+}
+
+/// Explicit model list for a cached provider. The gateway must never discover
+/// unfiltered upstream models when a key is configured.
+fn push_cached_models(
+    yaml: &mut String,
+    provider: &str,
+    models: &[crate::settings::ProviderModel],
+) {
+    yaml.push_str("      models:\n");
+    for model in models {
+        yaml.push_str(&format!(
+            "        - name: \"{id}\"\n          alias: \"{provider}/{id}\"\n",
+            id = yaml_escape(&model.id),
+            provider = provider,
+        ));
+        if !model.display.trim().is_empty() {
+            yaml.push_str(&format!(
+                "          display-name: \"{}\"\n",
+                yaml_escape(&model.display)
+            ));
+        }
+        if let Some(context) = model.context_window.filter(|value| *value > 0) {
+            yaml.push_str(&format!("          max-context-length: {}\n", context));
+        }
+    }
 }
 
 /// YAML values are double-quoted: escape the quote and the backslash, and drop
@@ -706,7 +756,12 @@ pub async fn check_api(port: u16, api_key: &str) -> Result<String, String> {
         .and_then(|arr| {
             arr.iter()
                 .filter_map(|m| m.get("id").and_then(|v| v.as_str()))
-                .find(|id| !id.starts_with("opencode/") && !id.starts_with("openrouter/"))
+                .find(|id| {
+                    !id.starts_with("opencode/")
+                        && !id.starts_with("openrouter/")
+                        && !id.starts_with("deepinfra/")
+                        && !id.starts_with("vercel/")
+                })
                 .or_else(|| {
                     arr.iter()
                         .filter_map(|m| m.get("id").and_then(|v| v.as_str()))
@@ -803,6 +858,49 @@ mod tests {
         assert!(yaml.contains("  openai-compatibility:\n"));
         assert!(yaml.contains("    - name: \"openrouter\"\n"));
         assert!(!yaml.contains("  claude:\n"));
+    }
+
+    #[test]
+    fn api_keys_yaml_carries_deepinfra_and_vercel_models() {
+        let mut s = settings();
+        s.deepinfra_key = "di-key".to_string();
+        s.deepinfra_models = vec![crate::settings::ProviderModel {
+            id: "deepseek-ai/DeepSeek-V4".to_string(),
+            display: "DeepSeek V4".to_string(),
+            context_window: Some(131_072),
+            ..Default::default()
+        }];
+        s.vercel_key = "vc-key".to_string();
+        s.vercel_models = vec![crate::settings::ProviderModel {
+            id: "anthropic/claude-sonnet-4.6".to_string(),
+            display: "Claude Sonnet 4.6".to_string(),
+            ..Default::default()
+        }];
+        let yaml = api_keys_yaml(&s);
+        assert_eq!(yaml.matches("api-keys:").count(), 1);
+        assert!(yaml.contains("    - name: \"deepinfra\"\n"));
+        assert!(yaml.contains("      base-url: \"https://api.deepinfra.com/v1/openai\"\n"));
+        assert!(yaml.contains("        - name: \"deepseek-ai/DeepSeek-V4\"\n          alias: \"deepinfra/deepseek-ai/DeepSeek-V4\"\n"));
+        assert!(yaml.contains("          display-name: \"DeepSeek V4\"\n"));
+        assert!(yaml.contains("          max-context-length: 131072\n"));
+        assert!(yaml.contains("    - name: \"vercel\"\n"));
+        assert!(yaml.contains("      base-url: \"https://ai-gateway.vercel.sh/v1\"\n"));
+        assert!(yaml.contains("alias: \"vercel/anthropic/claude-sonnet-4.6\"\n"));
+    }
+
+    #[test]
+    fn api_keys_yaml_skips_providers_without_cached_models() {
+        let mut s = settings();
+        s.deepinfra_key = "di-key".to_string();
+        s.vercel_key = "vc-key".to_string();
+        assert_eq!(api_keys_yaml(&s), "");
+        s.deepinfra_enabled = false;
+        s.deepinfra_models = vec![crate::settings::ProviderModel {
+            id: "chat".to_string(),
+            display: "Chat".to_string(),
+            ..Default::default()
+        }];
+        assert_eq!(api_keys_yaml(&s), "");
     }
 
     #[test]

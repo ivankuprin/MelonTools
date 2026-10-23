@@ -32,7 +32,7 @@ struct OnboardingView: View {
             Step(
                 number: 2,
                 title: L("Connect providers"),
-                detail: L("Claude, Antigravity, OpenRouter and OpenCode models appear in the Codex picker after you select them.")
+                detail: L("Claude, Antigravity, OpenRouter, OpenCode, DeepInfra and Vercel models appear in the Codex picker after you select them.")
             ),
             Step(
                 number: 3,
@@ -394,7 +394,7 @@ struct OnboardingView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: MTTheme.s2) {
             HStack(spacing: MTTheme.s3) {
-                MTSecondaryButton(title: L("Open Providers"), systemImage: "square.stack.3d.up") {
+                MTSecondaryButton(title: L("Open Connections"), systemImage: "square.stack.3d.up") {
                     go(to: .providers)
                 }
                 MTSecondaryButton(title: L("Open Accounts"), systemImage: "person.2") {

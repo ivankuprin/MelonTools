@@ -13,7 +13,7 @@ import Security
 /// {
 ///   "format": "melon-backup",
 ///   "formatVersion": 1,
-///   "appVersion": "2.3.1",
+///   "appVersion": "2.3.5",
 ///   "createdAt": 1760000000,
 ///   "kdf": { "name": "PBKDF2-HMAC-SHA256", "iterations": 210000,
 ///            "salt": "<base64 16 bytes>" },
@@ -116,7 +116,7 @@ enum BackupService {
     static let formatVersion = 1
     /// Product version recorded in the envelope. Bumped with the release
     /// metadata; the Rust implementation writes its own value.
-    static let appVersion = "2.3.1"
+    static let appVersion = "2.3.5"
     static let kdfName = "PBKDF2-HMAC-SHA256"
     static let cipherName = "AES-256-GCM"
     static let iterations = 210_000

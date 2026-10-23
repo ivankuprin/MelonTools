@@ -60,7 +60,10 @@
     yes: 'Да',
     no: 'Нет',
   }, CFG.labels || {});
-  const PROVIDERS = Object.assign({ openai: 'OpenAI', opencode: 'OpenCode', openrouter: 'OpenRouter' }, CFG.providers || {});
+  const PROVIDERS = Object.assign({
+    openai: 'OpenAI', opencode: 'OpenCode', openrouter: 'OpenRouter',
+    deepinfra: 'DeepInfra', vercel: 'Vercel',
+  }, CFG.providers || {});
 
   // ---------------------------------------------------------------- helpers
 
@@ -488,13 +491,22 @@
     return { amount, cost, stats };
   }
 
+  function providerDotClass(kind) {
+    if (kind === 'opencode') return 'melon-dot-teal';
+    if (kind === 'antigravity') return 'melon-dot-purple';
+    if (kind === 'claude') return 'melon-dot-green';
+    if (kind === 'deepinfra') return 'melon-dot-blue';
+    if (kind === 'vercel') return 'melon-dot-purple';
+    return 'melon-dot-orange';
+  }
+
   function renderProvider(kind) {
     const status = state.status || {};
     const stats = (status.providers || {})[kind] || null;
     const spend = providerSpend(kind);
 
     providerChip.label.textContent = PROVIDERS[kind] || kind;
-    providerChip.dot.className = 'melon-dot ' + (kind === 'opencode' ? 'melon-dot-teal' : 'melon-dot-orange');
+    providerChip.dot.className = 'melon-dot ' + providerDotClass(kind);
     const session = status.session || null;
     const ctx = contextStats(session);
     const modelName = activeModelName();
@@ -616,7 +628,7 @@
     const title = pop.querySelector('.melon-pop-title');
     const dot = pop.querySelector('.melon-pop-head .melon-dot');
     if (title) title.textContent = (PROVIDERS[kind] || kind) + ' · ' + LABELS.providerData;
-    if (dot) dot.className = 'melon-dot ' + (kind === 'opencode' ? 'melon-dot-teal' : 'melon-dot-orange');
+    if (dot) dot.className = 'melon-dot ' + providerDotClass(kind);
 
     const body = pop.querySelector('.melon-pop-body');
     const foot = pop.querySelector('.melon-pop-foot');
@@ -670,6 +682,14 @@
       body.appendChild(popRow(LABELS.workspace, stats.workspace || LABELS.noData));
       body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
       body.appendChild(popRow(LABELS.balance, LABELS.balanceUnavailable));
+      if (stats.error) body.appendChild(popRow('—', String(stats.error)));
+    } else if (kind === 'deepinfra' && stats) {
+      body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
+      if (stats.error) body.appendChild(popRow('—', String(stats.error)));
+    } else if (kind === 'vercel' && stats) {
+      body.appendChild(popRow(LABELS.available, stats.balance != null ? formatMoney(stats.balance) : LABELS.noData));
+      body.appendChild(popRow(LABELS.creditsSpent + ' · ' + LABELS.lifetime, stats.totalUsed != null ? formatMoney(stats.totalUsed) : LABELS.noData));
+      body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
       if (stats.error) body.appendChild(popRow('—', String(stats.error)));
     } else {
       body.appendChild(popRow(LABELS.providerData, LABELS.noData));

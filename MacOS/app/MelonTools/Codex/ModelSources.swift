@@ -2,8 +2,8 @@ import Foundation
 import Combine
 
 /// A model source is an upstream provider registered in the Melon gateway
-/// (`api-keys.openai-compatibility`). Both sources are connected by an API key
-/// the user pastes: OpenRouter and the OpenCode Console API.
+/// (`api-keys.openai-compatibility`). Key-based sources are OpenRouter,
+/// OpenCode, DeepInfra and the Vercel AI Gateway.
 ///
 /// OpenCode Console serves every model family (GPT, Claude, Gemini, GLM, …)
 /// through its OpenAI-compatible surface, so one upstream entry is enough.
@@ -11,6 +11,8 @@ struct ModelSource: Identifiable, Codable, Equatable {
     enum Kind: String, Codable {
         case openRouter
         case openCode
+        case deepInfra
+        case vercel
         /// Anthropic Claude: served from the engine OAuth account by default
         /// (no key); `apiKey` holds the optional API-key fallback.
         case claude
@@ -72,9 +74,10 @@ enum AntigravityModelRegistry {
     ]
 }
 
-/// Model sources: OpenRouter and OpenCode, both key-based. Persists user
-/// choices in `~/Library/Application Support/MelonTools/model-sources.json`
-/// (0600) and renders the gateway `api-keys.openai-compatibility` block.
+/// Model sources: OpenRouter, OpenCode, DeepInfra and the Vercel AI Gateway,
+/// all key-based. Persists user choices in
+/// `~/Library/Application Support/MelonTools/model-sources.json` (0600) and
+/// renders the gateway `api-keys.openai-compatibility` block.
 @MainActor
 final class ModelSourcesStore: ObservableObject {
     static let shared = ModelSourcesStore()
@@ -90,10 +93,23 @@ final class ModelSourcesStore: ObservableObject {
     static let openCodeGoBaseURL = "https://opencode.ai/inference/go/openai/v1"
     static let openRouterModelsURL = "https://openrouter.ai/api/v1/models"
     static let openRouterBaseURL = "https://openrouter.ai/api/v1"
+    static let appUserAgent = "MelonTools/1.4"
+    /// DeepInfra's OpenAI-compatible surface. The model list is public, but the
+    /// key is validated against `/v1/me` before it is saved.
+    static let deepInfraModelsURL = "https://api.deepinfra.com/v1/openai/models"
+    static let deepInfraBaseURL = "https://api.deepinfra.com/v1/openai"
+    static let deepInfraMeURL = "https://api.deepinfra.com/v1/me"
+    /// Vercel AI Gateway. `/v1/credits` validates the key and returns the
+    /// team-level balance; `/v1/models` is public.
+    static let vercelModelsURL = "https://ai-gateway.vercel.sh/v1/models"
+    static let vercelBaseURL = "https://ai-gateway.vercel.sh/v1"
+    static let vercelCreditsURL = "https://ai-gateway.vercel.sh/v1/credits"
 
     @Published private(set) var sources: [ModelSource] = []
     @Published var openRouterKey: String = ""
     @Published var openCodeKey: String = ""
+    @Published var deepInfraKey: String = ""
+    @Published var vercelKey: String = ""
     /// Optional Anthropic API key (fallback when no OAuth account is used).
     @Published var claudeKey: String = ""
     @Published private(set) var note: String?
@@ -109,6 +125,8 @@ final class ModelSourcesStore: ObservableObject {
     private struct Persisted: Codable {
         var openRouterKey: String?
         var openCodeKey: String?
+        var deepInfraKey: String?
+        var vercelKey: String?
         var claudeKey: String?
         var sources: [ModelSource]?
     }
@@ -117,6 +135,8 @@ final class ModelSourcesStore: ObservableObject {
     private struct PersistedKeys: Codable {
         var openRouterKey: String?
         var openCodeKey: String?
+        var deepInfraKey: String?
+        var vercelKey: String?
         var claudeKey: String?
     }
 
@@ -133,6 +153,8 @@ final class ModelSourcesStore: ObservableObject {
         if let persisted = try? JSONDecoder().decode(Persisted.self, from: data) {
             openRouterKey = persisted.openRouterKey ?? ""
             openCodeKey = persisted.openCodeKey ?? ""
+            deepInfraKey = persisted.deepInfraKey ?? ""
+            vercelKey = persisted.vercelKey ?? ""
             claudeKey = persisted.claudeKey ?? persisted.sources?.first { $0.kind == .claude }?.apiKey ?? ""
             sources = persisted.sources ?? []
             // Backfill known capabilities once for stores written before the
@@ -145,6 +167,8 @@ final class ModelSourcesStore: ObservableObject {
         if let keys = try? JSONDecoder().decode(PersistedKeys.self, from: data) {
             openRouterKey = keys.openRouterKey ?? ""
             openCodeKey = keys.openCodeKey ?? ""
+            deepInfraKey = keys.deepInfraKey ?? ""
+            vercelKey = keys.vercelKey ?? ""
             claudeKey = keys.claudeKey ?? ""
         }
     }
@@ -170,6 +194,8 @@ final class ModelSourcesStore: ObservableObject {
         let persisted = Persisted(
             openRouterKey: openRouterKey,
             openCodeKey: openCodeKey,
+            deepInfraKey: deepInfraKey,
+            vercelKey: vercelKey,
             claudeKey: claudeKey,
             sources: sources
         )
@@ -215,7 +241,7 @@ final class ModelSourcesStore: ObservableObject {
                     images = true
                 case .antigravity:
                     images = Self.antigravitySupportsImages(id)
-                case .openRouter, .openCode:
+                case .openRouter, .openCode, .deepInfra, .vercel:
                     images = nil
                 }
                 guard let images else { continue }
@@ -231,6 +257,10 @@ final class ModelSourcesStore: ObservableObject {
     var openRouterSource: ModelSource? { sources.first { $0.id == "openrouter" } }
 
     var openCodeSource: ModelSource? { sources.first { $0.id == "opencode" } }
+
+    var deepInfraSource: ModelSource? { sources.first { $0.id == "deepinfra" } }
+
+    var vercelSource: ModelSource? { sources.first { $0.id == "vercel" } }
 
     var claudeSource: ModelSource? { sources.first { $0.id == "claude" } }
 
@@ -399,21 +429,45 @@ final class ModelSourcesStore: ObservableObject {
             let prompt: FlexibleNumber?
             let completion: FlexibleNumber?
             let input_cache_read: FlexibleNumber?
+            /// Vercel AI Gateway uses `input`/`output` and publishes USD per
+            /// token (not per million).
+            let input: FlexibleNumber?
+            let output: FlexibleNumber?
         }
-        /// OpenRouter publishes input modalities here; other providers may
-        /// omit the block entirely.
+        /// DeepInfra publishes pricing and tags under `metadata`.
+        struct MetadataPricing: Decodable {
+            /// DeepInfra prices are USD per 1M tokens.
+            let input_tokens: FlexibleNumber?
+            let output_tokens: FlexibleNumber?
+            let cache_read_tokens: FlexibleNumber?
+        }
+        struct Metadata: Decodable {
+            let context_length: Int?
+            let tags: [String]?
+            let pricing: MetadataPricing?
+        }
+        /// OpenRouter publishes input modalities here; Vercel uses the same
+        /// `input` key. Other providers may omit the block entirely.
         struct Architecture: Decodable {
             let input_modalities: [String]?
+            let input: [String]?
+        }
+        struct Modalities: Decodable {
+            let input: [String]?
         }
         struct Entry: Decodable {
             let id: String
             let name: String?
+            let type: String?
             let context_length: Int?
+            let context_window: Int?
             /// `/v1/models` (OpenAI shape) exposes the serving provider here.
             /// OpenRouter/OpenCode omit it, so it stays optional.
             let owned_by: String?
             let pricing: Pricing?
             let architecture: Architecture?
+            let metadata: Metadata?
+            let modalities: Modalities?
         }
         let data: [Entry]
     }
@@ -437,6 +491,47 @@ final class ModelSourcesStore: ObservableObject {
     nonisolated static func supportsImages(inputModalities: [String]?) -> Bool? {
         guard let inputModalities else { return nil }
         return inputModalities.contains("image")
+    }
+
+    /// DeepInfra advertises modalities through free-form tags; an absent tag
+    /// list means unknown rather than text-only.
+    nonisolated static func supportsImages(tags: [String]?) -> Bool? {
+        guard let tags else { return nil }
+        let lowered = tags.map { $0.lowercased() }
+        return lowered.contains("vision") || lowered.contains("vlm")
+    }
+
+    /// Display name for a namespaced model id (`deepseek-ai/DeepSeek-V4`).
+    /// Provider-supplied names win; otherwise the final path component is
+    /// prettified.
+    nonisolated static func displayName(id: String, fallback: String?) -> String {
+        if let fallback = fallback?.trimmingCharacters(in: .whitespacesAndNewlines), !fallback.isEmpty {
+            return fallback
+        }
+        let tail = id.split(separator: "/").last.map(String.init) ?? id
+        return prettyName(tail)
+    }
+
+    nonisolated static func contextLength(_ entry: ModelList.Entry) -> Int? {
+        entry.metadata?.context_length ?? entry.context_window ?? entry.context_length
+    }
+
+    nonisolated static func perMillionToToken(_ value: Double?) -> Double? {
+        value.map { $0 / 1_000_000 }
+    }
+
+    /// Verifies a key without loading models. The model lists are public, so a
+    /// successful list request alone cannot prove the key is valid.
+    private func validateKey(url: String, key: String, userAgent: String) async throws {
+        var request = URLRequest(url: URL(string: url)!)
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 30
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode) else {
+            throw URLError(.userAuthenticationRequired)
+        }
     }
 
     // MARK: - OpenRouter (API key)
@@ -568,6 +663,162 @@ final class ModelSourcesStore: ObservableObject {
             models: models
         ))
         openCodeKey = key
+        save()
+    }
+
+    // MARK: - DeepInfra (API key)
+
+    static let deepInfraAliasPrefix = "deepinfra/"
+
+    nonisolated static func deepInfraAlias(_ id: String) -> String {
+        id.hasPrefix(deepInfraAliasPrefix) ? id : deepInfraAliasPrefix + id
+    }
+
+    func loadDeepInfraModels() async {
+        let key = deepInfraKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            note = L("Enter a DeepInfra key first.")
+            return
+        }
+        guard !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            try await validateKey(url: Self.deepInfraMeURL, key: key, userAgent: Self.appUserAgent)
+            let entries = try await fetchModels(
+                url: Self.deepInfraModelsURL,
+                key: key,
+                userAgent: Self.appUserAgent
+            )
+            let chatEntries = entries.filter { entry in
+                entry.metadata?.tags?.contains { $0.caseInsensitiveCompare("chat") == .orderedSame } == true
+            }
+            guard !chatEntries.isEmpty else {
+                note = L("DeepInfra returned no chat models.")
+                return
+            }
+            mergeDeepInfra(entries: chatEntries, key: key)
+            note = String(format: L("DeepInfra: %d models"), chatEntries.count)
+        } catch {
+            note = L("DeepInfra did not accept the key.")
+        }
+    }
+
+    private func mergeDeepInfra(entries: [ModelList.Entry], key: String) {
+        let existing = deepInfraSource
+        var enabledById: [String: Bool] = [:]
+        var imagesById: [String: Bool] = [:]
+        for model in existing?.models ?? [] {
+            enabledById[model.id] = model.enabled
+            if let images = model.supportsImages { imagesById[model.id] = images }
+        }
+        let models = entries
+            .map { entry -> SourceModel in
+                let metadata = entry.metadata
+                let pricing = metadata?.pricing
+                return SourceModel(
+                    id: entry.id,
+                    display: Self.displayName(id: entry.id, fallback: entry.name),
+                    contextLength: Self.contextLength(entry),
+                    enabled: enabledById[entry.id] ?? false,
+                    alias: Self.deepInfraAlias(entry.id),
+                    freeTier: nil,
+                    promptPerToken: Self.perMillionToToken(pricing?.input_tokens?.value),
+                    completionPerToken: Self.perMillionToToken(pricing?.output_tokens?.value),
+                    cacheReadPerToken: Self.perMillionToToken(pricing?.cache_read_tokens?.value),
+                    supportsImages: imagesById[entry.id]
+                        ?? Self.supportsImages(tags: metadata?.tags)
+                )
+            }
+            .sorted { $0.id.lowercased() < $1.id.lowercased() }
+        replace(ModelSource(
+            id: "deepinfra",
+            kind: .deepInfra,
+            title: "DeepInfra",
+            baseURL: Self.deepInfraBaseURL,
+            apiKey: key,
+            enabled: existing?.enabled ?? true,
+            models: models
+        ))
+        deepInfraKey = key
+        save()
+    }
+
+    // MARK: - Vercel AI Gateway (API key)
+
+    static let vercelAliasPrefix = "vercel/"
+
+    nonisolated static func vercelAlias(_ id: String) -> String {
+        id.hasPrefix(vercelAliasPrefix) ? id : vercelAliasPrefix + id
+    }
+
+    func loadVercelModels() async {
+        let key = vercelKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            note = L("Enter a Vercel AI Gateway key first.")
+            return
+        }
+        guard !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            try await validateKey(url: Self.vercelCreditsURL, key: key, userAgent: Self.appUserAgent)
+            let entries = try await fetchModels(
+                url: Self.vercelModelsURL,
+                key: key,
+                userAgent: Self.appUserAgent
+            )
+            let languageEntries = entries.filter {
+                $0.type?.caseInsensitiveCompare("language") == .orderedSame
+            }
+            guard !languageEntries.isEmpty else {
+                note = L("Vercel returned no language models.")
+                return
+            }
+            mergeVercel(entries: languageEntries, key: key)
+            note = String(format: L("Vercel: %d models"), languageEntries.count)
+        } catch {
+            note = L("Vercel did not accept the key.")
+        }
+    }
+
+    private func mergeVercel(entries: [ModelList.Entry], key: String) {
+        let existing = vercelSource
+        var enabledById: [String: Bool] = [:]
+        var imagesById: [String: Bool] = [:]
+        for model in existing?.models ?? [] {
+            enabledById[model.id] = model.enabled
+            if let images = model.supportsImages { imagesById[model.id] = images }
+        }
+        let models = entries
+            .map { entry in
+                SourceModel(
+                    id: entry.id,
+                    display: Self.displayName(id: entry.id, fallback: entry.name),
+                    contextLength: Self.contextLength(entry),
+                    enabled: enabledById[entry.id] ?? false,
+                    alias: Self.vercelAlias(entry.id),
+                    freeTier: nil,
+                    promptPerToken: entry.pricing?.input?.value,
+                    completionPerToken: entry.pricing?.output?.value,
+                    cacheReadPerToken: entry.pricing?.input_cache_read?.value,
+                    supportsImages: imagesById[entry.id]
+                        ?? Self.supportsImages(
+                            inputModalities: entry.modalities?.input ?? entry.architecture?.input
+                        )
+                )
+            }
+            .sorted { $0.id.lowercased() < $1.id.lowercased() }
+        replace(ModelSource(
+            id: "vercel",
+            kind: .vercel,
+            title: "Vercel",
+            baseURL: Self.vercelBaseURL,
+            apiKey: key,
+            enabled: existing?.enabled ?? true,
+            models: models
+        ))
+        vercelKey = key
         save()
     }
 

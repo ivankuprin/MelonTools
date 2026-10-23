@@ -1,4 +1,22 @@
-# Melon Tools 2.3.1
+# Melon Tools 2.3.5
+
+- **DeepInfra and Vercel AI Gateway.** Connect with provider API keys and load
+  chat models from DeepInfra or language models from Vercel AI Gateway.
+- **Connections UI.** Provider cards use a full-width vertical layout on macOS
+  and Windows. DeepInfra shows model count and session spend; Vercel shows team
+  balance, lifetime spend and models.
+- **OpenRouter balances.** The available balance is shown without a progress bar.
+  The remaining key limit keeps its own gauge, and lifetime spend remains separate.
+- **Build metadata.** macOS build 22; version metadata is aligned at 2.3.5 on
+  macOS and Windows.
+
+## Downloads
+
+- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.5.dmg) — macOS 14 or later, Apple Silicon and Intel.
+- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.5-setup.exe) — custom install path, WebView2 required.
+- [Windows portable](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.5-win-x64-portable.exe) — single file, no install.
+
+## 2.3.1
 
 - **Automatic recovery after capacity errors.** Codex's native Retry is pressed
   automatically while it is offered. When Codex stops offering Retry, Melon
@@ -11,12 +29,6 @@
   available in Settings → Codex and on the Codex → Composer chips page.
 - **Build metadata.** macOS build 21; version metadata is aligned at 2.3.1 on
   macOS and Windows.
-
-## Downloads
-
-- [macOS universal DMG](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.1.dmg) — macOS 14 or later, Apple Silicon and Intel.
-- [Windows installer](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.1-setup.exe) — custom install path, WebView2 required.
-- [Windows portable](https://github.com/ivankuprin/MelonTools/releases/latest/download/MelonTools-2.3.1-win-x64-portable.exe) — single file, no install.
 
 ## 2.3.0
 

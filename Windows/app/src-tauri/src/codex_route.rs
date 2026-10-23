@@ -373,21 +373,25 @@ fn glm_vision_suffix(tail: &str) -> bool {
 }
 
 /// Priority band and provider tag of a gateway model id. One band per provider
-/// keeps the Codex picker grouped (pool → OpenCode → OpenRouter → Claude →
-/// Antigravity); `None` for ids this app does not publish.
+/// keeps the Codex picker grouped (pool → OpenCode → OpenRouter → DeepInfra →
+/// Vercel → Claude → Antigravity); `None` for ids this app does not publish.
 ///
 /// Antigravity also serves `claude-*` ids, so its registry allowlist is checked
 /// before the Claude prefix. Callers that have the `/v1/models` entry should
 /// use [`third_party_band_for_model`] so ownership wins over id overlap.
 pub fn third_party_band(id: &str) -> Option<(&'static str, i32)> {
     if crate::antigravity::is_antigravity_model_id(id) {
-        Some(("Antigravity", 400))
+        Some(("Antigravity", 600))
     } else if id.starts_with("opencode/") {
         Some(("opencode", 100))
     } else if id.starts_with("openrouter/") {
         Some(("openrouter", 200))
+    } else if id.starts_with("deepinfra/") {
+        Some(("deepinfra", 300))
+    } else if id.starts_with("vercel/") {
+        Some(("vercel", 400))
     } else if crate::claude::is_claude_model_id(id) {
-        Some(("Claude", 300))
+        Some(("Claude", 500))
     } else {
         None
     }
@@ -399,13 +403,17 @@ pub fn third_party_band(id: &str) -> Option<(&'static str, i32)> {
 pub fn third_party_band_for_model(entry: &Value) -> Option<(&'static str, i32)> {
     let id = entry.get("id").and_then(|value| value.as_str())?;
     if crate::antigravity::is_antigravity_model_entry(entry) {
-        Some(("Antigravity", 400))
+        Some(("Antigravity", 600))
     } else if id.starts_with("opencode/") {
         Some(("opencode", 100))
     } else if id.starts_with("openrouter/") {
         Some(("openrouter", 200))
+    } else if id.starts_with("deepinfra/") {
+        Some(("deepinfra", 300))
+    } else if id.starts_with("vercel/") {
+        Some(("vercel", 400))
     } else if crate::claude::is_claude_model_id(id) {
-        Some(("Claude", 300))
+        Some(("Claude", 500))
     } else {
         None
     }
@@ -602,7 +610,8 @@ fn custom_catalog_entry(
     let mut entry = template.clone();
     entry["slug"] = json!(id);
     entry["display_name"] = json!(prettify(id));
-    entry["priority"] = json!(band + index as i32);
+    // Keep one provider inside its band even when its model list is large.
+    entry["priority"] = json!(band + index.min(99) as i32);
     entry["input_modalities"] = if vision_capable(id, owned_by) {
         json!(["text", "image"])
     } else {
@@ -634,6 +643,8 @@ fn provider_display_name(tag: &str) -> &str {
     match tag {
         "opencode" => "OpenCode",
         "openrouter" => "OpenRouter",
+        "deepinfra" => "DeepInfra",
+        "vercel" => "Vercel",
         other => other,
     }
 }
@@ -727,6 +738,8 @@ pub async fn sync_catalog(
     let mut seen: HashSet<String> = HashSet::new();
     let mut opencode_index = 0usize;
     let mut openrouter_index = 0usize;
+    let mut deepinfra_index = 0usize;
+    let mut vercel_index = 0usize;
     let mut claude_index = 0usize;
     let mut antigravity_index = 0usize;
     for entry in entries {
@@ -748,6 +761,16 @@ pub async fn sync_catalog(
             "openrouter" => {
                 let index = openrouter_index;
                 openrouter_index += 1;
+                index
+            }
+            "deepinfra" => {
+                let index = deepinfra_index;
+                deepinfra_index += 1;
+                index
+            }
+            "vercel" => {
+                let index = vercel_index;
+                vercel_index += 1;
                 index
             }
             "Antigravity" => {
@@ -795,9 +818,9 @@ mod tests {
     use serde_json::{json, Value};
 
     #[test]
-    fn claude_ids_get_band_300_and_the_claude_tag() {
-        assert_eq!(third_party_band("claude-opus-5-5"), Some(("Claude", 300)));
-        assert_eq!(third_party_band("claude-haiku-4-5-20251001"), Some(("Claude", 300)));
+    fn claude_ids_get_band_500_and_the_claude_tag() {
+        assert_eq!(third_party_band("claude-opus-5-5"), Some(("Claude", 500)));
+        assert_eq!(third_party_band("claude-haiku-4-5-20251001"), Some(("Claude", 500)));
         assert_eq!(provider_tag("claude-opus-5-5"), "Claude");
         // The existing bands stay untouched.
         assert_eq!(third_party_band("opencode/glm-5.3"), Some(("opencode", 100)));
@@ -808,20 +831,20 @@ mod tests {
     }
 
     #[test]
-    fn antigravity_ids_get_band_400_and_the_antigravity_tag() {
+    fn antigravity_ids_get_band_600_and_the_antigravity_tag() {
         assert_eq!(
             third_party_band("gemini-3-flash"),
-            Some(("Antigravity", 400))
+            Some(("Antigravity", 600))
         );
         assert_eq!(
             third_party_band("claude-opus-4-6-thinking"),
-            Some(("Antigravity", 400))
+            Some(("Antigravity", 600))
         );
         // Antigravity also serves claude-* ids; its allowlist must win over
         // the Claude prefix.
         assert_eq!(
             third_party_band("claude-sonnet-4-6"),
-            Some(("Antigravity", 400))
+            Some(("Antigravity", 600))
         );
         assert_eq!(provider_tag("gemini-3-flash"), "Antigravity");
         assert_eq!(provider_tag("claude-opus-4-6-thinking"), "Antigravity");
@@ -834,7 +857,7 @@ mod tests {
                 "owned_by": "anthropic",
                 "type": "claude"
             })),
-            Some(("Claude", 300))
+            Some(("Claude", 500))
         );
         assert_eq!(
             third_party_band_for_model(&json!({
@@ -842,12 +865,12 @@ mod tests {
                 "owned_by": "antigravity",
                 "type": "antigravity"
             })),
-            Some(("Antigravity", 400))
+            Some(("Antigravity", 600))
         );
         // Without ownership the registry allowlist is the fallback.
         assert_eq!(
             third_party_band_for_model(&json!({"id": "gemini-3-flash"})),
-            Some(("Antigravity", 400))
+            Some(("Antigravity", 600))
         );
 
         // The existing bands stay untouched.
@@ -857,6 +880,37 @@ mod tests {
             Some(("openrouter", 200))
         );
         assert_eq!(third_party_band("gpt-6.1-sol"), None);
+    }
+
+    #[test]
+    fn deepinfra_and_vercel_get_their_own_bands() {
+        assert_eq!(
+            third_party_band("deepinfra/deepseek-ai/DeepSeek-V4"),
+            Some(("deepinfra", 300))
+        );
+        assert_eq!(
+            third_party_band("vercel/anthropic/claude-sonnet-4.6"),
+            Some(("vercel", 400))
+        );
+        assert_eq!(provider_tag("deepinfra/x"), "deepinfra");
+        assert_eq!(provider_tag("vercel/y"), "vercel");
+        assert_eq!(
+            third_party_band_for_model(&json!({"id": "deepinfra/x", "owned_by": "deepinfra"})),
+            Some(("deepinfra", 300))
+        );
+        assert_eq!(
+            third_party_band_for_model(&json!({"id": "vercel/y", "owned_by": "vercel"})),
+            Some(("vercel", 400))
+        );
+        assert_eq!(provider_display_name("deepinfra"), "DeepInfra");
+        assert_eq!(provider_display_name("vercel"), "Vercel");
+    }
+
+    #[test]
+    fn catalog_priority_index_is_capped_at_99() {
+        let template = json!({"slug": "template"});
+        let entry = custom_catalog_entry(&template, "deepinfra/x", Some("deepinfra"), 300, 150);
+        assert_eq!(entry["priority"], 399);
     }
 
     #[test]

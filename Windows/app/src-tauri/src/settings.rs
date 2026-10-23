@@ -4,6 +4,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::{dpapi, paths};
 
+/// One filtered upstream model cached after a successful key check. Prices are
+/// USD per token; existing JSON files without these fields decode as empty.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProviderModel {
+    pub id: String,
+    pub display: String,
+    pub context_window: Option<u64>,
+    pub prompt_per_token: Option<f64>,
+    pub completion_per_token: Option<f64>,
+    pub cache_read_per_token: Option<f64>,
+    pub supports_images: Option<bool>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -13,9 +27,18 @@ pub struct Settings {
     pub quota_interval: u32,
     pub openrouter_key: String,
     pub opencode_key: String,
-    /// opencode / openrouter upstreams in the gateway config.
+    pub deepinfra_key: String,
+    pub vercel_key: String,
+    /// opencode / openrouter / deepinfra / vercel upstreams in the gateway
+    /// config.
     pub opencode_enabled: bool,
     pub openrouter_enabled: bool,
+    pub deepinfra_enabled: bool,
+    pub vercel_enabled: bool,
+    /// Filtered model lists from the last successful key check. They are
+    /// emitted explicitly into the gateway config.
+    pub deepinfra_models: Vec<ProviderModel>,
+    pub vercel_models: Vec<ProviderModel>,
     /// Claude (Anthropic) provider: engine-managed OAuth account and/or the
     /// API-key fallback.
     pub claude_enabled: bool,
@@ -59,8 +82,14 @@ impl Default for Settings {
             quota_interval: 300,
             openrouter_key: String::new(),
             opencode_key: String::new(),
+            deepinfra_key: String::new(),
+            vercel_key: String::new(),
             opencode_enabled: true,
             openrouter_enabled: true,
+            deepinfra_enabled: true,
+            vercel_enabled: true,
+            deepinfra_models: Vec::new(),
+            vercel_models: Vec::new(),
             claude_enabled: false,
             claude_api_key: String::new(),
             management_secret: String::new(),
@@ -77,6 +106,23 @@ impl Default for Settings {
             quota_reset_notified: Vec::new(),
             last_update_check: None,
         }
+    }
+}
+
+/// Cached model lists belong to the key they were loaded with. Preserve them
+/// for an unchanged key and clear them when the key changes. The clear is
+/// unconditional: a UI payload may still carry the previous list while the
+/// user edits the key field.
+pub fn carry_provider_models(merged: &mut Settings, old: &Settings) {
+    if merged.deepinfra_key != old.deepinfra_key {
+        merged.deepinfra_models.clear();
+    } else if merged.deepinfra_models.is_empty() {
+        merged.deepinfra_models = old.deepinfra_models.clone();
+    }
+    if merged.vercel_key != old.vercel_key {
+        merged.vercel_models.clear();
+    } else if merged.vercel_models.is_empty() {
+        merged.vercel_models = old.vercel_models.clone();
     }
 }
 
@@ -140,11 +186,13 @@ pub fn save_to(path: &std::path::Path, s: &Settings) -> Result<(), String> {
 }
 
 /// The secrets stored in `settings.json`. Vault tokens use the same helpers.
-fn secret_fields(s: &mut Settings) -> [&mut String; 5] {
+fn secret_fields(s: &mut Settings) -> [&mut String; 7] {
     [
         &mut s.api_key,
         &mut s.openrouter_key,
         &mut s.opencode_key,
+        &mut s.deepinfra_key,
+        &mut s.vercel_key,
         &mut s.claude_api_key,
         &mut s.management_secret,
     ]
@@ -184,13 +232,18 @@ fn generate_management_secret() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{protect_secrets, secret_fields, unprotect_secrets, Settings};
+    use super::{
+        carry_provider_models, protect_secrets, secret_fields, unprotect_secrets, ProviderModel,
+        Settings,
+    };
 
     fn legacy_settings() -> Settings {
         let mut s = Settings::default();
         s.api_key = "sk-legacy-api".to_string();
         s.openrouter_key = "sk-or-legacy".to_string();
         s.opencode_key = "sk-oc-legacy".to_string();
+        s.deepinfra_key = "sk-di-legacy".to_string();
+        s.vercel_key = "sk-vc-legacy".to_string();
         s.claude_api_key = "sk-ant-legacy".to_string();
         s.management_secret = "melon-mgmt-legacy".to_string();
         s
@@ -203,6 +256,8 @@ mod tests {
         assert_eq!(s.api_key, "sk-legacy-api");
         assert_eq!(s.openrouter_key, "sk-or-legacy");
         assert_eq!(s.opencode_key, "sk-oc-legacy");
+        assert_eq!(s.deepinfra_key, "sk-di-legacy");
+        assert_eq!(s.vercel_key, "sk-vc-legacy");
         assert_eq!(s.claude_api_key, "sk-ant-legacy");
         assert_eq!(s.management_secret, "melon-mgmt-legacy");
     }
@@ -230,6 +285,8 @@ mod tests {
         assert_eq!(stored.api_key, original.api_key);
         assert_eq!(stored.openrouter_key, original.openrouter_key);
         assert_eq!(stored.opencode_key, original.opencode_key);
+        assert_eq!(stored.deepinfra_key, original.deepinfra_key);
+        assert_eq!(stored.vercel_key, original.vercel_key);
         assert_eq!(stored.claude_api_key, original.claude_api_key);
         assert_eq!(stored.management_secret, original.management_secret);
     }
@@ -253,6 +310,8 @@ mod tests {
         s.api_key = "dpapi2:AAAA".to_string();
         s.openrouter_key = "dpapi:AAAA".to_string();
         s.opencode_key = "dpapi:not-base64!!!".to_string();
+        s.deepinfra_key = "dpapi2:".to_string();
+        s.vercel_key = "dpapi:not-base64!!!".to_string();
         s.claude_api_key = "dpapi2:".to_string();
         s.management_secret = "dpapi:not-base64!!!".to_string();
         unprotect_secrets(&mut s);
@@ -272,6 +331,39 @@ mod tests {
             unprotect_secrets(&mut s);
             assert_eq!(s.api_key, value);
         }
+    }
+
+    fn cached_model(id: &str) -> ProviderModel {
+        ProviderModel {
+            id: id.to_string(),
+            display: id.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn cached_provider_models_follow_their_key() {
+        let mut old = Settings::default();
+        old.deepinfra_key = "di-old".to_string();
+        old.deepinfra_models = vec![cached_model("deepseek-ai/DeepSeek-V4")];
+        old.vercel_key = "vc-old".to_string();
+        old.vercel_models = vec![cached_model("anthropic/claude-sonnet-4.6")];
+
+        // An unchanged key with an empty payload keeps the cached list.
+        let mut same = old.clone();
+        same.deepinfra_models.clear();
+        same.vercel_models.clear();
+        carry_provider_models(&mut same, &old);
+        assert_eq!(same.deepinfra_models, old.deepinfra_models);
+        assert_eq!(same.vercel_models, old.vercel_models);
+
+        // A new key clears the list even when the payload still carries it.
+        let mut changed = old.clone();
+        changed.deepinfra_key = "di-new".to_string();
+        changed.vercel_key = "vc-new".to_string();
+        carry_provider_models(&mut changed, &old);
+        assert!(changed.deepinfra_models.is_empty());
+        assert!(changed.vercel_models.is_empty());
     }
 
     #[test]

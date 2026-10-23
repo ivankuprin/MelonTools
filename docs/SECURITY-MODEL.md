@@ -1,7 +1,7 @@
 # Security model
 
 This document describes what Melon Tools protects, what it does not protect,
-and where trust is anchored. It covers the 2.3.1 macOS and Windows builds.
+and where trust is anchored. It covers the 2.3.5 macOS and Windows builds.
 
 ## Design summary
 
@@ -11,11 +11,11 @@ and where trust is anchored. It covers the 2.3.1 macOS and Windows builds.
 - **Loopback services.** The OpenAI-compatible gateway and the Codex DevTools
   bridge listen on `127.0.0.1` only.
 - **Direct provider calls.** Requests go to the providers the user configures
-  (OpenAI/Codex, Anthropic, Google, OpenRouter, OpenCode) and to GitHub for
-  updates.
+  (OpenAI/Codex, Anthropic, Google, OpenRouter, OpenCode, DeepInfra and Vercel AI
+  Gateway) and to GitHub for updates.
 - **Verified updates.** The updater accepts HTTPS GitHub hosts only and checks
   the downloaded file's SHA-256 before installing it.
-- **Signing is not yet available.** The 2.3.1 builds are ad-hoc signed (macOS) and the Windows exe/installer are unsigned. This is a distribution-integrity gap, not a runtime
+- **Signing is not yet available.** The 2.3.5 builds are ad-hoc signed (macOS) and the Windows exe/installer are unsigned. This is a distribution-integrity gap, not a runtime
   vulnerability; see [Signing and notarization](#signing-and-notarization).
 
 ## Data at rest

@@ -1477,6 +1477,10 @@ pub fn model_group(id: &str) -> &'static str {
         "opencode"
     } else if id.starts_with("openrouter/") {
         "openrouter"
+    } else if id.starts_with("deepinfra/") {
+        "deepinfra"
+    } else if id.starts_with("vercel/") {
+        "vercel"
     } else if id.starts_with("claude-") {
         "claude"
     } else {
@@ -1487,7 +1491,7 @@ pub fn model_group(id: &str) -> &'static str {
 /// Ids grouped by prefix, order fixed, empty groups omitted. The id itself is
 /// never rewritten: the task stores exactly what `/v1/models` returned.
 pub fn model_groups(ids: &[String]) -> Vec<Value> {
-    ["gateway", "claude", "opencode", "openrouter"]
+    ["gateway", "claude", "opencode", "openrouter", "deepinfra", "vercel"]
         .iter()
         .filter_map(|group| {
             let bucket: Vec<&String> = ids
@@ -1916,6 +1920,8 @@ mod tests {
             "claude-opus-5-5",
             "opencode/grok-4.7",
             "openrouter/meta/llama",
+            "deepinfra/deepseek-ai/DeepSeek-V4",
+            "vercel/anthropic/claude-sonnet-4.6",
             "gpt-6-luna",
         ]
         .iter()
@@ -1940,6 +1946,14 @@ mod tests {
         assert_eq!(ids_of("claude"), vec!["claude-opus-5-5"]);
         assert_eq!(ids_of("opencode"), vec!["opencode/grok-4.7"]);
         assert_eq!(ids_of("openrouter"), vec!["openrouter/meta/llama"]);
+        assert_eq!(
+            ids_of("deepinfra"),
+            vec!["deepinfra/deepseek-ai/DeepSeek-V4"]
+        );
+        assert_eq!(
+            ids_of("vercel"),
+            vec!["vercel/anthropic/claude-sonnet-4.6"]
+        );
         assert_eq!(groups[0]["id"], "gateway");
         assert_eq!(model_group("claude-opus-5-5"), "claude");
     }

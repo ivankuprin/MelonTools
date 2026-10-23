@@ -562,15 +562,19 @@ final class SchedulerTests: XCTestCase {
     func testModelGroupingKeepsExactIds() {
         XCTAssertEqual(SchedulerModelGroup.group(for: "opencode/claude-sonnet"), .openCode)
         XCTAssertEqual(SchedulerModelGroup.group(for: "openrouter/openai/gpt-5"), .openRouter)
+        XCTAssertEqual(SchedulerModelGroup.group(for: "deepinfra/deepseek-ai/DeepSeek-V4"), .deepInfra)
+        XCTAssertEqual(SchedulerModelGroup.group(for: "vercel/anthropic/claude-sonnet-4.6"), .vercel)
         XCTAssertEqual(SchedulerModelGroup.group(for: "claude-haiku-4-5"), .claude)
         XCTAssertEqual(SchedulerModelGroup.group(for: "gemini-3-flash"), .antigravity)
         XCTAssertEqual(SchedulerModelGroup.group(for: "gpt-5.1-codex-mini"), .pool)
 
-        let ids = ["opencode/a", "openrouter/b", "claude-c", "gemini-3-flash", "gpt-5"]
+        let ids = ["opencode/a", "openrouter/b", "deepinfra/c", "vercel/d", "claude-e", "gemini-3-flash", "gpt-5"]
         let grouped = Dictionary(grouping: ids, by: SchedulerModelGroup.group(for:))
         XCTAssertEqual(grouped[.openCode], ["opencode/a"])
         XCTAssertEqual(grouped[.openRouter], ["openrouter/b"])
-        XCTAssertEqual(grouped[.claude], ["claude-c"])
+        XCTAssertEqual(grouped[.deepInfra], ["deepinfra/c"])
+        XCTAssertEqual(grouped[.vercel], ["vercel/d"])
+        XCTAssertEqual(grouped[.claude], ["claude-e"])
         XCTAssertEqual(grouped[.antigravity], ["gemini-3-flash"])
         XCTAssertEqual(grouped[.pool], ["gpt-5"])
     }

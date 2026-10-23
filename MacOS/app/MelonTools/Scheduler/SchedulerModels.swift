@@ -822,6 +822,8 @@ enum SchedulerModelGroup: String, CaseIterable, Identifiable {
     case pool
     case openCode
     case openRouter
+    case deepInfra
+    case vercel
     case claude
     case antigravity
 
@@ -832,6 +834,8 @@ enum SchedulerModelGroup: String, CaseIterable, Identifiable {
         case .pool: return L("Account pool")
         case .openCode: return "OpenCode"
         case .openRouter: return "OpenRouter"
+        case .deepInfra: return "DeepInfra"
+        case .vercel: return "Vercel"
         case .claude: return "Claude"
         case .antigravity: return "Antigravity"
         }
@@ -842,6 +846,8 @@ enum SchedulerModelGroup: String, CaseIterable, Identifiable {
     static func group(for id: String) -> SchedulerModelGroup {
         if id.hasPrefix("opencode/") { return .openCode }
         if id.hasPrefix("openrouter/") { return .openRouter }
+        if id.hasPrefix("deepinfra/") { return .deepInfra }
+        if id.hasPrefix("vercel/") { return .vercel }
         if AntigravityModelRegistry.ids.contains(id) { return .antigravity }
         if id.hasPrefix("claude-") { return .claude }
         return .pool

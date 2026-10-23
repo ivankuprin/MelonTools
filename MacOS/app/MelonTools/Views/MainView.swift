@@ -12,7 +12,7 @@ enum MTSection: String, CaseIterable, Identifiable {
         case .scheduler: return L("Scheduler")
         case .codexAccounts: return L("Accounts")
         case .codexAPI: return L("Codex API")
-        case .providers: return L("Providers")
+        case .providers: return L("Connections")
         case .codexComposer: return L("Composer Chips")
         case .codexInstances: return L("Instances")
         case .settings: return L("Settings")

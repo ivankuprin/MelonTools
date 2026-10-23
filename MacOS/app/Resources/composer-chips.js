@@ -64,7 +64,10 @@
     plan: 'План',
     verificationRequired: 'Google требует подтвердить аккаунт.',
   }, CFG.labels || {});
-  const PROVIDERS = Object.assign({ openai: 'OpenAI', opencode: 'OpenCode', openrouter: 'OpenRouter' }, CFG.providers || {});
+  const PROVIDERS = Object.assign({
+    openai: 'OpenAI', opencode: 'OpenCode', openrouter: 'OpenRouter',
+    deepinfra: 'DeepInfra', vercel: 'Vercel',
+  }, CFG.providers || {});
 
   // ---------------------------------------------------------------- helpers
 
@@ -506,6 +509,8 @@
     if (kind === 'opencode') return 'melon-dot-teal';
     if (kind === 'antigravity') return 'melon-dot-purple';
     if (kind === 'claude') return 'melon-dot-green';
+    if (kind === 'deepinfra') return 'melon-dot-blue';
+    if (kind === 'vercel') return 'melon-dot-purple';
     return 'melon-dot-orange';
   }
 
@@ -722,6 +727,14 @@
       body.appendChild(popRow(LABELS.workspace, stats.workspace || LABELS.noData));
       body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
       body.appendChild(popRow(LABELS.balance, LABELS.balanceUnavailable));
+      if (stats.error) body.appendChild(popRow('—', String(stats.error)));
+    } else if (kind === 'deepinfra' && stats) {
+      body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
+      if (stats.error) body.appendChild(popRow('—', String(stats.error)));
+    } else if (kind === 'vercel' && stats) {
+      body.appendChild(popRow(LABELS.available, stats.balance != null ? formatMoney(stats.balance) : LABELS.noData));
+      body.appendChild(popRow(LABELS.creditsSpent + ' · ' + LABELS.lifetime, stats.totalUsed != null ? formatMoney(stats.totalUsed) : LABELS.noData));
+      body.appendChild(popRow(LABELS.models, String(stats.modelCount || 0)));
       if (stats.error) body.appendChild(popRow('—', String(stats.error)));
     } else if (kind === 'antigravity' && stats) {
       body.appendChild(popRow(LABELS.account, stats.email || LABELS.noData));

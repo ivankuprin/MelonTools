@@ -1,10 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// Providers: the Codex account pool plus the key-based sources (OpenCode and
-/// OpenRouter). The board renders one bento card per provider with its live
-/// numbers; the «Настройки» button opens the key + model picker of the source,
-/// while the pool card leads to Accounts.
+/// Connections: the Codex account pool plus the key-based sources (OpenRouter,
+/// OpenCode, DeepInfra, Vercel AI Gateway, Claude and Antigravity). Every card
+/// spans the full board width and stacks vertically; «Настройки» opens the key
+/// and model picker of the source, while the pool card leads to Accounts.
 struct CodexProvidersView: View {
     @ObservedObject private var gateway = CodexGatewayService.shared
     @ObservedObject private var sources = ModelSourcesStore.shared
@@ -26,6 +26,8 @@ struct CodexProvidersView: View {
     enum ProviderRoute: String, Identifiable {
         case openRouter
         case openCode
+        case deepInfra
+        case vercel
         case claude
         case antigravity
 
@@ -35,6 +37,8 @@ struct CodexProvidersView: View {
             switch self {
             case .openRouter: return "OpenRouter"
             case .openCode: return "OpenCode"
+            case .deepInfra: return "DeepInfra"
+            case .vercel: return "Vercel"
             case .claude: return "Claude"
             case .antigravity: return "Antigravity"
             }
@@ -44,6 +48,8 @@ struct CodexProvidersView: View {
             switch self {
             case .openRouter: return "point.3.connected.trianglepath.dotted"
             case .openCode: return "chevron.left.forwardslash.chevron.right"
+            case .deepInfra: return "server.rack"
+            case .vercel: return "triangle"
             case .claude: return "sparkles"
             case .antigravity: return "globe.americas"
             }
@@ -56,17 +62,15 @@ struct CodexProvidersView: View {
                 if let route {
                     settingsPage(route)
                 } else {
-                    MTPageHeader(kicker: "codex", title: L("Providers"), subtitle: L("Providers subtitle"))
+                    MTPageHeader(kicker: "codex", title: L("Connections"), subtitle: L("Connections subtitle"))
                     diagnosticsCard
-                    HStack(alignment: .top, spacing: MTTheme.s4) {
-                        poolCard
-                        openCodeCard
-                    }
+                    poolCard
                     openRouterCard
-                    HStack(alignment: .top, spacing: MTTheme.s4) {
-                        claudeCard
-                        antigravityCard
-                    }
+                    openCodeCard
+                    deepInfraCard
+                    vercelCard
+                    claudeCard
+                    antigravityCard
                     applyCard
                 }
             }
@@ -345,6 +349,11 @@ struct CodexProvidersView: View {
     private var openRouterCard: some View {
         let configured = !sources.openRouterKey.isEmpty
         let stats = usage.openRouter
+        let keyRemaining: Double? = {
+            if let remaining = stats?.keyRemaining { return max(0, remaining) }
+            guard let limit = stats?.keyLimit, let used = stats?.keyUsage else { return nil }
+            return max(0, limit - used)
+        }()
         return MTCard(title: "OpenRouter", systemImage: ProviderRoute.openRouter.systemImage) {
             VStack(alignment: .leading, spacing: MTTheme.s3) {
                 HStack(spacing: MTTheme.s2) {
@@ -362,20 +371,21 @@ struct CodexProvidersView: View {
                             title: L("Available"),
                             value: stats.creditsRemaining.map(money) ?? "—",
                             caption: L("Balance"),
-                            fraction: fraction(stats.creditsRemaining, stats.creditsTotal),
-                            tint: MTTheme.ok
+                            reservesMeterSpace: true
                         )
                         MTMetricTile(
                             title: L("Credits spent"),
                             value: stats.creditsUsage.map(money) ?? "—",
                             caption: stats.creditsTotal.map { L("Lifetime") + " · " + L("Purchased").lowercased() + " " + money($0) },
-                            fraction: fraction(stats.creditsUsage, stats.creditsTotal)
+                            valueColor: MTTheme.gold,
+                            reservesMeterSpace: true
                         )
                         MTMetricTile(
-                            title: L("Key usage"),
-                            value: stats.keyUsage.map(money) ?? "—",
+                            title: L("Key limit remaining"),
+                            value: keyRemaining.map(money) ?? "—",
                             caption: stats.keyLimit.map { L("Key limit").lowercased() + " " + money($0) },
-                            fraction: fraction(stats.keyUsage, stats.keyLimit)
+                            fraction: fraction(keyRemaining, stats.keyLimit),
+                            tint: MTTheme.info
                         )
                     }
                     if let error = stats.error {
@@ -402,6 +412,100 @@ struct CodexProvidersView: View {
                     }
                     MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
                         route = .openRouter
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Board: DeepInfra
+
+    private var deepInfraCard: some View {
+        let configured = !sources.deepInfraKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let source = sources.deepInfraSource
+        let spend = usage.sessionSpend?.stats(for: "deepinfra")
+        return MTCard(title: "DeepInfra", systemImage: ProviderRoute.deepInfra.systemImage) {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                HStack(spacing: MTTheme.s2) {
+                    MTStatusPill(text: configured ? L("Key configured") : L("No key"), status: configured ? .ok : .idle)
+                    Spacer(minLength: MTTheme.s2)
+                }
+                HStack(alignment: .top, spacing: MTTheme.s3) {
+                    MTMetricTile(
+                        title: L("Models"),
+                        value: "\(source?.models.count ?? 0)",
+                        caption: L("Available")
+                    )
+                    MTMetricTile(
+                        title: L("Session spend"),
+                        value: spend?.usd.map { "≈ " + money($0) } ?? "—",
+                        caption: L("Estimate")
+                    )
+                }
+                HStack(spacing: MTTheme.s3) {
+                    Spacer(minLength: MTTheme.s2)
+                    MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
+                        route = .deepInfra
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Board: Vercel AI Gateway
+
+    private var vercelCard: some View {
+        let configured = !sources.vercelKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let source = sources.vercelSource
+        let stats = usage.vercel
+        return MTCard(title: "Vercel", systemImage: ProviderRoute.vercel.systemImage) {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                HStack(spacing: MTTheme.s2) {
+                    MTStatusPill(text: configured ? L("Key configured") : L("No key"), status: configured ? .ok : .idle)
+                    Spacer(minLength: MTTheme.s2)
+                    if let updated = stats?.updatedAt {
+                        Text(L("Updated") + " " + Self.timeFormatter.string(from: updated))
+                            .font(MTTheme.mono(9))
+                            .foregroundStyle(MTTheme.textTertiary)
+                    }
+                }
+                HStack(alignment: .top, spacing: MTTheme.s3) {
+                    MTMetricTile(
+                        title: L("Available"),
+                        value: stats?.balance.map(money) ?? "—",
+                        caption: L("Team balance"),
+                        tint: MTTheme.ok
+                    )
+                    MTMetricTile(
+                        title: L("Lifetime spend"),
+                        value: stats?.totalUsed.map(money) ?? "—",
+                        caption: L("Team total")
+                    )
+                    MTMetricTile(
+                        title: L("Models"),
+                        value: "\(source?.models.count ?? 0)",
+                        caption: L("Available")
+                    )
+                }
+                if let error = stats?.error {
+                    Text(error)
+                        .font(MTTheme.mono(9))
+                        .foregroundStyle(MTTheme.danger)
+                }
+                sessionLine(provider: "vercel")
+                HStack(spacing: MTTheme.s3) {
+                    Text(L("Vercel AI Gateway balance is shared by the whole team."))
+                        .font(MTTheme.mono(9))
+                        .foregroundStyle(MTTheme.textTertiary)
+                    Spacer(minLength: MTTheme.s2)
+                    MTSecondaryButton(title: L("Refresh"), systemImage: "arrow.clockwise") {
+                        Task {
+                            await usage.refresh(force: true)
+                            await usage.refreshSession(threadUUID: ComposerBridge.shared.activeThreadID)
+                        }
+                    }
+                    MTSecondaryButton(title: L("Settings"), systemImage: "slider.horizontal.3") {
+                        route = .vercel
                     }
                 }
             }
@@ -742,6 +846,10 @@ struct CodexProvidersView: View {
             openRouterSettings
         case .openCode:
             openCodeSettings
+        case .deepInfra:
+            deepInfraSettings
+        case .vercel:
+            vercelSettings
         case .claude:
             claudeSettings
         case .antigravity:
@@ -754,6 +862,8 @@ struct CodexProvidersView: View {
         switch route {
         case .openRouter: return L("Price routing: cheapest providers first.")
         case .openCode: return L("Paid models use your OpenCode account balance.")
+        case .deepInfra: return L("Chat models served by DeepInfra with your API key.")
+        case .vercel: return L("Language models served by the Vercel AI Gateway with your gateway key.")
         case .claude: return L("Connect your Claude subscription or paste an Anthropic API key.")
         case .antigravity: return L("Connect your Google account to use Antigravity models.")
         }
@@ -793,6 +903,52 @@ struct CodexProvidersView: View {
                     Text(L("Go models route through the Go endpoints (Go plan); other models use the console balance."))
                     Text(L("Free OpenCode models only work inside the OpenCode app itself."))
                     Text(L("Paid models use your OpenCode account balance."))
+                }
+                .font(MTTheme.mono(10))
+                .foregroundStyle(MTTheme.textTertiary)
+            }
+        }
+    }
+
+    private var deepInfraSettings: some View {
+        MTCard(title: "DeepInfra", systemImage: ProviderRoute.deepInfra.systemImage) {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                keyRow(key: $sources.deepInfraKey) {
+                    Task { await sources.loadDeepInfraModels() }
+                }
+                if let source = sources.deepInfraSource {
+                    modelBlock(source: source)
+                } else {
+                    Text(L("Paste the DeepInfra key to load the model list."))
+                        .font(MTTheme.mono(10))
+                        .foregroundStyle(MTTheme.textSecondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("Only chat models are shown; DeepInfra filters out non-chat models."))
+                    Text(L("DeepInfra API keys have no balance endpoint; the card shows model count and session spend only."))
+                }
+                .font(MTTheme.mono(10))
+                .foregroundStyle(MTTheme.textTertiary)
+            }
+        }
+    }
+
+    private var vercelSettings: some View {
+        MTCard(title: "Vercel", systemImage: ProviderRoute.vercel.systemImage) {
+            VStack(alignment: .leading, spacing: MTTheme.s3) {
+                keyRow(key: $sources.vercelKey) {
+                    Task { await sources.loadVercelModels() }
+                }
+                if let source = sources.vercelSource {
+                    modelBlock(source: source)
+                } else {
+                    Text(L("Paste the Vercel AI Gateway key to load the model list."))
+                        .font(MTTheme.mono(10))
+                        .foregroundStyle(MTTheme.textSecondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("Use a Vercel AI Gateway key (AI_GATEWAY_API_KEY), not a personal Vercel token."))
+                    Text(L("Balance and lifetime spend come from the team wallet."))
                 }
                 .font(MTTheme.mono(10))
                 .foregroundStyle(MTTheme.textTertiary)

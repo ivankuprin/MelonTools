@@ -5,7 +5,15 @@ use serde_json::{json, Value};
 
 use crate::antigravity;
 use crate::claude;
-use crate::settings::Settings;
+use crate::settings::{ProviderModel, Settings};
+
+fn number(value: Option<&Value>) -> Option<f64> {
+    match value? {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.parse::<f64>().ok(),
+        _ => None,
+    }
+}
 
 async fn http_json(client: &reqwest::Client, url: &str, key: &str) -> Result<Value, String> {
     let resp = client
@@ -47,7 +55,7 @@ pub async fn openrouter(key: &str) -> Result<Value, String> {
         .pointer("/data/total_usage")
         .and_then(|v| v.as_f64());
     let remaining = match (total, usage) {
-        (Some(t), Some(u)) => Some(t - u),
+        (Some(t), Some(u)) => Some((t - u).max(0.0)),
         _ => None,
     };
 
@@ -74,6 +82,173 @@ pub async fn openrouter(key: &str) -> Result<Value, String> {
         "isFreeTier": key_info.as_ref().and_then(|k| k.pointer("/data/is_free_tier")).and_then(|v| v.as_bool()),
         "status": "ok",
     }))
+}
+
+/// DeepInfra has no balance endpoint for API keys. The key is validated
+/// against `/v1/me`, then the public model list is filtered to chat models.
+pub async fn deepinfra_models(key: &str) -> Result<Vec<ProviderModel>, String> {
+    if key.trim().is_empty() {
+        return Err("ключ DeepInfra не задан".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let _ = http_json(&client, "https://api.deepinfra.com/v1/me", key).await?;
+    let list = http_json(
+        &client,
+        "https://api.deepinfra.com/v1/openai/models",
+        key,
+    )
+    .await?;
+    Ok(parse_deepinfra_models(&list))
+}
+
+fn parse_deepinfra_models(value: &Value) -> Vec<ProviderModel> {
+    let Some(entries) = value.get("data").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut models: Vec<ProviderModel> = entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .pointer("/metadata/tags")
+                .and_then(Value::as_array)
+                .map(|tags| {
+                    tags.iter()
+                        .filter_map(Value::as_str)
+                        .any(|tag| tag.eq_ignore_ascii_case("chat"))
+                })
+                .unwrap_or(false)
+        })
+        .filter_map(|entry| {
+            let id = entry.get("id")?.as_str()?.to_string();
+            let tags = entry.pointer("/metadata/tags").and_then(Value::as_array);
+            let supports_images = tags.map(|tags| {
+                tags.iter().filter_map(Value::as_str).any(|tag| {
+                    tag.eq_ignore_ascii_case("vision") || tag.eq_ignore_ascii_case("vlm")
+                })
+            });
+            let pricing = entry.pointer("/metadata/pricing");
+            Some(ProviderModel {
+                display: deepinfra_display(&id, entry.get("name").and_then(Value::as_str)),
+                context_window: entry
+                    .pointer("/metadata/context_length")
+                    .and_then(Value::as_u64),
+                prompt_per_token: number(
+                    pricing.and_then(|p| p.get("input_tokens")),
+                )
+                .map(|value| value / 1_000_000.0),
+                completion_per_token: number(
+                    pricing.and_then(|p| p.get("output_tokens")),
+                )
+                .map(|value| value / 1_000_000.0),
+                cache_read_per_token: number(
+                    pricing.and_then(|p| p.get("cache_read_tokens")),
+                )
+                .map(|value| value / 1_000_000.0),
+                supports_images,
+                id,
+            })
+        })
+        .collect();
+    models.sort_by(|a, b| a.id.to_lowercase().cmp(&b.id.to_lowercase()));
+    models
+}
+
+fn deepinfra_display(id: &str, fallback: Option<&str>) -> String {
+    if let Some(name) = fallback.map(str::trim).filter(|name| !name.is_empty()) {
+        return name.to_string();
+    }
+    let tail = id.rsplit('/').next().unwrap_or(id);
+    crate::codex_route::prettify(tail)
+}
+
+/// Vercel AI Gateway team-level credits. The key is an AI Gateway key, not a
+/// personal Vercel token. `balance` and `total_used` are account-wide.
+pub async fn vercel(key: &str) -> Result<Value, String> {
+    if key.trim().is_empty() {
+        return Err("ключ Vercel AI Gateway не задан".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let credits = http_json(&client, "https://ai-gateway.vercel.sh/v1/credits", key).await?;
+    Ok(vercel_metrics(&credits))
+}
+
+fn vercel_metrics(credits: &Value) -> Value {
+    json!({
+        "balance": number(credits.get("balance")),
+        "totalUsed": number(credits.get("total_used")),
+        "status": "ok",
+    })
+}
+
+/// Fetches the public Vercel model list, validates the gateway key through the
+/// credits endpoint and keeps language models only.
+pub async fn vercel_models(key: &str) -> Result<Vec<ProviderModel>, String> {
+    let _ = vercel(key).await?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let list = http_json(&client, "https://ai-gateway.vercel.sh/v1/models", key).await?;
+    Ok(parse_vercel_models(&list))
+}
+
+fn parse_vercel_models(value: &Value) -> Vec<ProviderModel> {
+    let Some(entries) = value.get("data").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut models: Vec<ProviderModel> = entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("type")
+                .and_then(Value::as_str)
+                .map(|kind| kind.eq_ignore_ascii_case("language"))
+                .unwrap_or(false)
+        })
+        .filter_map(|entry| {
+            let id = entry.get("id")?.as_str()?.to_string();
+            let display = entry
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    crate::codex_route::prettify(id.rsplit('/').next().unwrap_or(&id))
+                });
+            let supports_images = entry
+                .pointer("/modalities/input")
+                .or_else(|| entry.pointer("/architecture/input"))
+                .and_then(Value::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|value| value.eq_ignore_ascii_case("image"))
+                });
+            let pricing = entry.get("pricing");
+            Some(ProviderModel {
+                id,
+                display,
+                context_window: entry
+                    .get("context_window")
+                    .and_then(Value::as_u64)
+                    .or_else(|| entry.get("context_length").and_then(Value::as_u64)),
+                prompt_per_token: number(pricing.and_then(|p| p.get("input"))),
+                completion_per_token: number(pricing.and_then(|p| p.get("output"))),
+                cache_read_per_token: number(pricing.and_then(|p| p.get("input_cache_read"))),
+                supports_images,
+            })
+        })
+        .collect();
+    models.sort_by(|a, b| a.id.to_lowercase().cmp(&b.id.to_lowercase()));
+    models
 }
 
 /// Claude (Anthropic) metrics for the Providers page: connection status, the
@@ -174,8 +349,9 @@ pub fn antigravity_metrics(
 
 #[cfg(test)]
 mod tests {
-    use super::{antigravity_metrics, claude_metrics};
+    use super::{antigravity_metrics, claude_metrics, parse_deepinfra_models, parse_vercel_models, vercel_metrics};
     use crate::claude::UsageSnapshot;
+    use serde_json::json;
 
     #[test]
     fn claude_metrics_without_account_stays_empty() {
@@ -262,5 +438,53 @@ mod tests {
         assert_eq!(failing["error"], "нет связи");
         assert_eq!(failing["email"], serde_json::Value::Null);
         assert_eq!(failing["projectId"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn deepinfra_keeps_chat_models_and_converts_per_million_prices() {
+        let value = json!({"data":[
+            {"id":"deepseek-ai/DeepSeek-V4","metadata":{
+                "context_length":131072,
+                "tags":["chat","vision"],
+                "pricing":{"input_tokens":0.27,"output_tokens":1.1,"cache_read_tokens":0.027}
+            }},
+            {"id":"black-forest-labs/FLUX.1","metadata":{"tags":["image"]}},
+            {"id":"text-only/model","metadata":{"tags":["chat"]}}
+        ]});
+        let models = parse_deepinfra_models(&value);
+        assert_eq!(models.len(), 2);
+        let chat = models.iter().find(|m| m.id == "deepseek-ai/DeepSeek-V4").unwrap();
+        assert_eq!(chat.display, "DeepSeek V4");
+        assert_eq!(chat.context_window, Some(131_072));
+        assert!((chat.prompt_per_token.unwrap() - 0.00000027).abs() < 1e-12);
+        assert_eq!(chat.supports_images, Some(true));
+    }
+
+    #[test]
+    fn vercel_keeps_language_models_and_reads_per_token_prices() {
+        let value = json!({"data":[
+            {"id":"anthropic/claude-sonnet-4.6","name":"Claude Sonnet 4.6","type":"language",
+             "context_window":200000,
+             "pricing":{"input":"0.000003","output":"0.000015","input_cache_read":"0.0000003"},
+             "modalities":{"input":["text","image"]}},
+            {"id":"openai/gpt-image-1","type":"image"}
+        ]});
+        let models = parse_vercel_models(&value);
+        assert_eq!(models.len(), 1);
+        let model = &models[0];
+        assert_eq!(model.display, "Claude Sonnet 4.6");
+        assert_eq!(model.context_window, Some(200_000));
+        assert_eq!(model.prompt_per_token, Some(0.000003));
+        assert_eq!(model.completion_per_token, Some(0.000015));
+        assert_eq!(model.cache_read_per_token, Some(0.0000003));
+        assert_eq!(model.supports_images, Some(true));
+    }
+
+    #[test]
+    fn vercel_metrics_reads_team_wallet_fields() {
+        let value = vercel_metrics(&json!({"balance":"42.5","total_used":100}));
+        assert_eq!(value["balance"], 42.5);
+        assert_eq!(value["totalUsed"], 100.0);
+        assert_eq!(value["status"], "ok");
     }
 }

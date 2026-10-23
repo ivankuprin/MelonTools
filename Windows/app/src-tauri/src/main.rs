@@ -131,10 +131,12 @@ async fn settings_set(
     if merged.quota_reset_notified.is_empty() {
         merged.quota_reset_notified = state.settings().quota_reset_notified;
     }
+    settings::carry_provider_models(&mut merged, &old);
     settings::save(&merged)?;
     if let Ok(mut guard) = state.settings.lock() {
         *guard = merged.clone();
     }
+    bridge::invalidate_providers(&state.bridge);
     if was_running && old.port != merged.port {
         let _ = stop_gateway(state.inner()).await;
         let _ = start_gateway(state.inner()).await;
@@ -930,6 +932,31 @@ async fn openrouter_refresh(state: State<'_, AppState>) -> Result<Value, String>
     providers::openrouter(&settings.openrouter_key).await
 }
 
+#[tauri::command]
+async fn vercel_refresh(state: State<'_, AppState>) -> Result<Value, String> {
+    let settings = state.settings();
+    let mut value = providers::vercel(&settings.vercel_key).await?;
+    value["updatedAt"] = json!(chrono::Utc::now().to_rfc3339());
+    Ok(value)
+}
+
+/// Validates a key, fetches the filtered model list and returns it together
+/// with its count. The UI saves the list through `settings_set`; the backend
+/// emits it explicitly into the gateway config.
+#[tauri::command]
+async fn provider_models_load(
+    state: State<'_, AppState>,
+    provider: String,
+) -> Result<Value, String> {
+    let settings = state.settings();
+    let models = match provider.as_str() {
+        "deepinfra" => providers::deepinfra_models(&settings.deepinfra_key).await?,
+        "vercel" => providers::vercel_models(&settings.vercel_key).await?,
+        other => return Err(format!("неизвестный провайдер: {other}")),
+    };
+    Ok(json!({ "models": models, "count": models.len() }))
+}
+
 // MARK: - Claude provider (engine management API)
 
 fn management(state: &State<'_, AppState>) -> Result<claude::Management, String> {
@@ -1465,6 +1492,8 @@ fn main() {
             update_check,
             update_apply,
             openrouter_refresh,
+            vercel_refresh,
+            provider_models_load,
             claude_login_start,
             claude_login_status,
             claude_login_cancel,

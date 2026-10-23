@@ -38,19 +38,107 @@ final class CodexModelCatalogTests: XCTestCase {
     /// Claude rides its own band above OpenCode/OpenRouter, with the
     /// `Claude` provider tag used by the picker grouping.
     func testClaudeBandAndProviderTag() {
-        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .claude), 300)
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .claude), 500)
         XCTAssertEqual(CodexModelCatalog.providerTag(for: .claude), "Claude")
         XCTAssertEqual(CodexModelCatalog.priorityBase(for: .openRouter), 200)
         XCTAssertEqual(CodexModelCatalog.priorityBase(for: .openCode), 100)
     }
 
-    /// Antigravity sits in the last band (400) with its own picker tag.
+    /// Antigravity sits in the last band (600) with its own picker tag.
     func testAntigravityBandAndProviderTag() {
-        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .antigravity), 400)
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .antigravity), 600)
         XCTAssertEqual(CodexModelCatalog.providerTag(for: .antigravity), "Antigravity")
-        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .claude), 300)
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .claude), 500)
         XCTAssertEqual(CodexModelCatalog.priorityBase(for: .openRouter), 200)
         XCTAssertEqual(CodexModelCatalog.priorityBase(for: .openCode), 100)
+    }
+
+    func testDeepInfraAndVercelBandsAndTags() {
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .deepInfra), 300)
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .vercel), 400)
+        XCTAssertEqual(CodexModelCatalog.providerTag(for: .deepInfra), "deepinfra")
+        XCTAssertEqual(CodexModelCatalog.providerTag(for: .vercel), "vercel")
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .claude), 500)
+        XCTAssertEqual(CodexModelCatalog.priorityBase(for: .antigravity), 600)
+    }
+
+    /// The per-provider index is capped at 99, so a 200-model DeepInfra list
+    /// cannot spill into the Vercel band.
+    func testProviderIndexIsCappedAt99() throws {
+        let base: [[String: Any]] = [[
+            "slug": "gpt-6.1-sol",
+            "display_name": "GPT-6.1 Sol",
+            "context_window": 128_000,
+            "priority": 0,
+        ]]
+        let models = (0..<105).map { index in
+            SourceModel(
+                id: "model-\(index)",
+                display: "Model \(index)",
+                contextLength: nil,
+                enabled: true,
+                alias: "deepinfra/model-\(index)"
+            )
+        }
+        let source = ModelSource(
+            id: "deepinfra",
+            kind: .deepInfra,
+            title: "DeepInfra",
+            baseURL: ModelSourcesStore.deepInfraBaseURL,
+            apiKey: "key",
+            enabled: true,
+            models: models
+        )
+        let generated = CodexModelCatalog.generatedEntries(base: base, sources: [source], defaults: nil)
+        let priorities = generated.entries.compactMap { $0["priority"] as? Int }.filter { $0 >= 300 }
+        XCTAssertEqual(priorities.min(), 300)
+        XCTAssertEqual(priorities.max(), 399)
+        XCTAssertEqual(priorities.filter { $0 == 399 }.count, 6)
+    }
+
+    // MARK: - DeepInfra / Vercel wire shapes
+
+    func testDeepInfraModelListDecodesChatPricingAndVision() throws {
+        let json = #"""
+        {"data":[
+          {"id":"deepseek-ai/DeepSeek-V4","metadata":{
+            "context_length":131072,
+            "tags":["chat","vision"],
+            "pricing":{"input_tokens":0.27,"output_tokens":1.1,"cache_read_tokens":0.027}
+          }},
+          {"id":"black-forest-labs/FLUX.1","metadata":{"tags":["image"]}}
+        ]}
+        """#
+        let list = try JSONDecoder().decode(ModelSourcesStore.ModelList.self, from: Data(json.utf8))
+        let chat = try XCTUnwrap(list.data.first)
+        XCTAssertEqual(chat.metadata?.context_length, 131_072)
+        XCTAssertEqual(chat.metadata?.pricing?.input_tokens?.value, 0.27)
+        let promptPerToken = try XCTUnwrap(ModelSourcesStore.perMillionToToken(chat.metadata?.pricing?.input_tokens?.value))
+        XCTAssertEqual(promptPerToken, 0.00000027, accuracy: 0.0000000001)
+        XCTAssertEqual(ModelSourcesStore.supportsImages(tags: chat.metadata?.tags), true)
+        XCTAssertEqual(chat.metadata?.tags?.contains("chat"), true)
+        XCTAssertEqual(list.data[1].metadata?.tags?.contains("chat"), false)
+    }
+
+    func testVercelModelListDecodesLanguagePricingAndVision() throws {
+        let json = #"""
+        {"data":[
+          {"id":"anthropic/claude-sonnet-4.6","name":"Claude Sonnet 4.6","type":"language",
+           "context_window":200000,
+           "pricing":{"input":"0.000003","output":"0.000015","input_cache_read":"0.0000003"},
+           "modalities":{"input":["text","image"]}},
+          {"id":"openai/gpt-image-1","type":"image"}
+        ]}
+        """#
+        let list = try JSONDecoder().decode(ModelSourcesStore.ModelList.self, from: Data(json.utf8))
+        let language = try XCTUnwrap(list.data.first)
+        XCTAssertEqual(language.name, "Claude Sonnet 4.6")
+        XCTAssertEqual(language.type, "language")
+        XCTAssertEqual(language.context_window, 200_000)
+        XCTAssertEqual(language.pricing?.input?.value, 0.000003)
+        XCTAssertEqual(ModelSourcesStore.supportsImages(inputModalities: language.modalities?.input), true)
+        XCTAssertEqual(ModelSourcesStore.displayName(id: language.id, fallback: language.name), "Claude Sonnet 4.6")
+        XCTAssertEqual(ModelSourcesStore.displayName(id: "deepseek-ai/DeepSeek-V4", fallback: nil), "DeepSeek V4")
     }
 
     /// Claude ids are slash-less (`claude-opus-4-6`), unlike the namespaced

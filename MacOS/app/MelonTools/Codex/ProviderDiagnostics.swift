@@ -39,6 +39,8 @@ enum ProviderDiagnostics {
         struct Keys: Equatable {
             var openRouter = false
             var openCode = false
+            var deepInfra = false
+            var vercel = false
             var claude = false
         }
     }
@@ -56,7 +58,10 @@ enum ProviderDiagnostics {
         var authPresent: Bool { authFileCount > 0 || hasKey }
     }
 
-    static let ids = ["codex", "claude", "antigravity", "openrouter", "opencode"]
+    static let ids = [
+        "codex", "claude", "antigravity", "openrouter", "opencode",
+        "deepinfra", "vercel",
+    ]
 
     static func title(for id: String) -> String {
         switch id {
@@ -65,6 +70,8 @@ enum ProviderDiagnostics {
         case "antigravity": return "Antigravity"
         case "openrouter": return "OpenRouter"
         case "opencode": return "OpenCode"
+        case "deepinfra": return "DeepInfra"
+        case "vercel": return "Vercel"
         default: return id
         }
     }
@@ -118,12 +125,18 @@ enum ProviderDiagnostics {
             return models.filter { isOwned($0, by: "openrouter") }.count
         case "opencode":
             return models.filter { isOwned($0, by: "opencode") }.count
+        case "deepinfra":
+            return models.filter { isOwned($0, by: "deepinfra") }.count
+        case "vercel":
+            return models.filter { isOwned($0, by: "vercel") }.count
         default:
             return models.filter {
                 !isClaudeModel(id: $0.id, owner: $0.owner)
                     && !isAntigravityModel(id: $0.id, owner: $0.owner)
                     && !isOwned($0, by: "openrouter")
                     && !isOwned($0, by: "opencode")
+                    && !isOwned($0, by: "deepinfra")
+                    && !isOwned($0, by: "vercel")
             }.count
         }
     }
@@ -185,6 +198,8 @@ enum ProviderDiagnostics {
         switch id {
         case "openrouter": return keys.openRouter
         case "opencode": return keys.openCode
+        case "deepinfra": return keys.deepInfra
+        case "vercel": return keys.vercel
         case "claude": return keys.claude
         default: return false
         }
@@ -224,6 +239,8 @@ final class ProviderDiagnosticsStore: ObservableObject {
         result.keys = ProviderDiagnostics.Evidence.Keys(
             openRouter: !sources.openRouterKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             openCode: !sources.openCodeKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            deepInfra: !sources.deepInfraKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            vercel: !sources.vercelKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             claude: !sources.claudeKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         )
 
@@ -264,6 +281,10 @@ final class ProviderDiagnosticsStore: ObservableObject {
         if let openCode = usage.openCode {
             result.quotaUpdatedAt["opencode"] = openCode.updatedAt
             result.quotaErrors["opencode"] = openCode.error
+        }
+        if let vercel = usage.vercel {
+            result.quotaUpdatedAt["vercel"] = vercel.updatedAt
+            result.quotaErrors["vercel"] = vercel.error
         }
 
         evidence = result

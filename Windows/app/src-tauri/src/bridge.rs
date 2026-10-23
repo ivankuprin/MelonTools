@@ -50,6 +50,17 @@ fn set_status(state: &BridgeState, value: Value) {
     }
 }
 
+/// Drop cached provider metrics after settings change (new keys or a freshly
+/// loaded model list would otherwise stay invisible for five minutes).
+pub fn invalidate_providers(state: &BridgeState) {
+    if let Ok(mut guard) = state.providers.lock() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = state.models.lock() {
+        *guard = None;
+    }
+}
+
 // MARK: - Process discovery
 
 fn parse_debug_port(line: &str) -> Option<u16> {
@@ -297,7 +308,13 @@ fn labels(lang: &str) -> Value {
 fn injection_source(lang: &str) -> String {
     let config = json!({
         "labels": labels(lang),
-        "providers": {"openai": "OpenAI", "opencode": "OpenCode", "openrouter": "OpenRouter"},
+        "providers": {
+            "openai": "OpenAI",
+            "opencode": "OpenCode",
+            "openrouter": "OpenRouter",
+            "deepinfra": "DeepInfra",
+            "vercel": "Vercel"
+        },
     });
     format!(
         "window.__MELON_COMPOSER_CONFIG__ = {};\n{}",
@@ -310,6 +327,10 @@ fn provider_of(model: &str) -> &'static str {
         "opencode"
     } else if model.starts_with("openrouter/") {
         "openrouter"
+    } else if model.starts_with("deepinfra/") {
+        "deepinfra"
+    } else if model.starts_with("vercel/") {
+        "vercel"
     } else {
         "openai"
     }
@@ -320,9 +341,7 @@ fn provider_of(model: &str) -> &'static str {
 /// until those subsystems are ported).
 async fn status_payload(
     state: &BridgeState,
-    port: u16,
-    api_key: &str,
-    openrouter_key: &str,
+    settings: &crate::settings::Settings,
     model: Option<String>,
 ) -> Value {
     let accounts = vault::accounts();
@@ -377,7 +396,7 @@ async fn status_payload(
         .collect();
 
     // Picker models: names + providers, so the chips can label the active one.
-    let models = picker_models(state, port, api_key).await;
+    let models = picker_models(state, settings.port, &settings.api_key).await;
 
     let mut payload = json!({
         "accounts": total,
@@ -392,7 +411,7 @@ async fn status_payload(
         "updatedAt": if latest > 0.0 { (latest + vault::APPLE_REF_UNIX_OFFSET) as i64 } else { vault::unix_now() as i64 },
         "requests": crate::gateway::requests_last_minute(),
         "models": models,
-        "providers": providers_metrics(state, openrouter_key).await,
+        "providers": providers_metrics(state, settings).await,
     });
     let model_name = model.clone().unwrap_or_default();
     payload["active"] = json!({
@@ -446,9 +465,17 @@ async fn picker_models(state: &BridgeState, port: u16, api_key: &str) -> Vec<Val
     models
 }
 
-/// OpenRouter metrics for the chips popover (cached for five minutes).
-async fn providers_metrics(state: &BridgeState, openrouter_key: &str) -> Value {
-    if openrouter_key.trim().is_empty() {
+/// Provider metrics for the chips popover (cached for five minutes).
+/// OpenRouter and Vercel expose account APIs; DeepInfra has no balance
+/// endpoint, so its entry carries the cached model count only.
+async fn providers_metrics(
+    state: &BridgeState,
+    settings: &crate::settings::Settings,
+) -> Value {
+    let openrouter_key = settings.openrouter_key.trim();
+    let vercel_key = settings.vercel_key.trim();
+    let deepinfra_key = settings.deepinfra_key.trim();
+    if openrouter_key.is_empty() && vercel_key.is_empty() && deepinfra_key.is_empty() {
         return json!({});
     }
     if let Ok(guard) = state.providers.lock() {
@@ -458,18 +485,64 @@ async fn providers_metrics(state: &BridgeState, openrouter_key: &str) -> Value {
             }
         }
     }
-    let Ok(data) = crate::providers::openrouter(openrouter_key).await else {
-        return json!({});
-    };
-    let value = json!({
-        "openrouter": {
-            "total": data.get("totalCredits").cloned().unwrap_or(Value::Null),
-            "usage": data.get("totalUsage").cloned().unwrap_or(Value::Null),
-            "remaining": data.get("remaining").cloned().unwrap_or(Value::Null),
-            "keyUsage": data.get("usage").cloned().unwrap_or(Value::Null),
-            "keyLimit": data.get("limit").cloned().unwrap_or(Value::Null),
-        }
-    });
+
+    let now = chrono::Utc::now().timestamp();
+    let mut providers = serde_json::Map::new();
+    if !openrouter_key.is_empty() {
+        let entry = match crate::providers::openrouter(openrouter_key).await {
+            Ok(data) => json!({
+                "title": "OpenRouter",
+                "creditsTotal": data.get("totalCredits").cloned().unwrap_or(Value::Null),
+                "creditsUsage": data.get("totalUsage").cloned().unwrap_or(Value::Null),
+                "creditsRemaining": data.get("remaining").cloned().unwrap_or(Value::Null),
+                "keyUsage": data.get("usage").cloned().unwrap_or(Value::Null),
+                "keyLimit": data.get("limit").cloned().unwrap_or(Value::Null),
+                "keyRemaining": data.get("limitRemaining").cloned().unwrap_or(Value::Null),
+                "isFreeTier": data.get("isFreeTier").cloned().unwrap_or(Value::Null),
+                "updatedAt": now,
+            }),
+            Err(error) => json!({
+                "title": "OpenRouter",
+                "error": error,
+                "updatedAt": Value::Null,
+            }),
+        };
+        providers.insert("openrouter".to_string(), entry);
+    }
+    if !vercel_key.is_empty() {
+        let model_count = settings.vercel_models.len();
+        let entry = match crate::providers::vercel(vercel_key).await {
+            Ok(data) => {
+                let mut entry = data;
+                entry["title"] = json!("Vercel");
+                entry["modelCount"] = json!(model_count);
+                entry["updatedAt"] = json!(now);
+                entry
+            }
+            Err(error) => json!({
+                "title": "Vercel",
+                "modelCount": model_count,
+                "balance": Value::Null,
+                "totalUsed": Value::Null,
+                "updatedAt": Value::Null,
+                "error": error,
+            }),
+        };
+        providers.insert("vercel".to_string(), entry);
+    }
+    if !deepinfra_key.is_empty() {
+        providers.insert(
+            "deepinfra".to_string(),
+            json!({
+                "title": "DeepInfra",
+                "modelCount": settings.deepinfra_models.len(),
+                "updatedAt": Value::Null,
+                "error": Value::Null,
+            }),
+        );
+    }
+
+    let value = Value::Object(providers);
     if let Ok(mut guard) = state.providers.lock() {
         *guard = Some((value.clone(), std::time::Instant::now()));
     }
@@ -479,9 +552,6 @@ async fn providers_metrics(state: &BridgeState, openrouter_key: &str) -> Value {
 // MARK: - Tick
 
 pub async fn tick(state: &BridgeState, settings: &crate::settings::Settings) {
-    let port = settings.port;
-    let api_key = settings.api_key.as_str();
-    let openrouter_key = settings.openrouter_key.as_str();
     let lang = settings.lang.as_str();
     let Some(debug_port) = find_debug_port_cached(state) else {
         set_status(state, json!({"attached": false, "reason": "codex_not_running"}));
@@ -571,11 +641,14 @@ pub async fn tick(state: &BridgeState, settings: &crate::settings::Settings) {
         }
     }
 
-    let mut payload = status_payload(state, port, api_key, openrouter_key, model.clone()).await;
+    let mut payload = status_payload(state, settings, model.clone()).await;
     payload["active"]["threadId"] = json!(thread_id.clone());
-    if let Some(session_usage) =
+    if let Some(mut session_usage) =
         thread_id.as_deref().and_then(|id| session_usage_cached(state, id))
     {
+        if let Some(cost) = session_cost(&session_usage, settings) {
+            session_usage["cost"] = cost;
+        }
         payload["session"] = session_usage;
     }
     let push = format!(
@@ -753,6 +826,77 @@ fn normalize_usage(value: &Value) -> Value {
     })
 }
 
+/// Resolve the model that produced the thread's last turn to a cached
+/// DeepInfra/Vercel row. Codex may report the catalog display name, the gateway
+/// slug, or a provider-prefixed slug.
+fn provider_pricing<'a>(
+    settings: &'a crate::settings::Settings,
+    model: &str,
+) -> Option<(&'static str, &'a crate::settings::ProviderModel)> {
+    let needle = model
+        .strip_prefix("deepinfra/")
+        .or_else(|| model.strip_prefix("vercel/"))
+        .unwrap_or(model)
+        .trim();
+    let matches = |row: &&crate::settings::ProviderModel| {
+        row.id.eq_ignore_ascii_case(needle) || row.display.eq_ignore_ascii_case(needle)
+    };
+    if let Some(row) = settings.deepinfra_models.iter().find(matches) {
+        return Some(("deepinfra", row));
+    }
+    if let Some(row) = settings.vercel_models.iter().find(matches) {
+        return Some(("vercel", row));
+    }
+    None
+}
+
+/// Estimate the thread cost from the total token counters. The rollout parser
+/// keeps the newest total, so the last turn's model prices the whole thread —
+/// the same approximation the macOS bridge makes when it has only a tail.
+fn session_cost(
+    session: &Value,
+    settings: &crate::settings::Settings,
+) -> Option<Value> {
+    let total = session.get("total")?;
+    let model = session.get("model").and_then(Value::as_str)?;
+    let (tag, pricing) = provider_pricing(settings, model)?;
+    let prompt = pricing.prompt_per_token?;
+    let completion = pricing.completion_per_token?;
+    let get = |key: &str| total.get(key).and_then(Value::as_i64).unwrap_or(0);
+    let input = get("input");
+    let cached = get("cached").min(input);
+    let fresh = (input - cached).max(0);
+    let cache_read = pricing.cache_read_per_token.unwrap_or(prompt);
+    let usd = fresh as f64 * prompt
+        + cached as f64 * cache_read
+        + get("output") as f64 * completion;
+    let turns = session
+        .get("turns")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .max(1);
+    let mut providers = serde_json::Map::new();
+    providers.insert(
+        tag.to_string(),
+        json!({
+            "turns": turns,
+            "tokens": get("total"),
+            "input": input,
+            "cached": cached,
+            "output": get("output"),
+            "reasoning": get("reasoning"),
+            "usd": usd,
+        }),
+    );
+    Some(json!({
+        "total": usd,
+        "providers": providers,
+        "pricedTurns": turns,
+        "unpricedTurns": 0,
+        "scaled": false,
+    }))
+}
+
 /// Path of the Codex home, exposed for the UI.
 pub fn codex_home_display() -> String {
     paths::codex_home().to_string_lossy().to_string()
@@ -842,6 +986,74 @@ fn kill_chatgpt_processes(force: bool) {
 
 /// Restarts the Codex app with the CDP flags (the chips need the debug port;
 /// an already running instance cannot gain the flags any other way).
+#[cfg(test)]
+mod tests {
+    use super::{provider_pricing, session_cost};
+    use crate::settings::{ProviderModel, Settings};
+    use serde_json::json;
+
+    fn pricing_settings() -> Settings {
+        Settings {
+            deepinfra_models: vec![ProviderModel {
+                id: "deepseek-ai/DeepSeek-V4".to_string(),
+                display: "DeepSeek V4".to_string(),
+                prompt_per_token: Some(0.000002),
+                completion_per_token: Some(0.000004),
+                cache_read_per_token: Some(0.000001),
+                ..Default::default()
+            }],
+            vercel_models: vec![ProviderModel {
+                id: "anthropic/claude-sonnet-4.6".to_string(),
+                display: "Claude Sonnet 4.6".to_string(),
+                prompt_per_token: Some(0.000003),
+                completion_per_token: Some(0.000015),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn session_cost_prices_the_thread_at_the_last_model() {
+        let settings = pricing_settings();
+        let session = json!({
+            "model": "deepinfra/deepseek-ai/DeepSeek-V4",
+            "turns": 2,
+            "total": {"input": 1000, "cached": 400, "output": 500, "reasoning": 100, "total": 1500},
+        });
+        let cost = session_cost(&session, &settings).expect("priced model");
+        assert_eq!(cost["pricedTurns"], 2);
+        assert_eq!(cost["providers"]["deepinfra"]["input"], 1000);
+        let expected = 600.0 * 0.000002 + 400.0 * 0.000001 + 500.0 * 0.000004;
+        let actual = cost["total"].as_f64().unwrap();
+        assert!((actual - expected).abs() < 1e-12);
+    }
+
+    #[test]
+    fn session_cost_matches_display_names_and_vercel_slugs() {
+        let settings = pricing_settings();
+        assert_eq!(
+            provider_pricing(&settings, "Claude Sonnet 4.6").map(|(tag, _)| tag),
+            Some("vercel")
+        );
+        assert_eq!(
+            provider_pricing(&settings, "vercel/anthropic/claude-sonnet-4.6").map(|(tag, _)| tag),
+            Some("vercel")
+        );
+        assert!(provider_pricing(&settings, "gpt-6.1-sol").is_none());
+    }
+
+    #[test]
+    fn session_cost_without_pricing_stays_absent() {
+        let settings = Settings::default();
+        let session = json!({
+            "model": "deepinfra/deepseek-ai/DeepSeek-V4",
+            "total": {"input": 10, "cached": 0, "output": 5, "total": 15},
+        });
+        assert!(session_cost(&session, &settings).is_none());
+    }
+}
+
 pub async fn launch_codex_with_debug_port() -> Result<String, String> {
     let exe = find_codex_exe().ok_or_else(|| {
         "не нашёл ChatGPT.exe — укажите путь через переменную MELON_CODEX_EXE".to_string()
